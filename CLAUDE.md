@@ -28,14 +28,14 @@ docs/adr/             — Architecture Decision Records
 ## Commands
 
 ```bash
-# Clusterer (once code exists)
-cd services/clusterer && uv pip install -e ".[dev]" && pytest
+# Clusterer
+cd services/clusterer && bash dev.sh install && bash dev.sh test
 
 # API Server (once code exists)
 cd services/api && pnpm install && pnpm test
 
 # Linting
-cd services/clusterer && uvx ruff check . && uvx ruff format --check .
+cd services/clusterer && bash dev.sh check
 cd services/api && pnpm lint
 
 # Typecheck API
