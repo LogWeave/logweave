@@ -99,6 +99,25 @@ class TestGetMiner:
         assert m1 is m2
 
 
+class TestTenantIdValidation:
+    def test_rejects_path_traversal(self, svc: DrainService) -> None:
+        with pytest.raises(ValueError, match="Invalid tenant_id"):
+            svc.cluster_messages("../../etc/evil", ["msg"])
+
+    def test_rejects_dots(self, svc: DrainService) -> None:
+        with pytest.raises(ValueError, match="Invalid tenant_id"):
+            svc.cluster_messages("tenant.with.dots", ["msg"])
+
+    def test_rejects_empty(self, svc: DrainService) -> None:
+        with pytest.raises(ValueError, match="Invalid tenant_id"):
+            svc.cluster_messages("", ["msg"])
+
+    def test_accepts_valid_ids(self, svc: DrainService) -> None:
+        for tid in ["tenant_a", "customer-123", "ABC_def_456"]:
+            results = svc.cluster_messages(tid, ["test msg"])
+            assert len(results) == 1
+
+
 class TestStateSerialization:
     def test_get_state_returns_bytes(self, svc: DrainService) -> None:
         svc.cluster_messages("t1", ["test message for serialization"])

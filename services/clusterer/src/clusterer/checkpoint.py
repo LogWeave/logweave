@@ -10,12 +10,14 @@ from the trusted checkpoint volume — never from external/user sources.
 
 import logging
 import os
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _EXTENSION = ".drain3"
 _TMP_SUFFIX = ".drain3.tmp"
+_VALID_TENANT_ID = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 
 
 class CheckpointManager:
@@ -44,9 +46,10 @@ class CheckpointManager:
         """Load all tenant checkpoints. Skips corrupt files with a warning."""
         result: dict[str, bytes] = {}
         for path in self._dir.glob(f"*{_EXTENSION}"):
-            if path.name.endswith(_TMP_SUFFIX):
-                continue
             tenant_id = path.name.removesuffix(_EXTENSION)
+            if not _VALID_TENANT_ID.match(tenant_id):
+                logger.warning("Skipping checkpoint with invalid tenant_id: %s", path.name)
+                continue
             try:
                 data = self.load(tenant_id)
                 if data is not None:

@@ -11,6 +11,7 @@ the event loop.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 import jsonpickle
@@ -23,6 +24,13 @@ if TYPE_CHECKING:
     from drain3.drain import Drain
 
 logger = logging.getLogger(__name__)
+
+_TENANT_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
+
+
+def _validate_tenant_id(tenant_id: str) -> None:
+    if not _TENANT_ID_PATTERN.match(tenant_id):
+        raise ValueError(f"Invalid tenant_id: {tenant_id!r}")
 
 
 class DrainService:
@@ -42,6 +50,7 @@ class DrainService:
 
     def get_miner(self, tenant_id: str) -> TemplateMiner:
         """Return existing miner or create a new one for the tenant."""
+        _validate_tenant_id(tenant_id)
         if tenant_id not in self._miners:
             self._miners[tenant_id] = self._create_miner()
         return self._miners[tenant_id]
@@ -88,7 +97,11 @@ class DrainService:
         return jsonpickle.dumps(miner.drain, keys=True).encode("utf-8")
 
     def load_state(self, tenant_id: str, state: bytes) -> None:
-        """Restore a miner from checkpoint bytes."""
+        """Restore a miner from checkpoint bytes.
+
+        Must be called before accepting traffic for this tenant.
+        """
+        _validate_tenant_id(tenant_id)
         miner = self._create_miner()
         loaded_drain: Drain = jsonpickle.loads(state, keys=True)
         miner.drain.id_to_cluster = loaded_drain.id_to_cluster
