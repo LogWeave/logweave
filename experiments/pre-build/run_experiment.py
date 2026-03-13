@@ -15,6 +15,8 @@ Advisory phases (informational, no hard gate):
   7. Ordering Sensitivity — Jaccard similarity across shuffled inputs
   8. Edge Cases — adversarial input handling
 
+Tested with: drain3==0.9.11
+
 Usage:
     uv run --with drain3 python run_experiment.py [--input data/logs_10k.jsonl]
 """
@@ -23,6 +25,7 @@ import argparse
 import json
 import os
 import pickle
+import random
 import re
 import shutil
 import sys
@@ -228,23 +231,6 @@ def phase_2_checkpoint_recovery(
     tmpdir = tempfile.mkdtemp(prefix="drain3_checkpoint_")
 
     try:
-        checkpoint_path = os.path.join(tmpdir, "drain3_state.bin")
-        persistence = FilePersistence(checkpoint_path)
-
-        # Train on first 5K messages
-        miner1 = create_miner(persistence=persistence)
-        for msg in first_half:
-            miner1.add_log_message(msg)
-
-        # Continue with miner1 on second half (no restart)
-        templates_continued = []
-        for msg in second_half:
-            result = miner1.add_log_message(msg)
-            templates_continued.append(get_template_text(result))
-
-        # Force save after training (before second half was processed)
-        # We need to re-do: train on first 5K, save, then process second 5K
-        # Let's redo cleanly:
         persistence_a = FilePersistence(os.path.join(tmpdir, "state_a.bin"))
         miner_a = create_miner(persistence=persistence_a)
         for msg in first_half:
@@ -375,26 +361,28 @@ def phase_5_template_trajectory(
             checkpoints.append((i, n))
             print(f"  {i:5d} messages -> {n:3d} templates")
 
-    # Check deceleration: growth rate in second half should be lower than first half
-    if len(checkpoints) >= 2:
-        first_half_growth = checkpoints[len(checkpoints) // 2][1] - checkpoints[0][1]
-        second_half_growth = checkpoints[-1][1] - checkpoints[len(checkpoints) // 2][1]
-
-        # Growth in first 1K->5K vs 5K->10K
-        first_segment = checkpoints[4][1] - checkpoints[0][1]  # 1K to 5K
-        second_segment = checkpoints[-1][1] - checkpoints[4][1]  # 5K to 10K
+    # Check deceleration: compare growth in first half vs second half of checkpoints
+    mid = len(checkpoints) // 2
+    if len(checkpoints) >= 4 and mid > 0:
+        first_segment = checkpoints[mid][1] - checkpoints[0][1]
+        second_segment = checkpoints[-1][1] - checkpoints[mid][1]
 
         decelerated = second_segment <= first_segment
-        print(f"\n  Growth 1K-5K: +{first_segment} templates")
-        print(f"  Growth 5K-10K: +{second_segment} templates")
+        label_first = f"1K-{checkpoints[mid][0] // 1000}K"
+        label_second = f"{checkpoints[mid][0] // 1000}K-{checkpoints[-1][0] // 1000}K"
+        print(f"\n  Growth {label_first}: +{first_segment} templates")
+        print(f"  Growth {label_second}: +{second_segment} templates")
         print(f"  Decelerated: {decelerated}")
     else:
+        first_segment = 0
+        second_segment = 0
         decelerated = False
+        print("\n  Not enough data points to measure deceleration")
 
     passed = decelerated
     print(f"  PHASE 5: {'PASS' if passed else 'FAIL'} (growth must decelerate)")
 
-    return passed, f"1K-5K: +{first_segment}, 5K-10K: +{second_segment}"
+    return passed, f"first half: +{first_segment}, second half: +{second_segment}"
 
 
 # ---------------------------------------------------------------------------
@@ -446,10 +434,8 @@ def phase_7_ordering_sensitivity(
     miner1, _ = cluster_messages(messages, preprocessor)
     templates1 = {c.get_template() if hasattr(c, 'get_template') else str(c) for c in miner1.drain.clusters}
 
-    # Order 2: shuffled
-    import random as rng
-
-    rng.seed(999)
+    # Order 2: shuffled (separate RNG to avoid contaminating module-level seed)
+    rng = random.Random(999)
     shuffled = messages.copy()
     rng.shuffle(shuffled)
     miner2, _ = cluster_messages(shuffled, preprocessor)

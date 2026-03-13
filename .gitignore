@@ -45,6 +45,6 @@ coverage/
 htmlcov/
 .coverage
 
-# Experiment output (generated data + results)
-experiments/pre-build/data/
-experiments/pre-build/results/
+# Experiment outputs (generated data, results, temp files)
+experiments/**/data/
+experiments/**/results/
