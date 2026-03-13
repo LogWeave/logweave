@@ -44,3 +44,7 @@ drain3-checkpoints/
 coverage/
 htmlcov/
 .coverage
+
+# Experiment outputs (generated data, results, temp files)
+experiments/**/data/
+experiments/**/results/

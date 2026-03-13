@@ -99,6 +99,9 @@ Every session should follow this pattern:
 5. After implementation, have the reviewer agent review the code
 6. When all issues in a milestone are closed, move to the next milestone
 
+**Always work in feature branches** — never commit directly to main, even for solo work. Merge locally when done.
+**Commit frequently** — after each logical unit of work. Keeps context lean and mistakes easy to undo.
+
 Milestone order: Pre-Build Validation → Week 1a → Week 1b → Week 2 → Week 3 → Week 4 → Week 5
 
 ## Current Milestone
