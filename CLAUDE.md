@@ -100,11 +100,12 @@ Every session should follow this pattern:
 6. When all issues in a milestone are closed, move to the next milestone
 
 **Always work in feature branches** — never commit directly to main, even for solo work. Merge locally when done.
+**Branch naming: `LW-<issue-number>`** (e.g., `LW-5`, `LW-12`). For multi-issue work, use the primary issue number.
 **Commit frequently** — after each logical unit of work. Keeps context lean and mistakes easy to undo.
 
 Milestone order: Pre-Build Validation → Week 1a → Week 1b → Week 2 → Week 3 → Week 4 → Week 5
 
 ## Current Milestone
 
-Pre-Build Validation — see GitHub Issues for active tasks.
-Issue order: #2 (generate 10K log dataset) → #3 (experiment script) → #1 (run experiment) → #4 (gate review)
+Week 1a — Clusterer Standalone. Check `gh issue list -m "Week 1a"` for active tasks.
+If no issues exist yet, scope them with `/scope-milestone`.

@@ -7,4 +7,28 @@ Format: `### YYYY-MM-DD — Short description` followed by what happened and the
 
 ---
 
-<!-- Entries will be added as development progresses -->
+### 2026-03-13 — Jumped to coding without entering plan mode
+
+Started writing code immediately instead of entering plan mode. User had to correct.
+Fix: Added memory rule to always enter plan mode before non-trivial implementation.
+
+### 2026-03-13 — Committed to main before creating feature branch
+
+First commit (CLAUDE.md + .gitignore) went directly to main before creating the
+`feat/pre-build-validation` branch. Should have created the branch first.
+Fix: Added branch naming convention (`LW-<issue>`) and feature branch rule to CLAUDE.md.
+
+### 2026-03-13 — Assumed Drain3 `template_mined` was an object
+
+Called `.get_template()` on `result["template_mined"]` but in drain3==0.9.11 it's a
+plain string. Caused runtime errors in Phase 2 and Phase 8 of the experiment.
+Fix: Added `get_template_text()` helper that handles both string and object returns.
+Documented in `project_gotchas.md` memory file.
+
+### 2026-03-13 — Phase 2 checkpoint test measured the wrong thing
+
+Original test re-clustered the same 5K messages after restart and compared template
+texts. This fails because Drain3 legitimately generalizes templates better on the
+second pass (the checkpoint gives it a richer model). The correct test: train on 5K,
+checkpoint, then compare templates for *unseen* messages between continued and restored
+miners. Fix: Rewrote Phase 2 to test unseen messages.
