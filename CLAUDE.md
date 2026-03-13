@@ -88,6 +88,20 @@ When compacting, always preserve: modified files list, current milestone, test c
 and active ADR decisions. Reference @docs/adr/ for architectural decisions that must not
 be relitigated.
 
+## Development Workflow
+
+Every session should follow this pattern:
+
+1. Check `gh milestone list` and `gh issue list` to see what's active
+2. For the current milestone, if issues aren't scoped yet, use `/scope-milestone` to break it down
+3. **Plan first**: use `/plan` to design the approach, then have the reviewer agent critique it
+4. **Execute**: work issues in dependency order using `/fix-issue` for each
+5. After implementation, have the reviewer agent review the code
+6. When all issues in a milestone are closed, move to the next milestone
+
+Milestone order: Pre-Build Validation → Week 1a → Week 1b → Week 2 → Week 3 → Week 4 → Week 5
+
 ## Current Milestone
 
 Pre-Build Validation — see GitHub Issues for active tasks.
+Issue order: #2 (generate 10K log dataset) → #3 (experiment script) → #1 (run experiment) → #4 (gate review)
