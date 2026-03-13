@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from typing import TYPE_CHECKING
 
 import jsonpickle
@@ -39,6 +40,16 @@ class DrainService:
         self._depth = depth
         self._miners: dict[str, TemplateMiner] = {}
         self._dirty_generations: dict[str, int] = {}
+        self._locks: dict[str, threading.Lock] = {}
+        self._locks_lock = threading.Lock()
+
+    def _get_lock(self, tenant_id: str) -> threading.Lock:
+        """Get or create a per-tenant lock. Thread-safe."""
+        if tenant_id not in self._locks:
+            with self._locks_lock:
+                if tenant_id not in self._locks:
+                    self._locks[tenant_id] = threading.Lock()
+        return self._locks[tenant_id]
 
     def _create_miner(self) -> TemplateMiner:
         config = TemplateMinerConfig()
@@ -56,26 +67,28 @@ class DrainService:
         return self._miners[tenant_id]
 
     def cluster_messages(self, tenant_id: str, messages: list[str]) -> list[DrainResult]:
-        """Cluster pre-processed messages for a tenant. Synchronous."""
-        miner = self.get_miner(tenant_id)
-        results: list[DrainResult] = []
-        state_changed = False
-        for msg in messages:
-            result = miner.add_log_message(msg)
-            is_new = result["change_type"] == "cluster_created"
-            results.append(
-                DrainResult(
-                    drain_cluster_id=result["cluster_id"],
-                    template_text=result["template_mined"],
-                    is_new=is_new,
+        """Cluster pre-processed messages for a tenant. Synchronous, thread-safe."""
+        lock = self._get_lock(tenant_id)
+        with lock:
+            miner = self.get_miner(tenant_id)
+            results: list[DrainResult] = []
+            state_changed = False
+            for msg in messages:
+                result = miner.add_log_message(msg)
+                is_new = result["change_type"] == "cluster_created"
+                results.append(
+                    DrainResult(
+                        drain_cluster_id=result["cluster_id"],
+                        template_text=result["template_mined"],
+                        is_new=is_new,
+                    )
                 )
-            )
-            if result["change_type"] != "none":
-                state_changed = True
-        if state_changed:
-            gen = self._dirty_generations.get(tenant_id, 0) + 1
-            self._dirty_generations[tenant_id] = gen
-        return results
+                if result["change_type"] != "none":
+                    state_changed = True
+            if state_changed:
+                gen = self._dirty_generations.get(tenant_id, 0) + 1
+                self._dirty_generations[tenant_id] = gen
+            return results
 
     def get_dirty_tenants(self) -> dict[str, int]:
         """Return {tenant_id: generation} snapshot of dirty tenants."""
@@ -88,13 +101,15 @@ class DrainService:
             del self._dirty_generations[tenant_id]
 
     def get_state(self, tenant_id: str) -> bytes:
-        """Serialize miner's Drain3 state to bytes.
+        """Serialize miner's Drain3 state to bytes. Thread-safe.
 
         Security: uses jsonpickle (Drain3's native format). Only load state
         from trusted checkpoint volume — never from external sources.
         """
-        miner = self._miners[tenant_id]
-        return jsonpickle.dumps(miner.drain, keys=True).encode("utf-8")
+        lock = self._get_lock(tenant_id)
+        with lock:
+            miner = self._miners[tenant_id]
+            return jsonpickle.dumps(miner.drain, keys=True).encode("utf-8")
 
     def load_state(self, tenant_id: str, state: bytes) -> None:
         """Restore a miner from checkpoint bytes.
