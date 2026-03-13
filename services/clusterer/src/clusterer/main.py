@@ -40,7 +40,12 @@ async def lifespan(app: FastAPI):
                 2**attempt,
             )
             await asyncio.sleep(2**attempt)
-    drain_service = DrainService(sim_th=settings.drain3_sim_th, depth=settings.drain3_depth)
+    drain_service = DrainService(
+        sim_th=settings.drain3_sim_th,
+        depth=settings.drain3_depth,
+        max_clusters=settings.drain3_max_clusters,
+        max_tenants=settings.max_tenants,
+    )
     registry = TemplateRegistry(ch_client)
     checkpoint_mgr = CheckpointManager(settings.drain3_checkpoint_dir)
 
