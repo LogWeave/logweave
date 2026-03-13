@@ -35,7 +35,9 @@ class TestCluster:
         ]
         registry = AsyncMock()
         # Registry says this template already exists (is_new=False)
-        registry.get_or_create.return_value = ("uuid-123", False)
+        registry.batch_get_or_create.return_value = {
+            "error in <*>": ("uuid-123", False),
+        }
 
         pipeline = _make_pipeline(drain=drain, registry=registry)
         results = await pipeline.cluster("tenant_a", ["error in service-1"])
@@ -46,18 +48,18 @@ class TestCluster:
         assert results[0].template_text == "error in <*>"
 
     @pytest.mark.asyncio
-    async def test_calls_drain_then_registry_for_each(self) -> None:
-        """Each DrainResult gets a registry lookup."""
+    async def test_calls_drain_then_batch_registry(self) -> None:
+        """All DrainResults get a batch registry lookup."""
         drain = MagicMock()
         drain.cluster_messages.return_value = [
             DrainResult(drain_cluster_id=1, template_text="tmpl_a", is_new=True),
             DrainResult(drain_cluster_id=2, template_text="tmpl_b", is_new=True),
         ]
         registry = AsyncMock()
-        registry.get_or_create.side_effect = [
-            ("id-a", True),
-            ("id-b", False),
-        ]
+        registry.batch_get_or_create.return_value = {
+            "tmpl_a": ("id-a", True),
+            "tmpl_b": ("id-b", False),
+        }
 
         pipeline = _make_pipeline(drain=drain, registry=registry)
         results = await pipeline.cluster("t1", ["msg1", "msg2"])
@@ -69,7 +71,34 @@ class TestCluster:
         assert results[1] == ClusterResultItem(
             template_id="id-b", template_text="tmpl_b", is_new=False
         )
-        assert registry.get_or_create.call_count == 2
+        registry.batch_get_or_create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_template_texts(self) -> None:
+        """Same template text from multiple messages should be a single lookup."""
+        drain = MagicMock()
+        drain.cluster_messages.return_value = [
+            DrainResult(drain_cluster_id=1, template_text="tmpl_a", is_new=False),
+            DrainResult(drain_cluster_id=1, template_text="tmpl_a", is_new=False),
+            DrainResult(drain_cluster_id=2, template_text="tmpl_b", is_new=True),
+        ]
+        registry = AsyncMock()
+        registry.batch_get_or_create.return_value = {
+            "tmpl_a": ("id-a", False),
+            "tmpl_b": ("id-b", True),
+        }
+
+        pipeline = _make_pipeline(drain=drain, registry=registry)
+        results = await pipeline.cluster("t1", ["msg1", "msg2", "msg3"])
+
+        assert len(results) == 3
+        # Both tmpl_a messages get the same id
+        assert results[0].template_id == "id-a"
+        assert results[1].template_id == "id-a"
+        # batch_get_or_create called with deduplicated list
+        call_args = registry.batch_get_or_create.call_args
+        texts = call_args[0][1]
+        assert len(texts) == 2
 
     @pytest.mark.asyncio
     async def test_passes_tenant_id_to_both_services(self) -> None:
@@ -78,13 +107,13 @@ class TestCluster:
             DrainResult(drain_cluster_id=1, template_text="tmpl", is_new=True),
         ]
         registry = AsyncMock()
-        registry.get_or_create.return_value = ("id-1", True)
+        registry.batch_get_or_create.return_value = {"tmpl": ("id-1", True)}
 
         pipeline = _make_pipeline(drain=drain, registry=registry)
         await pipeline.cluster("my_tenant", ["msg"])
 
         drain.cluster_messages.assert_called_once_with("my_tenant", ["msg"])
-        registry.get_or_create.assert_called_once_with("my_tenant", "tmpl")
+        registry.batch_get_or_create.assert_called_once_with("my_tenant", ["tmpl"])
 
 
 class TestRestoreCheckpoints:

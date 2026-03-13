@@ -38,6 +38,13 @@ WHERE tenant_id = {tid:String}
 LIMIT 1
 """
 
+_BATCH_SELECT_SQL = """\
+SELECT template_text, template_id
+FROM template_registry FINAL
+WHERE tenant_id = {tid:String}
+  AND template_text IN {texts:Array(String)}
+"""
+
 _INSERT_SQL = """\
 INSERT INTO template_registry
     (tenant_id, template_text_hash, template_text, template_id, first_seen)
@@ -52,6 +59,8 @@ class TemplateRegistry:
         self._cache: LRUCache = LRUCache(maxsize=_CACHE_MAX_SIZE)
         self._tenant_locks: dict[str, asyncio.Lock] = {}
         self._global_lock = asyncio.Lock()
+        self._cache_hits: int = 0
+        self._cache_misses: int = 0
 
     async def _get_tenant_lock(self, tenant_id: str) -> asyncio.Lock:
         async with self._global_lock:
@@ -66,6 +75,7 @@ class TemplateRegistry:
         # Fast path: cache hit
         cached = self._cache.get(cache_key)
         if cached is not None:
+            self._cache_hits += 1
             return cached, False
 
         # Slow path: acquire per-tenant lock
@@ -74,7 +84,10 @@ class TemplateRegistry:
             # Double-check cache (another coroutine may have populated it)
             cached = self._cache.get(cache_key)
             if cached is not None:
+                self._cache_hits += 1
                 return cached, False
+
+            self._cache_misses += 1
 
             # Query ClickHouse
             existing_id = await asyncio.to_thread(self._query_registry, tenant_id, template_text)
@@ -94,6 +107,87 @@ class TemplateRegistry:
             )
             return new_id, True
 
+    async def batch_get_or_create(
+        self, tenant_id: str, template_texts: list[str]
+    ) -> dict[str, tuple[str, bool]]:
+        """Batch lookup/create. Returns {template_text: (template_id, is_new)}.
+
+        1. Check cache for all texts, collect misses
+        2. Single batch SELECT for cache misses
+        3. Batch INSERT for genuinely new templates
+        4. Holds per-tenant lock for the entire batch
+        """
+        result: dict[str, tuple[str, bool]] = {}
+        cache_misses: list[str] = []
+
+        # Fast path: check cache for all texts
+        for text in template_texts:
+            cache_key = (tenant_id, text)
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                self._cache_hits += 1
+                result[text] = (cached, False)
+            else:
+                cache_misses.append(text)
+
+        if not cache_misses:
+            return result
+
+        # Slow path: acquire per-tenant lock for all misses
+        lock = await self._get_tenant_lock(tenant_id)
+        async with lock:
+            # Double-check cache under lock
+            still_missing: list[str] = []
+            for text in cache_misses:
+                cache_key = (tenant_id, text)
+                cached = self._cache.get(cache_key)
+                if cached is not None:
+                    self._cache_hits += 1
+                    result[text] = (cached, False)
+                else:
+                    still_missing.append(text)
+
+            if not still_missing:
+                return result
+
+            self._cache_misses += len(still_missing)
+
+            # Batch SELECT from ClickHouse
+            found = await asyncio.to_thread(
+                self._batch_query_registry, tenant_id, still_missing
+            )
+
+            new_texts: list[str] = []
+            for text in still_missing:
+                if text in found:
+                    self._cache[(tenant_id, text)] = found[text]
+                    result[text] = (found[text], False)
+                else:
+                    new_texts.append(text)
+
+            # Batch INSERT for genuinely new templates
+            if new_texts:
+                new_entries: list[tuple[str, str]] = []
+                for text in new_texts:
+                    new_id = str(uuid7())
+                    new_entries.append((text, new_id))
+                    self._cache[(tenant_id, text)] = new_id
+                    result[text] = (new_id, True)
+
+                await asyncio.to_thread(
+                    self._batch_insert_templates, tenant_id, new_entries
+                )
+
+                for text, new_id in new_entries:
+                    logger.info(
+                        "New template for tenant %s: %s -> %s",
+                        tenant_id,
+                        text[:80],
+                        new_id,
+                    )
+
+        return result
+
     def _query_registry(self, tenant_id: str, template_text: str) -> str | None:
         """Sync ClickHouse query. Returns template_id or None."""
         result = self._client.query(
@@ -104,11 +198,35 @@ class TemplateRegistry:
             return result.result_rows[0][0]
         return None
 
+    def _batch_query_registry(
+        self, tenant_id: str, template_texts: list[str]
+    ) -> dict[str, str]:
+        """Sync batch ClickHouse query. Returns {template_text: template_id}."""
+        result = self._client.query(
+            _BATCH_SELECT_SQL,
+            parameters={"tid": tenant_id, "texts": template_texts},
+        )
+        return {row[0]: row[1] for row in result.result_rows}
+
     def _insert_template(self, tenant_id: str, template_text: str, template_id: str) -> None:
         """Sync ClickHouse insert."""
         self._client.command(
             _INSERT_SQL,
             parameters={"tid": tenant_id, "text": template_text, "template_id": template_id},
+        )
+
+    def _batch_insert_templates(
+        self, tenant_id: str, entries: list[tuple[str, str]]
+    ) -> None:
+        """Sync batch ClickHouse insert using client.insert()."""
+        rows = []
+        for text, template_id in entries:
+            rows.append([tenant_id, text, template_id])
+        self._client.insert(
+            "template_registry",
+            rows,
+            column_names=["tenant_id", "template_text", "template_id"],
+            settings={"insert_deduplicate": 0},
         )
 
     def ensure_schema(self) -> None:
