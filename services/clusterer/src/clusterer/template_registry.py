@@ -54,11 +54,10 @@ class TemplateRegistry:
         self._global_lock = asyncio.Lock()
 
     async def _get_tenant_lock(self, tenant_id: str) -> asyncio.Lock:
-        if tenant_id not in self._tenant_locks:
-            async with self._global_lock:
-                if tenant_id not in self._tenant_locks:
-                    self._tenant_locks[tenant_id] = asyncio.Lock()
-        return self._tenant_locks[tenant_id]
+        async with self._global_lock:
+            if tenant_id not in self._tenant_locks:
+                self._tenant_locks[tenant_id] = asyncio.Lock()
+            return self._tenant_locks[tenant_id]
 
     async def get_or_create(self, tenant_id: str, template_text: str) -> tuple[str, bool]:
         """Return (template_id, is_new). Cache-first, then ClickHouse, then insert."""
