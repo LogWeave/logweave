@@ -228,6 +228,8 @@ class TestKillRestartStability:
         registry = InMemoryRegistry()
         pipeline1 = _build_pipeline(registry, checkpoint_dir)
 
+        # Two-pass warmup so Drain3 templates stabilize before checkpoint
+        await pipeline1.cluster(TENANT_ID, messages)
         await pipeline1.cluster(TENANT_ID, messages)
         await pipeline1.run_checkpoint_cycle()
 
@@ -244,23 +246,36 @@ class TestKillRestartStability:
 
     @pytest.mark.asyncio
     async def test_multiple_tenants_isolated(self, tmp_path: Path) -> None:
-        """Each tenant's Drain3 state is independent — no cross-tenant contamination."""
+        """Each tenant's Drain3 state is independent — no cross-tenant contamination.
+
+        Uses different message corpora: tenant-a gets 200 messages first (builds a
+        distinctive Drain3 tree), then tenant-b gets a separate corpus. Verifies
+        tenant-b's results are unaffected by tenant-a's tree state.
+        """
         checkpoint_dir = str(tmp_path / "checkpoints")
-        messages = _generate_messages(100)
 
         registry = InMemoryRegistry()
         pipeline = _build_pipeline(registry, checkpoint_dir)
 
-        results_a = await pipeline.cluster("tenant-a", messages)
-        results_b = await pipeline.cluster("tenant-b", messages)
+        # Tenant-a gets trained on 200 messages to build a distinctive tree
+        messages_a = _generate_messages(200)
+        await pipeline.cluster("tenant-a", messages_a)
 
-        # Both tenants should get the same template_texts (same messages)
-        texts_a = {r.template_text for r in results_a}
+        # Tenant-b processes the same messages — results should match a fresh tree
+        fresh_pipeline = _build_pipeline(InMemoryRegistry(), str(tmp_path / "fresh"))
+        results_fresh = await fresh_pipeline.cluster("tenant-fresh", messages_a)
+        results_b = await pipeline.cluster("tenant-b", messages_a)
+
+        # Template texts should match (same messages, independent trees)
+        texts_fresh = {r.template_text for r in results_fresh}
         texts_b = {r.template_text for r in results_b}
-        assert texts_a == texts_b, "Same messages should produce same templates"
+        assert texts_fresh == texts_b, (
+            "Tenant-b results should match a fresh pipeline — "
+            f"diff: {texts_fresh.symmetric_difference(texts_b)}"
+        )
 
-        # But different template_ids (each tenant has its own registry entries)
-        ids_a = {r.template_id for r in results_a}
+        # Template IDs must be disjoint across all tenants
+        ids_a = {r.template_id for r in (await pipeline.cluster("tenant-a", messages_a[:10]))}
         ids_b = {r.template_id for r in results_b}
         assert ids_a.isdisjoint(ids_b), "Different tenants must have different template_ids"
 
@@ -295,11 +310,38 @@ class TestKillRestartStability:
         # Allow some tolerance — Drain3 may generalize slightly differently
         # but the core templates should overlap substantially
         overlap_ratio = len(new_texts & known_texts) / len(new_texts) if new_texts else 1.0
-        assert overlap_ratio >= 0.8, (
+        assert overlap_ratio >= 0.95, (
             f"After restart, only {overlap_ratio:.0%} of templates from new messages "
-            f"matched known templates. Expected >= 80%. "
+            f"matched known templates. Expected >= 95%. "
             f"Unexpected: {unexpected_new}"
         )
+
+    @pytest.mark.asyncio
+    async def test_corrupted_checkpoint_recovery(self, tmp_path: Path) -> None:
+        """A corrupted checkpoint should not prevent startup — the tenant gets a fresh tree."""
+        checkpoint_dir = str(tmp_path / "checkpoints")
+        messages = _generate_messages(100)
+
+        # Phase 1: cluster and checkpoint normally
+        registry = InMemoryRegistry()
+        pipeline1 = _build_pipeline(registry, checkpoint_dir)
+        await pipeline1.cluster(TENANT_ID, messages)
+        await pipeline1.run_checkpoint_cycle()
+
+        # Corrupt the checkpoint file
+        checkpoint_file = tmp_path / "checkpoints" / f"{TENANT_ID}.drain3"
+        assert checkpoint_file.exists()
+        checkpoint_file.write_bytes(b"corrupted-data-not-valid-jsonpickle")
+
+        # Phase 2: restart should succeed despite corruption
+        pipeline2 = _build_pipeline(registry, checkpoint_dir)
+        await pipeline2.restore_checkpoints()  # Should skip corrupt tenant, not crash
+
+        # Clustering should still work (fresh Drain3 tree for this tenant)
+        results = await pipeline2.cluster(TENANT_ID, messages)
+        assert len(results) == 100
+        # Templates will get new IDs since the registry still has the old ones
+        # but Drain3 may produce different template_texts from a fresh tree
 
     @pytest.mark.asyncio
     async def test_completes_under_30_seconds(self, tmp_path: Path) -> None:
