@@ -73,6 +73,11 @@ re-extracting from raw logs (which we don't store).
 pre-processed text directly. No regex stripping in the clusterer. Drain3's built-in
 MaskingInstruction is left unconfigured.
 
+**Future consideration:** A `preprocessing_version` field should be tracked alongside
+templates so that if pre-processing patterns change (e.g., a new regex is added), existing
+templates can be distinguished from those produced under the new rules. Deferred to Week 1b
+when the pre-processing pipeline is implemented in the API server.
+
 ### 5. Custom checkpoint persistence with atomic rename
 
 Drain3 provides `FilePersistence` for saving state to disk. It writes directly to the
