@@ -8,14 +8,19 @@ level (issue #9), wrap calls in asyncio.to_thread() to avoid blocking
 the event loop.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 import jsonpickle
-from drain3.drain import Drain
 from drain3.template_miner import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
 
 from clusterer.models import DrainResult
+
+if TYPE_CHECKING:
+    from drain3.drain import Drain
 
 logger = logging.getLogger(__name__)
 

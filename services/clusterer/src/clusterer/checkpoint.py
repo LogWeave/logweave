@@ -52,7 +52,11 @@ class CheckpointManager:
                 if data is not None:
                     result[tenant_id] = data
             except Exception:
-                logger.warning("Failed to load checkpoint for tenant %s, skipping", tenant_id, exc_info=True)
+                logger.warning(
+                    "Failed to load checkpoint for tenant %s, skipping",
+                    tenant_id,
+                    exc_info=True,
+                )
         return result
 
     def cleanup_stale_tmp(self) -> None:

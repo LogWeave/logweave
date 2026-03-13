@@ -60,9 +60,7 @@ class TestNewTemplateInsert:
         # Cached
         assert ("t1", "New error pattern") in registry._cache
 
-    async def test_uuid7_format(
-        self, registry: TemplateRegistry, mock_client: MagicMock
-    ) -> None:
+    async def test_uuid7_format(self, registry: TemplateRegistry, mock_client: MagicMock) -> None:
         with (
             patch.object(registry, "_query_registry", return_value=None),
             patch.object(registry, "_insert_template"),
@@ -92,9 +90,7 @@ class TestIsNewFlag:
 
 
 class TestSelectUsesFinal:
-    def test_query_contains_final(
-        self, registry: TemplateRegistry, mock_client: MagicMock
-    ) -> None:
+    def test_query_contains_final(self, registry: TemplateRegistry, mock_client: MagicMock) -> None:
         mock_client.query.return_value = MagicMock(result_rows=[])
         registry._query_registry("t1", "test template")
         call_args = mock_client.query.call_args
@@ -122,9 +118,7 @@ class TestConcurrentCreates:
             patch.object(registry, "_insert_template", side_effect=mock_insert),
         ):
             # Fire 10 concurrent requests for the same template
-            tasks = [
-                registry.get_or_create("t1", "same template text") for _ in range(10)
-            ]
+            tasks = [registry.get_or_create("t1", "same template text") for _ in range(10)]
             results = await asyncio.gather(*tasks)
 
         # All should return the same template_id
@@ -135,9 +129,7 @@ class TestConcurrentCreates:
 
 
 class TestEnsureSchema:
-    def test_creates_table(
-        self, registry: TemplateRegistry, mock_client: MagicMock
-    ) -> None:
+    def test_creates_table(self, registry: TemplateRegistry, mock_client: MagicMock) -> None:
         registry.ensure_schema()
         mock_client.command.assert_called_once()
         sql = mock_client.command.call_args[0][0]
@@ -145,9 +137,7 @@ class TestEnsureSchema:
         assert "template_registry" in sql
         assert "ReplacingMergeTree" in sql
 
-    def test_idempotent(
-        self, registry: TemplateRegistry, mock_client: MagicMock
-    ) -> None:
+    def test_idempotent(self, registry: TemplateRegistry, mock_client: MagicMock) -> None:
         registry.ensure_schema()
         registry.ensure_schema()
         assert mock_client.command.call_count == 2  # called twice, no error
