@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
         try:
             ch_client = await asyncio.to_thread(
                 clickhouse_connect.get_client,
-                dsn=settings.logweave_clickhouse_url,
+                dsn=settings.clickhouse_url,
             )
             break
         except Exception:
