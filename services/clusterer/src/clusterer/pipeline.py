@@ -94,7 +94,7 @@ class ClusterPipeline:
         dirty = self._drain.get_dirty_tenants()
         for tenant_id, generation in dirty.items():
             try:
-                state = self._drain.get_state(tenant_id)
+                state = await asyncio.to_thread(self._drain.get_state, tenant_id)
                 await asyncio.to_thread(self._checkpoint.save, tenant_id, state)
                 self._drain.mark_clean(tenant_id, generation)
             except Exception:

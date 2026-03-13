@@ -30,8 +30,12 @@ class CheckpointManager:
             raise ValueError(f"Invalid tenant_id for checkpoint: {tenant_id!r}")
         tmp_path = self._dir / f"{tenant_id}{_TMP_SUFFIX}"
         final_path = self._dir / f"{tenant_id}{_EXTENSION}"
-        tmp_path.write_bytes(state)
-        os.replace(tmp_path, final_path)
+        try:
+            tmp_path.write_bytes(state)
+            os.replace(tmp_path, final_path)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
     def load(self, tenant_id: str) -> bytes | None:
         """Load checkpoint for tenant. Returns None if missing or corrupt."""
