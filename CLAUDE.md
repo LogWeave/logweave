@@ -28,18 +28,19 @@ docs/adr/             — Architecture Decision Records
 ## Commands
 
 ```bash
-# Clusterer (once code exists)
-cd services/clusterer && uv pip install -e ".[dev]" && pytest
+# Clusterer (from services/clusterer/)
+uv sync --dev            # install deps
+uv run poe test          # run tests
+uv run poe check         # lint + format check
+uv run poe lint          # lint only
+uv run poe format        # auto-format
+uv run poe serve         # dev server with hot reload
 
-# API Server (once code exists)
-cd services/api && pnpm install && pnpm test
-
-# Linting
-cd services/clusterer && uvx ruff check . && uvx ruff format --check .
-cd services/api && pnpm lint
-
-# Typecheck API
-cd services/api && pnpm typecheck
+# API Server (from services/api/, once code exists)
+pnpm install             # install deps
+pnpm test                # run tests
+pnpm lint                # lint + format check
+pnpm typecheck           # typecheck
 
 # Full stack
 docker compose up --build

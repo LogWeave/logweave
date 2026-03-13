@@ -20,11 +20,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: uv pip install -e ".[dev]"
-      - name: Ruff check
-        run: uvx ruff check .
-      - name: Ruff format check
-        run: uvx ruff format --check .
+        run: uv sync --dev
+      - name: Lint and format check
+        run: uv run poe check
 
   lint-api:
     name: Lint API (Node.js)
@@ -63,9 +61,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: uv pip install -e ".[dev]"
+        run: uv sync --dev
       - name: Run tests
-        run: pytest --tb=short
+        run: uv run poe test
 
   test-api:
     name: Test API
