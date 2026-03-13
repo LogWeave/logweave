@@ -47,7 +47,9 @@ async def lifespan(app: FastAPI):
         max_tenants=settings.max_tenants,
     )
     registry = TemplateRegistry(ch_client)
-    checkpoint_mgr = CheckpointManager(settings.drain3_checkpoint_dir)
+    checkpoint_mgr = CheckpointManager(
+        settings.drain3_checkpoint_dir, hmac_key=settings.checkpoint_hmac_key
+    )
 
     pipeline = ClusterPipeline(
         drain_service=drain_service,
