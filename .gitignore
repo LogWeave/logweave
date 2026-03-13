@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Docker
+docker-compose.override.yml
+
+# ClickHouse data (local dev)
+clickhouse-data/
+
+# Drain3 checkpoints (local dev)
+drain3-checkpoints/
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
