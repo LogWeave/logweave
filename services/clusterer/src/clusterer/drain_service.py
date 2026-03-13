@@ -56,6 +56,10 @@ class DrainService:
         self._locks: dict[str, threading.Lock] = {}
         self._locks_lock = threading.Lock()
 
+    @property
+    def max_tenants(self) -> int:
+        return self._max_tenants
+
     def _get_lock(self, tenant_id: str) -> threading.Lock:
         """Get or create a per-tenant lock. Thread-safe."""
         with self._locks_lock:

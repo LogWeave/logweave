@@ -10,6 +10,7 @@ dependencies = [
   "clickhouse-connect>=0.8",
   "pydantic-settings>=2.7",
   "uuid-utils>=0.10",
+  "cachetools>=5.0",
 ]
 
 [dependency-groups]

@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     max_concurrent_requests: int = Field(default=4, ge=1)
     request_timeout_seconds: float = Field(default=0.45, gt=0.0)
     max_tenants: int = Field(default=200, ge=1)
-    checkpoint_hmac_key: str = ""
+    checkpoint_hmac_key: SecretStr = SecretStr("")
 
 
 @lru_cache

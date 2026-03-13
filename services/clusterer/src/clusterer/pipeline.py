@@ -88,12 +88,12 @@ class ClusterPipeline:
                 )
         if restored:
             logger.info("Restored %d tenant checkpoint(s)", restored)
-            if restored > self._drain._max_tenants:
+            if restored > self._drain.max_tenants:
                 logger.warning(
                     "Restored %d tenants exceeds max_tenants limit of %d — "
                     "new tenants will be rejected until count drops",
                     restored,
-                    self._drain._max_tenants,
+                    self._drain.max_tenants,
                 )
 
     async def run_checkpoint_cycle(self) -> None:

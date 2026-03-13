@@ -57,10 +57,9 @@ async def lifespan(app: FastAPI):
         max_tenants=settings.max_tenants,
     )
     registry = TemplateRegistry(ch_client)
-    checkpoint_mgr = CheckpointManager(
-        settings.drain3_checkpoint_dir, hmac_key=settings.checkpoint_hmac_key
-    )
-    if not settings.checkpoint_hmac_key:
+    hmac_key = settings.checkpoint_hmac_key.get_secret_value()
+    checkpoint_mgr = CheckpointManager(settings.drain3_checkpoint_dir, hmac_key=hmac_key)
+    if not hmac_key:
         logger.warning(
             "LOGWEAVE_CHECKPOINT_HMAC_KEY is not set — checkpoint integrity "
             "verification is disabled. Set this in production."

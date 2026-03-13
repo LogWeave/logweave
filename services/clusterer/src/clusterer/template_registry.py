@@ -21,10 +21,10 @@ _CACHE_MAX_SIZE = 100_000
 _CREATE_TABLE_SQL = """\
 CREATE TABLE IF NOT EXISTS template_registry (
     tenant_id           LowCardinality(String),
-    template_text_hash  UInt64,
+    template_text_hash  UInt64 DEFAULT cityHash64(template_text),
     template_text       String,
     template_id         String,
-    first_seen          DateTime64(3)
+    first_seen          DateTime64(3) DEFAULT now64(3)
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (tenant_id, template_text_hash)
 """
@@ -211,12 +211,13 @@ class TemplateRegistry:
         )
 
     def _batch_insert_templates(self, tenant_id: str, entries: list[tuple[str, str]]) -> None:
-        """Sync batch ClickHouse insert. Computes cityHash64 and first_seen server-side."""
-        for text, template_id in entries:
-            self._client.command(
-                _INSERT_SQL,
-                parameters={"tid": tenant_id, "text": text, "template_id": template_id},
-            )
+        """Batch INSERT via client.insert(). cityHash64 and first_seen computed by DEFAULT."""
+        rows = [[tenant_id, text, template_id] for text, template_id in entries]
+        self._client.insert(
+            "template_registry",
+            rows,
+            column_names=["tenant_id", "template_text", "template_id"],
+        )
 
     def ensure_schema(self) -> None:
         """Create template_registry table if not exists. Idempotent.

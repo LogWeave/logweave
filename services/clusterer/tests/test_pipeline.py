@@ -14,7 +14,7 @@ from clusterer.pipeline import ClusterPipeline
 
 def _make_drain(**kwargs) -> MagicMock:
     drain = MagicMock(**kwargs)
-    drain._max_tenants = 200
+    drain.max_tenants = 200
     return drain
 
 
