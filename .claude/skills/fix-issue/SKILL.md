@@ -1,7 +1,7 @@
 ---
 name: fix-issue
 description: Fix a GitHub issue end-to-end
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 Fix the GitHub issue: $ARGUMENTS

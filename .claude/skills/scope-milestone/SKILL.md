@@ -1,7 +1,7 @@
 ---
 name: scope-milestone
 description: Break down a milestone into GitHub Issues with acceptance criteria
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 Scope out the milestone: $ARGUMENTS
