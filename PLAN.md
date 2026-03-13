@@ -428,7 +428,7 @@ CREATE TABLE log_metadata (
     environment            LowCardinality(String),
 
     -- 0 = unclustered (clusterer unavailable at ingest time)
-    template_id            UInt64,
+    template_id            String,
     template_text          String,
     is_new_template        UInt8,
 
@@ -457,7 +457,7 @@ CREATE TABLE template_registry (
     tenant_id           LowCardinality(String),
     template_text_hash  UInt64,        -- cityHash64(template_text)
     template_text       String,
-    template_id         UInt64,
+    template_id         String,
     first_seen          DateTime64(3)
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (tenant_id, template_text_hash);
