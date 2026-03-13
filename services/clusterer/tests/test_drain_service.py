@@ -86,17 +86,18 @@ class TestDirtyTracking:
         assert "t1" in svc.get_dirty_tenants()
 
 
-class TestGetMiner:
-    def test_creates_on_demand(self, svc: DrainService) -> None:
+class TestMinerCreation:
+    def test_creates_on_first_cluster(self, svc: DrainService) -> None:
         assert "new_tenant" not in svc._miners
-        miner = svc.get_miner("new_tenant")
-        assert miner is not None
+        svc.cluster_messages("new_tenant", ["test msg"])
         assert "new_tenant" in svc._miners
 
-    def test_returns_same_miner(self, svc: DrainService) -> None:
-        m1 = svc.get_miner("t1")
-        m2 = svc.get_miner("t1")
-        assert m1 is m2
+    def test_reuses_existing_miner(self, svc: DrainService) -> None:
+        svc.cluster_messages("t1", ["msg1"])
+        miner1 = svc._miners["t1"]
+        svc.cluster_messages("t1", ["msg2"])
+        miner2 = svc._miners["t1"]
+        assert miner1 is miner2
 
 
 class TestTenantIdValidation:

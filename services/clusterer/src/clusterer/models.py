@@ -24,7 +24,7 @@ class ClusterRequest(BaseModel):
         Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_-]+$"),
     ]
     messages: Annotated[
-        list[Annotated[str, Field(min_length=1)]],
+        list[Annotated[str, Field(min_length=1, max_length=32_768)]],
         Field(min_length=1, max_length=10_000),
     ]
 

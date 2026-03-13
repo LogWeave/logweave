@@ -26,6 +26,8 @@ class CheckpointManager:
 
     def save(self, tenant_id: str, state: bytes) -> None:
         """Atomic save: write to .tmp, then os.replace() to .drain3."""
+        if not _VALID_TENANT_ID.match(tenant_id):
+            raise ValueError(f"Invalid tenant_id for checkpoint: {tenant_id!r}")
         tmp_path = self._dir / f"{tenant_id}{_TMP_SUFFIX}"
         final_path = self._dir / f"{tenant_id}{_EXTENSION}"
         tmp_path.write_bytes(state)

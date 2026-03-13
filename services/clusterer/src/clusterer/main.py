@@ -4,8 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 
 import clickhouse_connect
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException
 
 from clusterer.checkpoint import CheckpointManager
 from clusterer.config import get_settings
@@ -22,11 +21,25 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
 
-    # Create components
-    ch_client = await asyncio.to_thread(
-        clickhouse_connect.get_client,
-        dsn=settings.logweave_clickhouse_url,
-    )
+    # Connect to ClickHouse with retry (Docker Compose startup race)
+    ch_client = None
+    for attempt in range(5):
+        try:
+            ch_client = await asyncio.to_thread(
+                clickhouse_connect.get_client,
+                dsn=settings.logweave_clickhouse_url,
+            )
+            break
+        except Exception:
+            if attempt == 4:
+                logger.error("Failed to connect to ClickHouse after 5 attempts")
+                raise
+            logger.warning(
+                "ClickHouse not ready (attempt %d/5), retrying in %ds",
+                attempt + 1,
+                2**attempt,
+            )
+            await asyncio.sleep(2**attempt)
     drain_service = DrainService(sim_th=settings.drain3_sim_th, depth=settings.drain3_depth)
     registry = TemplateRegistry(ch_client)
     checkpoint_mgr = CheckpointManager(settings.drain3_checkpoint_dir)
@@ -74,10 +87,10 @@ async def cluster(request: ClusterRequest) -> ClusterResponse:
     try:
         results = await pipeline.cluster(request.tenant_id, request.messages)
     except ValueError as e:
-        return JSONResponse(status_code=422, content={"detail": str(e)})
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception:
         logger.exception("Internal error in /cluster")
-        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        raise HTTPException(status_code=500, detail="Internal server error") from None
     return ClusterResponse(results=results)
 
 
