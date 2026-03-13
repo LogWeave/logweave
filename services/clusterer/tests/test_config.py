@@ -31,11 +31,9 @@ def test_sim_th_validation():
     """sim_th must be > 0.0 and <= 1.0."""
     from pydantic import ValidationError
 
+    from clusterer.config import Settings
+
     with pytest.raises(ValidationError):
-        from pydantic_settings import BaseSettings, SettingsConfigDict
-
-        from clusterer.config import Settings
-
         Settings(drain3_sim_th=0.0)
 
     with pytest.raises(ValidationError):

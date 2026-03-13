@@ -153,9 +153,7 @@ class TemplateRegistry:
             self._cache_misses += len(still_missing)
 
             # Batch SELECT from ClickHouse
-            found = await asyncio.to_thread(
-                self._batch_query_registry, tenant_id, still_missing
-            )
+            found = await asyncio.to_thread(self._batch_query_registry, tenant_id, still_missing)
 
             new_texts: list[str] = []
             for text in still_missing:
@@ -174,9 +172,7 @@ class TemplateRegistry:
                     self._cache[(tenant_id, text)] = new_id
                     result[text] = (new_id, True)
 
-                await asyncio.to_thread(
-                    self._batch_insert_templates, tenant_id, new_entries
-                )
+                await asyncio.to_thread(self._batch_insert_templates, tenant_id, new_entries)
 
                 for text, new_id in new_entries:
                     logger.info(
@@ -198,9 +194,7 @@ class TemplateRegistry:
             return result.result_rows[0][0]
         return None
 
-    def _batch_query_registry(
-        self, tenant_id: str, template_texts: list[str]
-    ) -> dict[str, str]:
+    def _batch_query_registry(self, tenant_id: str, template_texts: list[str]) -> dict[str, str]:
         """Sync batch ClickHouse query. Returns {template_text: template_id}."""
         result = self._client.query(
             _BATCH_SELECT_SQL,
@@ -215,9 +209,7 @@ class TemplateRegistry:
             parameters={"tid": tenant_id, "text": template_text, "template_id": template_id},
         )
 
-    def _batch_insert_templates(
-        self, tenant_id: str, entries: list[tuple[str, str]]
-    ) -> None:
+    def _batch_insert_templates(self, tenant_id: str, entries: list[tuple[str, str]]) -> None:
         """Sync batch ClickHouse insert using client.insert()."""
         rows = []
         for text, template_id in entries:

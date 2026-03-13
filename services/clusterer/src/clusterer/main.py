@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 from clusterer.checkpoint import CheckpointManager
 from clusterer.config import get_settings
-from clusterer.drain_service import DrainService, TenantLimitExceeded
+from clusterer.drain_service import DrainService, TenantLimitError
 from clusterer.models import ClusterRequest, ClusterResponse
 from clusterer.pipeline import ClusterPipeline
 from clusterer.template_registry import TemplateRegistry
@@ -199,7 +199,7 @@ async def cluster(request: ClusterRequest) -> ClusterResponse:
         )
     except TimeoutError:
         raise HTTPException(status_code=504, detail="Request timeout") from None
-    except TenantLimitExceeded as e:
+    except TenantLimitError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
@@ -215,4 +215,4 @@ async def cluster(request: ClusterRequest) -> ClusterResponse:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # noqa: S104

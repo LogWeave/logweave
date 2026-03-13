@@ -5,13 +5,13 @@ response shape, and error handling without real Drain3/ClickHouse.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, PropertyMock
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from clusterer.config import Settings
-from clusterer.drain_service import TenantLimitExceeded
+from clusterer.drain_service import TenantLimitError
 from clusterer.models import ClusterResultItem
 
 
@@ -146,7 +146,7 @@ class TestErrorHandling:
 
     @pytest.mark.asyncio
     async def test_tenant_limit_exceeded_returns_503(self, client, mock_pipeline) -> None:
-        mock_pipeline.cluster.side_effect = TenantLimitExceeded("Max tenants reached")
+        mock_pipeline.cluster.side_effect = TenantLimitError("Max tenants reached")
         response = await client.post(
             "/cluster", json={"tenant_id": "valid_id", "messages": ["msg"]}
         )

@@ -34,7 +34,7 @@ def _validate_tenant_id(tenant_id: str) -> None:
         raise ValueError(f"Invalid tenant_id: {tenant_id!r}")
 
 
-class TenantLimitExceeded(Exception):
+class TenantLimitError(Exception):
     """Raised when the maximum number of tenants has been reached."""
 
 
@@ -76,9 +76,7 @@ class DrainService:
         """Return existing miner or create a new one. Must be called under tenant lock."""
         if tenant_id not in self._miners:
             if len(self._miners) >= self._max_tenants:
-                raise TenantLimitExceeded(
-                    f"Maximum tenant count ({self._max_tenants}) reached"
-                )
+                raise TenantLimitError(f"Maximum tenant count ({self._max_tenants}) reached")
             self._miners[tenant_id] = self._create_miner()
         return self._miners[tenant_id]
 
@@ -136,7 +134,7 @@ class DrainService:
         lock = self._get_lock(tenant_id)
         with lock:
             miner = self._create_miner()
-            loaded_drain: Drain = jsonpickle.loads(state, keys=True)
+            loaded_drain: Drain = jsonpickle.loads(state, keys=True)  # noqa: S301
             miner.drain.id_to_cluster = loaded_drain.id_to_cluster
             miner.drain.clusters_counter = loaded_drain.clusters_counter
             miner.drain.root_node = loaded_drain.root_node

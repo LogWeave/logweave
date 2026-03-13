@@ -143,9 +143,7 @@ class TestBatchGetOrCreate:
         self, registry: TemplateRegistry, mock_client: MagicMock
     ) -> None:
         """Cache miss triggers batch SELECT, found in DB."""
-        with patch.object(
-            registry, "_batch_query_registry", return_value={"tmpl_a": "id-a"}
-        ):
+        with patch.object(registry, "_batch_query_registry", return_value={"tmpl_a": "id-a"}):
             result = await registry.batch_get_or_create("t1", ["tmpl_a"])
 
         assert result["tmpl_a"] == ("id-a", False)
@@ -171,14 +169,10 @@ class TestBatchGetOrCreate:
         """Mix of cached, DB-found, and new templates."""
         registry._cache[("t1", "cached")] = "id-cached"
         with (
-            patch.object(
-                registry, "_batch_query_registry", return_value={"in_db": "id-db"}
-            ),
+            patch.object(registry, "_batch_query_registry", return_value={"in_db": "id-db"}),
             patch.object(registry, "_batch_insert_templates"),
         ):
-            result = await registry.batch_get_or_create(
-                "t1", ["cached", "in_db", "brand_new"]
-            )
+            result = await registry.batch_get_or_create("t1", ["cached", "in_db", "brand_new"])
 
         assert result["cached"] == ("id-cached", False)
         assert result["in_db"] == ("id-db", False)
@@ -199,9 +193,7 @@ class TestCacheCounters:
             await registry.get_or_create("t1", "new_tmpl")
         assert registry._cache_misses == 1
 
-    async def test_batch_counters(
-        self, registry: TemplateRegistry, mock_client: MagicMock
-    ) -> None:
+    async def test_batch_counters(self, registry: TemplateRegistry, mock_client: MagicMock) -> None:
         registry._cache[("t1", "cached")] = "id-1"
         with (
             patch.object(registry, "_batch_query_registry", return_value={}),
