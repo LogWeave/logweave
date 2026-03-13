@@ -8,18 +8,18 @@ metadata and intelligence. See @PLAN.md for full V8 architecture.
 ## Tech Stack
 
 - **Clusterer**: Python 3.11+ / FastAPI / Drain3 — template extraction service
-- **API Server**: Node.js / Express — ingestion, dashboard, query endpoints
+- **API Server**: Node.js / Express / TypeScript — ingestion, dashboard, query endpoints
 - **Metadata Store**: ClickHouse (single-node, Docker) — ReplacingMergeTree for template registry
 - **Infrastructure**: Docker Compose (3 containers: API, clusterer, ClickHouse)
 - **LLM**: Claude Haiku (classification) / Sonnet (explanations) — swappable via env var
 - **Alerting**: Slack webhooks
-- **SDK**: `@logpulse/transport` — Winston logger transport (npm, MIT)
+- **SDK**: `@logweave/transport` — Winston logger transport (npm, MIT)
 
 ## Directory Structure
 
 ```
 services/clusterer/   — Python FastAPI clusterer (Drain3)
-services/api/         — Node.js Express API server
+services/api/         — Node.js Express TypeScript API server
 docs/adr/             — Architecture Decision Records
 .claude/agents/       — Specialized subagents
 .claude/skills/       — Repeatable workflow skills
@@ -29,20 +29,23 @@ docs/adr/             — Architecture Decision Records
 
 ```bash
 # Clusterer (once code exists)
-cd services/clusterer && pip install -r requirements.txt && pytest
+cd services/clusterer && uv pip install -e ".[dev]" && pytest
 
 # API Server (once code exists)
 cd services/api && pnpm install && pnpm test
 
 # Linting
-cd services/clusterer && ruff check . && ruff format --check .
-cd services/api && npx @biomejs/biome check .
+cd services/clusterer && uvx ruff check . && uvx ruff format --check .
+cd services/api && pnpm lint
+
+# Typecheck API
+cd services/api && pnpm typecheck
 
 # Full stack
 docker compose up --build
 ```
 
-Auto-format hook runs ruff/biome on every file write (see .claude/hooks/auto-format.sh).
+Auto-format hook runs ruff (via uvx) and biome on every file write (see .claude/hooks/auto-format.sh).
 
 ## Key Constraints — NEVER Violate
 

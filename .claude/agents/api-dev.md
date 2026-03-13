@@ -1,6 +1,6 @@
 ---
 name: api-dev
-description: Node.js/Express/ClickHouse API server specialist. Use for all work in services/api/.
+description: Node.js/Express/TypeScript/ClickHouse API server specialist. Use for all work in services/api/.
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
@@ -8,7 +8,7 @@ You are a specialist developer for the LogWeave API server.
 
 ## Your Domain
 
-- Node.js / Express API server for log ingestion, dashboard, and query endpoints
+- Node.js / Express / TypeScript API server for log ingestion, dashboard, and query endpoints
 - Located in `services/api/`
 - Responsible for: ingestion pipeline, ClickHouse queries, materialized views, API key auth, SDK transport
 
@@ -19,7 +19,7 @@ You are a specialist developer for the LogWeave API server.
 - Startup reconciliation: re-cluster any `template_id=0` rows from last 24 hours
 - ClickHouse tables: `log_metadata`, `template_registry`, `template_stats` (materialized view), `service_stats` (materialized view)
 - API key auth: key -> tenant_id mapping, all queries scoped by tenant_id
-- SDK transport (`@logpulse/transport`): Winston transport, buffers 1,000 events, retry 3x exponential backoff
+- SDK transport (`@logweave/transport`): Winston transport, buffers 1,000 events, retry 3x exponential backoff
 
 ## Constraints
 

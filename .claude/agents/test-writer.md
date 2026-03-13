@@ -20,11 +20,11 @@ You are a test specialist for LogWeave. You write tests FIRST, before implementa
 - Run: `cd services/clusterer && pytest`
 - Naming: `test_<module>.py` with `test_<behavior>` functions
 
-### API Server (Node.js)
-- Framework: determined during Week 1b setup
-- Location: `services/api/tests/` or `services/api/__tests__/`
+### API Server (Node.js / TypeScript)
+- Framework: Node.js built-in test runner (node --test) via tsx
+- Location: `services/api/src/` (co-located as `<module>.test.ts`)
 - Run: `cd services/api && pnpm test`
-- Naming: `<module>.test.js` or `<module>.test.ts`
+- Naming: `<module>.test.ts`
 
 ## Test Writing Principles
 

@@ -303,14 +303,14 @@ from self-hosted (single-tenant).
 
 ```
 Docker Compose
-  ├── logpulse-api          (Node.js / Express)
+  ├── logweave-api          (Node.js / Express)
   │     ├── POST /v1/ingest/batch
   │     ├── POST /v1/query
   │     ├── GET  /v1/explain/:id
   │     ├── GET  /api/dashboard
   │     └── GET  /                  (static dashboard)
   │
-  ├── logpulse-clusterer    (Python / FastAPI)
+  ├── logweave-clusterer    (Python / FastAPI)
   │     └── POST /cluster
   │
   └── clickhouse
@@ -393,22 +393,22 @@ numbering.
 ### Environment Variables
 
 ```bash
-LOGPULSE_CLICKHOUSE_URL=clickhouse://clickhouse:9000/logpulse
-LOGPULSE_CLUSTERER_URL=http://logpulse-clusterer:8000
-LOGPULSE_CLUSTERER_TIMEOUT_MS=500
-LOGPULSE_LLM_PROVIDER=claude|openai
-LOGPULSE_LLM_API_KEY=sk-...
-LOGPULSE_LLM_MODEL_FAST=claude-haiku-4-5-20251001
-LOGPULSE_LLM_MODEL_CAPABLE=claude-sonnet-4-6
-LOGPULSE_LOG_SOURCE=cloudwatch|s3|azure_monitor|none
-LOGPULSE_AWS_REGION=us-east-1
-LOGPULSE_AWS_ROLE_ARN=
-LOGPULSE_RAW_DESTINATION=none|s3
-LOGPULSE_RAW_S3_BUCKET=
-LOGPULSE_RAW_S3_ROLE_ARN=
-LOGPULSE_MODE=saas|selfhosted
-LOGPULSE_LICENSE_KEY=
-LOGPULSE_DEFAULT_TENANT=default
+LOGWEAVE_CLICKHOUSE_URL=clickhouse://clickhouse:9000/logweave
+LOGWEAVE_CLUSTERER_URL=http://logweave-clusterer:8000
+LOGWEAVE_CLUSTERER_TIMEOUT_MS=500
+LOGWEAVE_LLM_PROVIDER=claude|openai
+LOGWEAVE_LLM_API_KEY=sk-...
+LOGWEAVE_LLM_MODEL_FAST=claude-haiku-4-5-20251001
+LOGWEAVE_LLM_MODEL_CAPABLE=claude-sonnet-4-6
+LOGWEAVE_LOG_SOURCE=cloudwatch|s3|azure_monitor|none
+LOGWEAVE_AWS_REGION=us-east-1
+LOGWEAVE_AWS_ROLE_ARN=
+LOGWEAVE_RAW_DESTINATION=none|s3
+LOGWEAVE_RAW_S3_BUCKET=
+LOGWEAVE_RAW_S3_ROLE_ARN=
+LOGWEAVE_MODE=saas|selfhosted
+LOGWEAVE_LICENSE_KEY=
+LOGWEAVE_DEFAULT_TENANT=default
 ```
 
 ---
@@ -714,7 +714,7 @@ Seeing the shape of a day's errors in 3 seconds. CloudWatch cannot do this at al
 
 CloudWatch: `ERROR count exceeded threshold (value: 847)`
 
-LogPulse: *"NullPointerException in UserService is at 5x normal rate. First seen 14:47 UTC,
+LogWeave: *"NullPointerException in UserService is at 5x normal rate. First seen 14:47 UTC,
 3 minutes after your last deployment. New pattern. [View →]"*
 
 **4. Natural language that works**
@@ -756,7 +756,7 @@ Every morning at 9am — the reason a customer associates the product with value
 without incidents:
 
 ```
-📊 LogPulse Daily Summary — payment-service
+📊 LogWeave Daily Summary — payment-service
 
   🔴 Top errors (last 24h):
      Connection timeout to db-prod   234 occurrences  ↑ 18% vs yesterday
@@ -800,8 +800,8 @@ API 4xx: warn once, do not retry
 ```
 
 ```javascript
-new LogPulseTransport({
-  apiKey: process.env.LOGPULSE_KEY,
+new LogWeaveTransport({
+  apiKey: process.env.LOGWEAVE_KEY,
   bufferSize: 1000,
   timeoutMs: 2000
 })
@@ -818,12 +818,12 @@ real anomaly detection starts at the 1-hour mark once we've built your baseline.
 
 **Step 3 — Install transport (one line):**
 ```bash
-npm install @logpulse/transport
+npm install @logweave/transport
 ```
 Start with their noisiest service. We configure extraction on the onboarding call.
 
 **Step 4 — 10-minute pipeline confirmation:**
-Slack: *"LogPulse is live. X events across Y unique patterns in payment-service so far.
+Slack: *"LogWeave is live. X events across Y unique patterns in payment-service so far.
 Anomaly detection starts in ~50 minutes. [View dashboard →]"*
 
 **Step 5 — First real alerts (after 60 minutes):**
@@ -867,21 +867,21 @@ routes two services through one transport, they lose service-level dashboard gra
 
 ### Customer Cost Comparison
 
-**Model B — 10GB/day:** CloudWatch $164/month + LogPulse $79/month = $243/month.
+**Model B — 10GB/day:** CloudWatch $164/month + LogWeave $79/month = $243/month.
 Capability sale. ROI is time saved per incident.
 
-**Model C — 10GB/day:** S3 $7 + PUT $1.50 + LogPulse $79 = **$87.50/month (47% less)**.
+**Model C — 10GB/day:** S3 $7 + PUT $1.50 + LogWeave $79 = **$87.50/month (47% less)**.
 
-**Model C — 100GB/day:** S3 $69 + PUT $15 + LogPulse $249 = **$333/month (80% less than
+**Model C — 100GB/day:** S3 $69 + PUT $15 + LogWeave $249 = **$333/month (80% less than
 CloudWatch's $1,650/month)**.
 
 **Azure Monitor — 100GB/day (Year 2):**
 
-| | Azure Monitor | LogPulse + Blob |
+| | Azure Monitor | LogWeave + Blob |
 |---|---|---|
 | Ingestion | $8,280/month | $0 |
 | Storage | ~$100/month | ~$55/month |
-| LogPulse | — | $249/month |
+| LogWeave | — | $249/month |
 | **Total** | **~$8,380/month** | **~$304/month (96% less)** |
 
 ### COGS (SaaS)
@@ -1017,7 +1017,7 @@ too expensive", "query logs natural language".
 
 ### Open Source SDK
 
-`@logpulse/transport` — MIT, published on npm from day one. Engineers discover it through
+`@logweave/transport` — MIT, published on npm from day one. Engineers discover it through
 package searches. The transport sends to any HTTP endpoint — a credible open-source
 project, not just a client library with an open-source badge.
 
@@ -1072,7 +1072,7 @@ writing infrastructure code.
 
 ### Week 1a — Clusterer Standalone (Days 1–5)
 
-Focus: `logpulse-clusterer` working in isolation. Nothing else.
+Focus: `logweave-clusterer` working in isolation. Nothing else.
 
 - [ ] Python environment, FastAPI app, Dockerfile
 - [ ] Drain3 wrapper: per-tenant in-memory state, parameter configuration
@@ -1196,26 +1196,26 @@ Allow one week of buffer. Real builds always surface integration issues. Use it 
 
 ```yaml
 services:
-  logpulse-api:
-    image: logpulse/api:latest
+  logweave-api:
+    image: logweave/api:latest
     ports:
       - "3000:3000"
     environment:
-      - LOGPULSE_MODE=selfhosted
-      - LOGPULSE_CLICKHOUSE_URL=clickhouse://clickhouse:9000/logpulse
-      - LOGPULSE_CLUSTERER_URL=http://logpulse-clusterer:8000
-      - LOGPULSE_CLUSTERER_TIMEOUT_MS=500
-      - LOGPULSE_LLM_PROVIDER=${LLM_PROVIDER}
-      - LOGPULSE_LLM_API_KEY=${LLM_API_KEY}
-      - LOGPULSE_LICENSE_KEY=${LICENSE_KEY}
-      - LOGPULSE_LOG_SOURCE=${LOG_SOURCE:-none}
-      - LOGPULSE_RAW_DESTINATION=${RAW_DESTINATION:-none}
-      - LOGPULSE_RAW_S3_BUCKET=${RAW_S3_BUCKET:-}
-      - LOGPULSE_DEFAULT_TENANT=default
-    depends_on: [clickhouse, logpulse-clusterer]
+      - LOGWEAVE_MODE=selfhosted
+      - LOGWEAVE_CLICKHOUSE_URL=clickhouse://clickhouse:9000/logweave
+      - LOGWEAVE_CLUSTERER_URL=http://logweave-clusterer:8000
+      - LOGWEAVE_CLUSTERER_TIMEOUT_MS=500
+      - LOGWEAVE_LLM_PROVIDER=${LLM_PROVIDER}
+      - LOGWEAVE_LLM_API_KEY=${LLM_API_KEY}
+      - LOGWEAVE_LICENSE_KEY=${LICENSE_KEY}
+      - LOGWEAVE_LOG_SOURCE=${LOG_SOURCE:-none}
+      - LOGWEAVE_RAW_DESTINATION=${RAW_DESTINATION:-none}
+      - LOGWEAVE_RAW_S3_BUCKET=${RAW_S3_BUCKET:-}
+      - LOGWEAVE_DEFAULT_TENANT=default
+    depends_on: [clickhouse, logweave-clusterer]
 
-  logpulse-clusterer:
-    image: logpulse/clusterer:latest
+  logweave-clusterer:
+    image: logweave/clusterer:latest
     volumes:
       - clusterer_state:/data/drain3
     environment:
@@ -1269,9 +1269,9 @@ When a second cloud is needed: add that cloud's SDK. Evaluate OpenDAL (covers S3
 Blob, GCS, and others) only when a third backend is on the horizon.
 
 ```
-LOGPULSE_RAW_DESTINATION=s3      → AWS SDK (MVP)
-LOGPULSE_RAW_DESTINATION=azure   → Azure SDK (when needed)
-LOGPULSE_RAW_DESTINATION=gcs     → GCS SDK (when needed)
+LOGWEAVE_RAW_DESTINATION=s3      → AWS SDK (MVP)
+LOGWEAVE_RAW_DESTINATION=azure   → Azure SDK (when needed)
+LOGWEAVE_RAW_DESTINATION=gcs     → GCS SDK (when needed)
 ```
 
 ---
@@ -1344,7 +1344,7 @@ the Drain3 experiment. Both gates must pass before Week 1a begins.
 |---|---|---|
 | SDK | Winston transport (Node.js, MIT) | Buffer + retry + failover by contract |
 | API server | Express.js (Node.js) | Ingestion, query, dashboard — one process |
-| Log clustering | Drain3 via `logpulse-clusterer` (Python / FastAPI) | Per-tenant state, 60s checkpoint, 500ms degradation |
+| Log clustering | Drain3 via `logweave-clusterer` (Python / FastAPI) | Per-tenant state, 60s checkpoint, 500ms degradation |
 | Template IDs | `template_registry` (ClickHouse, ReplacingMergeTree) | `SELECT ... FINAL`; stable IDs across restarts |
 | Unclustered recovery | `pre_processed_message` column + startup reconciliation | Closes data loss gap from clusterer outages |
 | Pre-processing | Regex pipeline (in API server, before clusterer call) | `\d{6,}` default threshold; validated in pre-build experiment |
