@@ -1,6 +1,6 @@
 import pytest
 
-from clusterer.drain_service import DrainService
+from clusterer.drain_service import DrainService, TenantLimitExceeded
 from clusterer.models import DrainResult
 
 
@@ -117,6 +117,42 @@ class TestTenantIdValidation:
         for tid in ["tenant_a", "customer-123", "ABC_def_456"]:
             results = svc.cluster_messages(tid, ["test msg"])
             assert len(results) == 1
+
+
+class TestMaxClusters:
+    def test_max_clusters_set_on_miner(self) -> None:
+        svc = DrainService(sim_th=0.4, depth=4, max_clusters=50)
+        svc.cluster_messages("t1", ["test msg"])
+        miner = svc._miners["t1"]
+        assert miner.config.drain_max_clusters == 50
+
+
+class TestMaxTenants:
+    def test_rejects_new_tenant_at_limit(self) -> None:
+        svc = DrainService(sim_th=0.4, depth=4, max_tenants=2)
+        svc.cluster_messages("t1", ["msg"])
+        svc.cluster_messages("t2", ["msg"])
+        with pytest.raises(TenantLimitExceeded):
+            svc.cluster_messages("t3", ["msg"])
+
+    def test_existing_tenant_ok_at_limit(self) -> None:
+        svc = DrainService(sim_th=0.4, depth=4, max_tenants=2)
+        svc.cluster_messages("t1", ["msg"])
+        svc.cluster_messages("t2", ["msg"])
+        # Existing tenant should still work
+        results = svc.cluster_messages("t1", ["another msg"])
+        assert len(results) == 1
+
+    def test_load_state_bypasses_limit(self) -> None:
+        """load_state directly inserts into _miners, bypassing the limit check."""
+        svc = DrainService(sim_th=0.4, depth=4, max_tenants=1)
+        svc.cluster_messages("t1", ["msg"])
+        state = svc.get_state("t1")
+        # load_state creates miner directly, not through _get_or_create_miner
+        svc2 = DrainService(sim_th=0.4, depth=4, max_tenants=1)
+        svc2.cluster_messages("t1", ["msg"])
+        svc2.load_state("t2", state)
+        assert "t2" in svc2._miners
 
 
 class TestStateSerialization:

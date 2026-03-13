@@ -50,6 +50,15 @@ class InMemoryRegistry:
         self._store[key] = new_id
         return new_id, True
 
+    async def batch_get_or_create(
+        self, tenant_id: str, template_texts: list[str]
+    ) -> dict[str, tuple[str, bool]]:
+        result: dict[str, tuple[str, bool]] = {}
+        for text in template_texts:
+            template_id, is_new = await self.get_or_create(tenant_id, text)
+            result[text] = (template_id, is_new)
+        return result
+
     @property
     def templates(self) -> dict[tuple[str, str], str]:
         """Expose internal state for assertions."""

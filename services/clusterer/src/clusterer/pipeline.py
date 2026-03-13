@@ -23,6 +23,10 @@ class RegistryProtocol(Protocol):
 
     async def get_or_create(self, tenant_id: str, template_text: str) -> tuple[str, bool]: ...
 
+    async def batch_get_or_create(
+        self, tenant_id: str, template_texts: list[str]
+    ) -> dict[str, tuple[str, bool]]: ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +52,13 @@ class ClusterPipeline:
         """
         drain_results = await asyncio.to_thread(self._drain.cluster_messages, tenant_id, messages)
 
+        # Batch registry lookup: deduplicate template texts, single round-trip
+        unique_texts = list({dr.template_text for dr in drain_results})
+        text_to_id = await self._registry.batch_get_or_create(tenant_id, unique_texts)
+
         results: list[ClusterResultItem] = []
         for dr in drain_results:
-            template_id, is_new = await self._registry.get_or_create(tenant_id, dr.template_text)
+            template_id, is_new = text_to_id[dr.template_text]
             results.append(
                 ClusterResultItem(
                     template_id=template_id,
@@ -80,13 +88,20 @@ class ClusterPipeline:
                 )
         if restored:
             logger.info("Restored %d tenant checkpoint(s)", restored)
+            if restored > self._drain.max_tenants:
+                logger.warning(
+                    "Restored %d tenants exceeds max_tenants limit of %d — "
+                    "new tenants will be rejected until count drops",
+                    restored,
+                    self._drain.max_tenants,
+                )
 
     async def run_checkpoint_cycle(self) -> None:
         """Save all dirty tenants. Skips + logs on per-tenant errors."""
         dirty = self._drain.get_dirty_tenants()
         for tenant_id, generation in dirty.items():
             try:
-                state = self._drain.get_state(tenant_id)
+                state = await asyncio.to_thread(self._drain.get_state, tenant_id)
                 await asyncio.to_thread(self._checkpoint.save, tenant_id, state)
                 self._drain.mark_clean(tenant_id, generation)
             except Exception:

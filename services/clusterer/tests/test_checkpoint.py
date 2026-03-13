@@ -72,6 +72,59 @@ class TestCleanupStaleTmp:
         assert mgr.load("tenant_a") == b"data"
 
 
+class TestHmac:
+    @pytest.fixture
+    def hmac_mgr(self, tmp_path: Path) -> CheckpointManager:
+        return CheckpointManager(str(tmp_path), hmac_key="test-secret-key")
+
+    def test_hmac_roundtrip(self, hmac_mgr: CheckpointManager) -> None:
+        data = b'{"drain_state": "test_data"}'
+        hmac_mgr.save("tenant_a", data)
+        assert hmac_mgr.load("tenant_a") == data
+
+    def test_tampered_data_rejected(self, hmac_mgr: CheckpointManager, tmp_path: Path) -> None:
+        data = b"original_state"
+        hmac_mgr.save("tenant_a", data)
+        # Tamper with the file
+        path = tmp_path / "tenant_a.drain3"
+        raw = path.read_bytes()
+        path.write_bytes(b"tampered" + raw[8:])
+        assert hmac_mgr.load("tenant_a") is None
+
+    def test_truncated_file_rejected(self, hmac_mgr: CheckpointManager, tmp_path: Path) -> None:
+        data = b"some state"
+        hmac_mgr.save("tenant_a", data)
+        path = tmp_path / "tenant_a.drain3"
+        # Write file smaller than HMAC size
+        path.write_bytes(b"short")
+        assert hmac_mgr.load("tenant_a") is None
+
+    def test_no_hmac_key_backward_compat(self, mgr: CheckpointManager) -> None:
+        """Without hmac_key, save/load works as before (no HMAC appended)."""
+        data = b"plain_state"
+        mgr.save("tenant_a", data)
+        loaded = mgr.load("tenant_a")
+        assert loaded == data
+
+    def test_hmac_file_larger_than_plain(
+        self, hmac_mgr: CheckpointManager, mgr: CheckpointManager, tmp_path: Path
+    ) -> None:
+        """HMAC-protected file should be 32 bytes larger."""
+        data = b"test_state"
+        mgr.save("plain", data)
+        hmac_mgr.save("hmac", data)
+        plain_size = (tmp_path / "plain.drain3").stat().st_size
+        hmac_size = (tmp_path / "hmac.drain3").stat().st_size
+        assert hmac_size == plain_size + 32
+
+    def test_wrong_key_rejected(self, tmp_path: Path) -> None:
+        """Loading with a different key than save should reject."""
+        mgr1 = CheckpointManager(str(tmp_path), hmac_key="key1")
+        mgr2 = CheckpointManager(str(tmp_path), hmac_key="key2")
+        mgr1.save("tenant_a", b"secret_state")
+        assert mgr2.load("tenant_a") is None
+
+
 class TestEnsureDir:
     def test_creates_directory(self, tmp_path: Path) -> None:
         new_dir = tmp_path / "subdir" / "checkpoints"

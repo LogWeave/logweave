@@ -34,14 +34,31 @@ def _validate_tenant_id(tenant_id: str) -> None:
         raise ValueError(f"Invalid tenant_id: {tenant_id!r}")
 
 
+class TenantLimitError(Exception):
+    """Raised when the maximum number of tenants has been reached."""
+
+
 class DrainService:
-    def __init__(self, *, sim_th: float = 0.4, depth: int = 4) -> None:
+    def __init__(
+        self,
+        *,
+        sim_th: float = 0.4,
+        depth: int = 4,
+        max_clusters: int = 10_000,
+        max_tenants: int = 200,
+    ) -> None:
         self._sim_th = sim_th
         self._depth = depth
+        self._max_clusters = max_clusters
+        self._max_tenants = max_tenants
         self._miners: dict[str, TemplateMiner] = {}
         self._dirty_generations: dict[str, int] = {}
         self._locks: dict[str, threading.Lock] = {}
         self._locks_lock = threading.Lock()
+
+    @property
+    def max_tenants(self) -> int:
+        return self._max_tenants
 
     def _get_lock(self, tenant_id: str) -> threading.Lock:
         """Get or create a per-tenant lock. Thread-safe."""
@@ -54,6 +71,7 @@ class DrainService:
         config = TemplateMinerConfig()
         config.drain_sim_th = self._sim_th
         config.drain_depth = self._depth
+        config.drain_max_clusters = self._max_clusters
         config.snapshot_compress_state = False
         config.masking_instructions = []
         return TemplateMiner(persistence_handler=None, config=config)
@@ -61,6 +79,8 @@ class DrainService:
     def _get_or_create_miner(self, tenant_id: str) -> TemplateMiner:
         """Return existing miner or create a new one. Must be called under tenant lock."""
         if tenant_id not in self._miners:
+            if len(self._miners) >= self._max_tenants:
+                raise TenantLimitError(f"Maximum tenant count ({self._max_tenants}) reached")
             self._miners[tenant_id] = self._create_miner()
         return self._miners[tenant_id]
 
@@ -118,7 +138,7 @@ class DrainService:
         lock = self._get_lock(tenant_id)
         with lock:
             miner = self._create_miner()
-            loaded_drain: Drain = jsonpickle.loads(state, keys=True)
+            loaded_drain: Drain = jsonpickle.loads(state, keys=True)  # noqa: S301
             miner.drain.id_to_cluster = loaded_drain.id_to_cluster
             miner.drain.clusters_counter = loaded_drain.clusters_counter
             miner.drain.root_node = loaded_drain.root_node
