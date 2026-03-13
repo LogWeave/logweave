@@ -95,7 +95,7 @@ class TemplateRegistry:
                 self._cache[cache_key] = existing_id
                 return existing_id, False
 
-            # Not found — assign new UUIDv7
+            # Not found — assign new UUIDv7 (cache after INSERT to prevent ghost entries)
             new_id = str(uuid7())
             await asyncio.to_thread(self._insert_template, tenant_id, template_text, new_id)
             self._cache[cache_key] = new_id
@@ -169,12 +169,13 @@ class TemplateRegistry:
                 for text in new_texts:
                     new_id = str(uuid7())
                     new_entries.append((text, new_id))
-                    self._cache[(tenant_id, text)] = new_id
-                    result[text] = (new_id, True)
 
                 await asyncio.to_thread(self._batch_insert_templates, tenant_id, new_entries)
 
+                # Cache only after INSERT succeeds — prevents ghost entries on failure
                 for text, new_id in new_entries:
+                    self._cache[(tenant_id, text)] = new_id
+                    result[text] = (new_id, True)
                     logger.info(
                         "New template for tenant %s: %s -> %s",
                         tenant_id,
@@ -210,16 +211,12 @@ class TemplateRegistry:
         )
 
     def _batch_insert_templates(self, tenant_id: str, entries: list[tuple[str, str]]) -> None:
-        """Sync batch ClickHouse insert using client.insert()."""
-        rows = []
+        """Sync batch ClickHouse insert. Computes cityHash64 and first_seen server-side."""
         for text, template_id in entries:
-            rows.append([tenant_id, text, template_id])
-        self._client.insert(
-            "template_registry",
-            rows,
-            column_names=["tenant_id", "template_text", "template_id"],
-            settings={"insert_deduplicate": 0},
-        )
+            self._client.command(
+                _INSERT_SQL,
+                parameters={"tid": tenant_id, "text": text, "template_id": template_id},
+            )
 
     def ensure_schema(self) -> None:
         """Create template_registry table if not exists. Idempotent.

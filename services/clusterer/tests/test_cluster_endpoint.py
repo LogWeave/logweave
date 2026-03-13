@@ -151,3 +151,38 @@ class TestErrorHandling:
             "/cluster", json={"tenant_id": "valid_id", "messages": ["msg"]}
         )
         assert response.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_timeout_returns_504(self, client, mock_pipeline) -> None:
+        """Pipeline exceeding request_timeout_seconds should return 504."""
+
+        async def slow_cluster(*args, **kwargs):
+            await asyncio.sleep(10)
+
+        mock_pipeline.cluster.side_effect = slow_cluster
+        response = await client.post(
+            "/cluster", json={"tenant_id": "valid_id", "messages": ["msg"]}
+        )
+        assert response.status_code == 504
+
+    @pytest.mark.asyncio
+    async def test_semaphore_full_returns_503(self, mock_pipeline) -> None:
+        """When all semaphore slots are taken, new requests get 503."""
+        from clusterer.config import Settings
+        from clusterer.main import app
+
+        app.state.pipeline = mock_pipeline
+        app.state.settings = Settings(max_concurrent_requests=1)
+        app.state.semaphore = asyncio.Semaphore(1)
+
+        # Hold the semaphore so the next request can't acquire it
+        await app.state.semaphore.acquire()
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            response = await c.post("/cluster", json={"tenant_id": "valid_id", "messages": ["msg"]})
+        assert response.status_code == 503
+        assert "Retry-After" in response.headers
+
+        # Release so other tests aren't affected
+        app.state.semaphore.release()

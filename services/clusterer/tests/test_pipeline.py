@@ -12,6 +12,12 @@ from clusterer.models import ClusterResultItem, DrainResult
 from clusterer.pipeline import ClusterPipeline
 
 
+def _make_drain(**kwargs) -> MagicMock:
+    drain = MagicMock(**kwargs)
+    drain._max_tenants = 200
+    return drain
+
+
 def _make_pipeline(
     *,
     drain: MagicMock | None = None,
@@ -19,7 +25,7 @@ def _make_pipeline(
     checkpoint: MagicMock | None = None,
 ) -> ClusterPipeline:
     return ClusterPipeline(
-        drain_service=drain or MagicMock(),
+        drain_service=drain or _make_drain(),
         registry=registry or AsyncMock(),
         checkpoint_manager=checkpoint or MagicMock(),
     )
@@ -29,7 +35,7 @@ class TestCluster:
     @pytest.mark.asyncio
     async def test_returns_registry_is_new_not_drain(self) -> None:
         """is_new in response comes from registry, not Drain3."""
-        drain = MagicMock()
+        drain = _make_drain()
         drain.cluster_messages.return_value = [
             DrainResult(drain_cluster_id=1, template_text="error in <*>", is_new=True),
         ]
@@ -50,7 +56,7 @@ class TestCluster:
     @pytest.mark.asyncio
     async def test_calls_drain_then_batch_registry(self) -> None:
         """All DrainResults get a batch registry lookup."""
-        drain = MagicMock()
+        drain = _make_drain()
         drain.cluster_messages.return_value = [
             DrainResult(drain_cluster_id=1, template_text="tmpl_a", is_new=True),
             DrainResult(drain_cluster_id=2, template_text="tmpl_b", is_new=True),
@@ -76,7 +82,7 @@ class TestCluster:
     @pytest.mark.asyncio
     async def test_deduplicates_template_texts(self) -> None:
         """Same template text from multiple messages should be a single lookup."""
-        drain = MagicMock()
+        drain = _make_drain()
         drain.cluster_messages.return_value = [
             DrainResult(drain_cluster_id=1, template_text="tmpl_a", is_new=False),
             DrainResult(drain_cluster_id=1, template_text="tmpl_a", is_new=False),
@@ -102,7 +108,7 @@ class TestCluster:
 
     @pytest.mark.asyncio
     async def test_passes_tenant_id_to_both_services(self) -> None:
-        drain = MagicMock()
+        drain = _make_drain()
         drain.cluster_messages.return_value = [
             DrainResult(drain_cluster_id=1, template_text="tmpl", is_new=True),
         ]
@@ -119,7 +125,7 @@ class TestCluster:
 class TestRestoreCheckpoints:
     @pytest.mark.asyncio
     async def test_loads_all_and_restores(self) -> None:
-        drain = MagicMock()
+        drain = _make_drain()
         checkpoint = MagicMock()
         checkpoint.load_all.return_value = {
             "tenant_a": b"state_a",
@@ -135,7 +141,7 @@ class TestRestoreCheckpoints:
 
     @pytest.mark.asyncio
     async def test_empty_checkpoints(self) -> None:
-        drain = MagicMock()
+        drain = _make_drain()
         checkpoint = MagicMock()
         checkpoint.load_all.return_value = {}
 
@@ -148,7 +154,7 @@ class TestRestoreCheckpoints:
 class TestCheckpointCycle:
     @pytest.mark.asyncio
     async def test_saves_dirty_and_marks_clean(self) -> None:
-        drain = MagicMock()
+        drain = _make_drain()
         drain.get_dirty_tenants.return_value = {"t1": 3, "t2": 5}
         drain.get_state.side_effect = [b"state_t1", b"state_t2"]
 
@@ -165,7 +171,7 @@ class TestCheckpointCycle:
     @pytest.mark.asyncio
     async def test_skips_tenant_on_error(self) -> None:
         """If saving one tenant fails, continue with the rest."""
-        drain = MagicMock()
+        drain = _make_drain()
         drain.get_dirty_tenants.return_value = {"t1": 1, "t2": 2}
         drain.get_state.side_effect = [Exception("boom"), b"state_t2"]
 
@@ -179,7 +185,7 @@ class TestCheckpointCycle:
 
     @pytest.mark.asyncio
     async def test_no_dirty_tenants(self) -> None:
-        drain = MagicMock()
+        drain = _make_drain()
         drain.get_dirty_tenants.return_value = {}
         checkpoint = MagicMock()
 
@@ -192,7 +198,7 @@ class TestCheckpointCycle:
 class TestFlushCheckpoints:
     @pytest.mark.asyncio
     async def test_saves_all_dirty(self) -> None:
-        drain = MagicMock()
+        drain = _make_drain()
         drain.get_dirty_tenants.return_value = {"t1": 1}
         drain.get_state.return_value = b"state"
         checkpoint = MagicMock()

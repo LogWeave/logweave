@@ -60,6 +60,11 @@ async def lifespan(app: FastAPI):
     checkpoint_mgr = CheckpointManager(
         settings.drain3_checkpoint_dir, hmac_key=settings.checkpoint_hmac_key
     )
+    if not settings.checkpoint_hmac_key:
+        logger.warning(
+            "LOGWEAVE_CHECKPOINT_HMAC_KEY is not set — checkpoint integrity "
+            "verification is disabled. Set this in production."
+        )
 
     pipeline = ClusterPipeline(
         drain_service=drain_service,
