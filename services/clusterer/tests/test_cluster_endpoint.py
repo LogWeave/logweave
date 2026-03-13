@@ -4,11 +4,14 @@ Uses a mocked ClusterPipeline to test request validation,
 response shape, and error handling without real Drain3/ClickHouse.
 """
 
-from unittest.mock import AsyncMock
+import asyncio
+from unittest.mock import AsyncMock, PropertyMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from clusterer.config import Settings
+from clusterer.drain_service import TenantLimitExceeded
 from clusterer.models import ClusterResultItem
 
 
@@ -31,6 +34,8 @@ async def client(mock_pipeline):
     from clusterer.main import app
 
     app.state.pipeline = mock_pipeline
+    app.state.settings = Settings()
+    app.state.semaphore = asyncio.Semaphore(4)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
@@ -117,7 +122,7 @@ class TestValidation:
     async def test_too_many_messages(self, client) -> None:
         response = await client.post(
             "/cluster",
-            json={"tenant_id": "t1", "messages": ["m"] * 10_001},
+            json={"tenant_id": "t1", "messages": ["m"] * 1_001},
         )
         assert response.status_code == 422
 
@@ -138,3 +143,11 @@ class TestErrorHandling:
             "/cluster", json={"tenant_id": "valid_id", "messages": ["msg"]}
         )
         assert response.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_tenant_limit_exceeded_returns_503(self, client, mock_pipeline) -> None:
+        mock_pipeline.cluster.side_effect = TenantLimitExceeded("Max tenants reached")
+        response = await client.post(
+            "/cluster", json={"tenant_id": "valid_id", "messages": ["msg"]}
+        )
+        assert response.status_code == 503

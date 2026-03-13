@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 from clusterer.checkpoint import CheckpointManager
 from clusterer.config import get_settings
-from clusterer.drain_service import DrainService
+from clusterer.drain_service import DrainService, TenantLimitExceeded
 from clusterer.models import ClusterRequest, ClusterResponse
 from clusterer.pipeline import ClusterPipeline
 from clusterer.template_registry import TemplateRegistry
@@ -70,6 +70,9 @@ async def lifespan(app: FastAPI):
 
     # Ready check cache
     app.state.ready_cache = {"ok": False, "ts": 0.0}
+
+    # Backpressure semaphore
+    app.state.semaphore = asyncio.Semaphore(settings.max_concurrent_requests)
 
     # Initialize: schema, checkpoint dir, restore state
     await asyncio.to_thread(registry.ensure_schema)
@@ -176,13 +179,36 @@ async def ready() -> Response:
 @app.post("/cluster", response_model=ClusterResponse)
 async def cluster(request: ClusterRequest) -> ClusterResponse:
     pipeline: ClusterPipeline = app.state.pipeline
+    settings = app.state.settings
+    semaphore: asyncio.Semaphore = app.state.semaphore
+
+    # Backpressure: reject if too many concurrent requests
     try:
-        results = await pipeline.cluster(request.tenant_id, request.messages)
+        await asyncio.wait_for(semaphore.acquire(), timeout=0.1)
+    except TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="Server busy",
+            headers={"Retry-After": "1"},
+        ) from None
+
+    try:
+        results = await asyncio.wait_for(
+            pipeline.cluster(request.tenant_id, request.messages),
+            timeout=settings.request_timeout_seconds,
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Request timeout") from None
+    except TenantLimitExceeded as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception:
         logger.exception("Internal error in /cluster")
         raise HTTPException(status_code=500, detail="Internal server error") from None
+    finally:
+        semaphore.release()
+
     return ClusterResponse(results=results)
 
 

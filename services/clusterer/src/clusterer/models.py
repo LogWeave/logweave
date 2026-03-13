@@ -25,7 +25,7 @@ class ClusterRequest(BaseModel):
     ]
     messages: Annotated[
         list[Annotated[str, Field(min_length=1, max_length=32_768)]],
-        Field(min_length=1, max_length=10_000),
+        Field(min_length=1, max_length=1_000),
     ]
 
 
