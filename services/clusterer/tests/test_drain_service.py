@@ -1,6 +1,6 @@
 import pytest
 
-from clusterer.drain_service import DrainService, TenantLimitExceeded
+from clusterer.drain_service import DrainService, TenantLimitError
 from clusterer.models import DrainResult
 
 
@@ -132,7 +132,7 @@ class TestMaxTenants:
         svc = DrainService(sim_th=0.4, depth=4, max_tenants=2)
         svc.cluster_messages("t1", ["msg"])
         svc.cluster_messages("t2", ["msg"])
-        with pytest.raises(TenantLimitExceeded):
+        with pytest.raises(TenantLimitError):
             svc.cluster_messages("t3", ["msg"])
 
     def test_existing_tenant_ok_at_limit(self) -> None:

@@ -99,10 +99,10 @@ class TemplateRegistry:
             new_id = str(uuid7())
             await asyncio.to_thread(self._insert_template, tenant_id, template_text, new_id)
             self._cache[cache_key] = new_id
-            logger.info(
+            logger.debug(
                 "New template for tenant %s: %s -> %s",
                 tenant_id,
-                template_text[:80],
+                template_text[:40],
                 new_id,
             )
             return new_id, True
@@ -176,10 +176,10 @@ class TemplateRegistry:
                 for text, new_id in new_entries:
                     self._cache[(tenant_id, text)] = new_id
                     result[text] = (new_id, True)
-                    logger.info(
+                    logger.debug(
                         "New template for tenant %s: %s -> %s",
                         tenant_id,
-                        text[:80],
+                        text[:40],
                         new_id,
                     )
 

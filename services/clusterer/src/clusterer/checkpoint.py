@@ -13,14 +13,14 @@ import hashlib
 import hmac
 import logging
 import os
-import re
 from pathlib import Path
+
+from clusterer.models import TENANT_ID_PATTERN
 
 logger = logging.getLogger(__name__)
 
 _EXTENSION = ".drain3"
 _TMP_SUFFIX = ".drain3.tmp"
-_VALID_TENANT_ID = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 _HMAC_SIZE = 32  # SHA-256 produces 32 bytes
 
 
@@ -37,7 +37,7 @@ class CheckpointManager:
 
         If hmac_key is set, appends a 32-byte HMAC-SHA256 tag.
         """
-        if not _VALID_TENANT_ID.match(tenant_id):
+        if not TENANT_ID_PATTERN.match(tenant_id):
             raise ValueError(f"Invalid tenant_id for checkpoint: {tenant_id!r}")
         tmp_path = self._dir / f"{tenant_id}{_TMP_SUFFIX}"
         final_path = self._dir / f"{tenant_id}{_EXTENSION}"
@@ -89,7 +89,7 @@ class CheckpointManager:
         result: dict[str, bytes] = {}
         for path in self._dir.glob(f"*{_EXTENSION}"):
             tenant_id = path.name.removesuffix(_EXTENSION)
-            if not _VALID_TENANT_ID.match(tenant_id):
+            if not TENANT_ID_PATTERN.match(tenant_id):
                 logger.warning("Skipping checkpoint with invalid tenant_id: %s", path.name)
                 continue
             try:

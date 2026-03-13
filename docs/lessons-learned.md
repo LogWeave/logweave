@@ -32,3 +32,23 @@ texts. This fails because Drain3 legitimately generalizes templates better on th
 second pass (the checkpoint gives it a richer model). The correct test: train on 5K,
 checkpoint, then compare templates for *unseen* messages between continued and restored
 miners. Fix: Rewrote Phase 2 to test unseen messages.
+
+### 2026-03-14 — Rename broke test file silently, survived multiple review rounds
+
+Commit `d5da3be` renamed `TenantLimitExceeded` → `TenantLimitError` in drain_service.py
+but did not update test_drain_service.py. The broken import caused pytest to skip the
+entire file (18 tests) with a collection error — but the suite still reported "74 passed"
+with no indication that a critical module was absent. This survived 2 rounds of adversarial
+review because reviewers read the code but never ran the tests.
+
+Root causes:
+1. The rename was bundled in a lint/chore commit — reviewers skimmed it
+2. No reviewer actually executed `uv run poe test` and checked output
+3. No baseline test count to detect the drop from ~92 to 74
+
+Fixes applied:
+- Added `strict_markers = true` and `filterwarnings` to pytest config
+- Added "Post-Commit Verification" rules to CLAUDE.md (always check test count)
+- Added "Renames get their own commit" rule to CLAUDE.md
+- Added verification requirement to reviewer.md (must run tests, not just read code)
+- Added Multi-Agent Review Protocol to CLAUDE.md (verify findings before reporting)

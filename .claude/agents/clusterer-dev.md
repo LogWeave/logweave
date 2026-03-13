@@ -25,10 +25,10 @@ You are a specialist developer for the LogWeave clusterer service.
 
 - NEVER modify code in `services/api/` without explicit instruction.
 - NEVER store raw log content — only templates and metadata.
-- Test command: `cd services/clusterer && pytest`
+- Test command: `cd services/clusterer && uv run poe test`
 - Follow existing code patterns in the clusterer directory.
 
 ## Architecture Reference
 
-See @PLAN.md sections on "Week 1a" and "Clusterer" for full specification.
+See PLAN.md sections on "Week 1a" and "Clusterer" for full specification (read on demand).
 See @docs/adr/ for architectural decisions.

@@ -97,6 +97,15 @@ class TestSelectUsesFinal:
         query_str = call_args[0][0]
         assert "FINAL" in query_str
 
+    def test_batch_query_contains_final(
+        self, registry: TemplateRegistry, mock_client: MagicMock
+    ) -> None:
+        mock_client.query.return_value = MagicMock(result_rows=[])
+        registry._batch_query_registry("t1", ["test template"])
+        call_args = mock_client.query.call_args
+        query_str = call_args[0][0]
+        assert "FINAL" in query_str
+
 
 class TestConcurrentCreates:
     async def test_single_insert_for_concurrent_requests(

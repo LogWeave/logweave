@@ -3,7 +3,7 @@
 Log pattern extraction and anomaly detection platform. We read logs, extract templates
 (via Drain3 clustering), track occurrence patterns, detect anomalies, and discard raw
 content. Raw logs stay in the customer's infrastructure (S3/CloudWatch). We store only
-metadata and intelligence. See @PLAN.md for full V8 architecture.
+metadata and intelligence. See PLAN.md for full V8 architecture (load on demand, not auto-loaded).
 
 ## Tech Stack
 
@@ -77,16 +77,16 @@ Auto-format hook runs ruff (via uvx) and biome on every file write (see .claude/
 ## Feedback Loop
 
 When corrected by the user or when a rule is violated:
-1. Log the correction in @docs/lessons-learned.md with date and context
+1. Log the correction in docs/lessons-learned.md with date and context
 2. Update memory files to prevent recurrence in future sessions
 3. If a CLAUDE.md rule was ignored, check if it needs to be rephrased or emphasized
 
-Read @docs/lessons-learned.md at the start of each session to avoid repeating mistakes.
+Read docs/lessons-learned.md at the start of each session to avoid repeating mistakes.
 
 ## Compaction Instructions
 
 When compacting, always preserve: modified files list, current milestone, test commands,
-and active ADR decisions. Reference @docs/adr/ for architectural decisions that must not
+and active ADR decisions. Reference docs/adr/ for architectural decisions that must not
 be relitigated.
 
 ## Development Workflow
@@ -95,10 +95,20 @@ Every session should follow this pattern:
 
 1. Check `gh milestone list` and `gh issue list` to see what's active
 2. For the current milestone, if issues aren't scoped yet, use `/scope-milestone` to break it down
-3. **Plan first**: use `/plan` to design the approach, then have the reviewer agent critique it
+3. **Plan first**: use `/plan` to design the approach, then have the reviewer agent critique the plan
 4. **Execute**: work issues in dependency order using `/fix-issue` for each
 5. After implementation, have the reviewer agent review the code
 6. When all issues in a milestone are closed, move to the next milestone
+
+## Multi-Agent Review Protocol
+
+When running multi-agent reviews (postmortems, PR reviews, plan reviews):
+
+1. **Every MUST FIX finding must be verified** — read the actual code at the cited line, run tests if claiming breakage. Do not report unverified findings as confirmed.
+2. **Cross-reference between agents** — if only one agent flags something, verify harder before escalating.
+3. **Run the test suite** before synthesizing — confirms any "tests are broken" claims.
+4. **Plans get reviewed too** — before implementing a plan, have the reviewer agent critique it against PLAN.md, ADRs, and constraints. Plans should be challenged, not rubber-stamped.
+5. **Classify findings honestly** — MUST FIX is for confirmed bugs/security issues only. Style preferences go in TRACK or REJECTED.
 
 **Always work in feature branches** — never commit directly to main, even for solo work. Merge locally when done.
 **Branch naming: `LW-<issue-number>`** (e.g., `LW-5`, `LW-12`). For multi-issue work, use the primary issue number.
@@ -106,7 +116,17 @@ Every session should follow this pattern:
 
 Milestone order: Pre-Build Validation → Week 1a → Week 1b → Week 2 → Week 3 → Week 4 → Week 5
 
+## Architecture Reference
+
+PLAN.md contains the full V8 architecture plan. It is large — do NOT read it automatically.
+Read it with the Read tool only when you need architectural context (API contracts,
+data model, roadmap items, pricing, etc.). For quick reference, the key sections are:
+- Section 6: Architecture (service contracts, env vars)
+- Section 7: Data Model (ClickHouse schema)
+- Section 9: Metadata Extraction (pipeline, pre-processing)
+- Section 15: Build Roadmap (milestone details)
+
 ## Current Milestone
 
-Week 1a — Clusterer Standalone. Check `gh issue list -m "Week 1a"` for active tasks.
+Week 1b — API Server + Transport. Check `gh issue list -m "Week 1b"` for active tasks.
 If no issues exist yet, scope them with `/scope-milestone`.

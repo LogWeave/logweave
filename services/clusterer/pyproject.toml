@@ -11,6 +11,7 @@ dependencies = [
   "pydantic-settings>=2.7",
   "uuid-utils>=0.10",
   "cachetools>=5.0",
+  "jsonpickle>=1.4",
 ]
 
 [dependency-groups]
@@ -54,3 +55,7 @@ serve = "uvicorn clusterer.main:app --reload --host 0.0.0.0 --port 8000"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Strict markers: typos in markers become errors, not warnings
+strict_markers = true
+# Make collection errors fatal (don't silently skip broken test files)
+filterwarnings = ["error::pytest.PytestCollectionWarning"]

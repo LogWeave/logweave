@@ -11,7 +11,6 @@ the event loop.
 from __future__ import annotations
 
 import logging
-import re
 import threading
 from typing import TYPE_CHECKING
 
@@ -19,18 +18,16 @@ import jsonpickle
 from drain3.template_miner import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
 
-from clusterer.models import DrainResult
+from clusterer.models import TENANT_ID_PATTERN, DrainResult
 
 if TYPE_CHECKING:
     from drain3.drain import Drain
 
 logger = logging.getLogger(__name__)
 
-_TENANT_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
-
 
 def _validate_tenant_id(tenant_id: str) -> None:
-    if not _TENANT_ID_PATTERN.match(tenant_id):
+    if not TENANT_ID_PATTERN.match(tenant_id):
         raise ValueError(f"Invalid tenant_id: {tenant_id!r}")
 
 

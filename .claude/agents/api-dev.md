@@ -30,5 +30,5 @@ You are a specialist developer for the LogWeave API server.
 
 ## Architecture Reference
 
-See @PLAN.md sections on "Week 1b", "Week 2", "Week 3" for full specification.
+See PLAN.md sections on "Week 1b", "Week 2", "Week 3" for full specification (read on demand).
 See @docs/adr/ for architectural decisions.

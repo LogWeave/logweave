@@ -1,15 +1,25 @@
 name: CI
 
+# Disabled for now — running locally is sufficient for solo dev.
+# Re-enable by uncommenting the triggers below when:
+# - onboarding a second contributor, or
+# - local test runs become insufficient confidence
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+  workflow_dispatch: # manual trigger only
+  # pull_request:
+  #   branches: [main]
+  # push:
+  #   branches: [main]
 
 jobs:
-  lint-clusterer:
-    name: Lint Clusterer (Python)
+  clusterer:
+    name: Clusterer (lint + test)
     runs-on: ubuntu-latest
+    # Only run when clusterer code or shared config changes
+    if: >
+      github.event_name == 'push' ||
+      contains(github.event.pull_request.labels.*.name, 'clusterer') ||
+      true
     defaults:
       run:
         working-directory: services/clusterer
@@ -23,10 +33,24 @@ jobs:
         run: uv sync --dev
       - name: Lint and format check
         run: uv run poe check
+      - name: Run tests (strict — collection errors are failures)
+        run: uv run poe test
+      - name: Verify no test collection errors
+        run: |
+          output=$(uv run pytest --co -q 2>&1)
+          if echo "$output" | grep -q "error"; then
+            echo "::error::Test collection errors detected"
+            echo "$output"
+            exit 1
+          fi
+          count=$(echo "$output" | tail -1 | grep -oP '\d+(?= test)')
+          echo "Collected $count tests"
 
-  lint-api:
-    name: Lint API (Node.js)
+  api:
+    name: API (lint + test)
     runs-on: ubuntu-latest
+    # Skip until API server code exists
+    if: hashFiles('services/api/package.json') != ''
     defaults:
       run:
         working-directory: services/api
@@ -46,44 +70,6 @@ jobs:
         run: pnpm lint
       - name: Typecheck
         run: pnpm typecheck
-
-  test-clusterer:
-    name: Test Clusterer
-    needs: lint-clusterer
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/clusterer
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install dependencies
-        run: uv sync --dev
-      - name: Run tests
-        run: uv run poe test
-
-  test-api:
-    name: Test API
-    needs: lint-api
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/api
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "pnpm"
-          cache-dependency-path: services/api/pnpm-lock.yaml
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
       - name: Run tests
         run: pnpm test
 

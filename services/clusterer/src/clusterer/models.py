@@ -1,7 +1,12 @@
+import re
 from dataclasses import dataclass
 from typing import Annotated
 
 from pydantic import BaseModel, Field
+
+# Shared tenant ID validation — used by drain_service, checkpoint, and main.
+# Keep in sync with ClusterRequest.tenant_id pattern constraint.
+TENANT_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 
 
 @dataclass(frozen=True, slots=True)
