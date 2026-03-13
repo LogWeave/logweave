@@ -34,6 +34,7 @@ SELECT template_id
 FROM template_registry FINAL
 WHERE tenant_id = {tid:String}
   AND template_text_hash = cityHash64({text:String})
+  AND template_text = {text:String}
 LIMIT 1
 """
 

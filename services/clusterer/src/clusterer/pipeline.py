@@ -8,14 +8,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from clusterer.models import ClusterResultItem
 
 if TYPE_CHECKING:
     from clusterer.checkpoint import CheckpointManager
     from clusterer.drain_service import DrainService
-    from clusterer.template_registry import TemplateRegistry
+
+
+@runtime_checkable
+class RegistryProtocol(Protocol):
+    """Interface for template ID registries (ClickHouse or in-memory test double)."""
+
+    async def get_or_create(self, tenant_id: str, template_text: str) -> tuple[str, bool]: ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +32,7 @@ class ClusterPipeline:
         self,
         *,
         drain_service: DrainService,
-        registry: TemplateRegistry,
+        registry: RegistryProtocol,
         checkpoint_manager: CheckpointManager,
     ) -> None:
         self._drain = drain_service
@@ -54,12 +61,25 @@ class ClusterPipeline:
         return results
 
     async def restore_checkpoints(self) -> None:
-        """Load all checkpoints from disk and restore DrainService state."""
+        """Load all checkpoints from disk and restore DrainService state.
+
+        Skips and logs on per-tenant restore errors (e.g., corrupt checkpoint
+        data). The tenant will start with a fresh Drain3 tree.
+        """
         checkpoints = await asyncio.to_thread(self._checkpoint.load_all)
+        restored = 0
         for tenant_id, state in checkpoints.items():
-            self._drain.load_state(tenant_id, state)
-        if checkpoints:
-            logger.info("Restored %d tenant checkpoint(s)", len(checkpoints))
+            try:
+                self._drain.load_state(tenant_id, state)
+                restored += 1
+            except Exception:
+                logger.warning(
+                    "Failed to restore checkpoint for tenant %s, starting fresh",
+                    tenant_id,
+                    exc_info=True,
+                )
+        if restored:
+            logger.info("Restored %d tenant checkpoint(s)", restored)
 
     async def run_checkpoint_cycle(self) -> None:
         """Save all dirty tenants. Skips + logs on per-tenant errors."""
