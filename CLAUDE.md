@@ -128,5 +128,5 @@ data model, roadmap items, pricing, etc.). For quick reference, the key sections
 
 ## Current Milestone
 
-Week 1b — API Server + Transport. Check `gh issue list -m "Week 1b"` for active tasks.
+Week 2 — Dashboard + Slack. Check `gh issue list -m "Week 2"` for active tasks.
 If no issues exist yet, scope them with `/scope-milestone`.
