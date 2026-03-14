@@ -26,6 +26,7 @@ export function createAuthMiddleware(keyMap: Map<string, string>): RequestHandle
       return
     }
 
+    // TODO(week-4): switch to crypto.timingSafeEqual for constant-time comparison
     const tenantId = keyMap.get(token)
     if (!tenantId) {
       next(unauthorized('Invalid API key'))

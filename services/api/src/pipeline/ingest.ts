@@ -35,8 +35,10 @@ function extractTimestamp(event: unknown): string | undefined {
   for (const key of ['timestamp', '@timestamp', 'time']) {
     const val = obj[key]
     if (typeof val === 'string' && val.length > 0) {
-      // Basic ISO 8601 check: starts with 4 digits and a dash
-      if (/^\d{4}-/.test(val)) return val
+      // Validate with Date.parse — invalid dates return NaN
+      // Prevents malformed strings from killing the entire ClickHouse batch INSERT
+      const parsed = Date.parse(val)
+      if (!Number.isNaN(parsed)) return val
     }
   }
   return undefined

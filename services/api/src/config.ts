@@ -36,7 +36,7 @@ const apiKeysSchema = z
       if (typeof value !== 'string' || value.length === 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `tenant_id for key "${key}" must be a non-empty string`,
+          message: 'All API key values must be non-empty tenant_id strings',
         })
         return z.NEVER
       }

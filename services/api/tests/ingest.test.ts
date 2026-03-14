@@ -115,6 +115,19 @@ describe('POST /v1/ingest/batch', () => {
     assert.equal(res.body.error.code, 'VALIDATION_ERROR')
   })
 
+  it('returns 413 for oversized body', async () => {
+    const { app } = createTestApp()
+    // Generate a payload > 1MB
+    const largeEvent = { message: 'x'.repeat(10_000), level: 'info' }
+    const events = Array.from({ length: 110 }, () => largeEvent) // ~1.1MB
+    const res = await request(app)
+      .post('/v1/ingest/batch')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({ events })
+
+    assert.equal(res.status, 413)
+  })
+
   it('returns 400 for empty events array', async () => {
     const { app } = createTestApp()
     const res = await request(app)
