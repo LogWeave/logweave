@@ -35,9 +35,10 @@ export class LogWeaveTransport extends TransportStream {
   private readonly timeoutMs: number
   private readonly maxRetries: number
   private readonly fetchFn: typeof globalThis.fetch
-  private readonly onDrop: ((events: LogEvent[], error: Error) => void) | undefined
+  private readonly onDrop: ((events: readonly LogEvent[], error: Error) => void) | undefined
   private readonly buffer: BufferManager
   private closeController: AbortController | null = null
+  private closing = false
 
   constructor(opts: TransportOptions) {
     super(opts as never)
@@ -140,12 +141,9 @@ export class LogWeaveTransport extends TransportStream {
       },
     )
 
-    if (response === null && this.onDrop) {
+    if (response === null && this.onDrop && !this.closeController?.signal.aborted) {
       try {
-        this.onDrop(
-          events as LogEvent[],
-          new Error(`[LogWeave] batch of ${events.length} events dropped`),
-        )
+        this.onDrop(events, new Error(`[LogWeave] batch of ${events.length} events dropped`))
       } catch {
         // onDrop must never throw back into the transport
       }
@@ -159,6 +157,9 @@ export class LogWeaveTransport extends TransportStream {
    * Aborts any inflight retries via AbortController.
    */
   async closeAsync(): Promise<void> {
+    if (this.closing) return
+    this.closing = true
+
     this.closeController = new AbortController()
 
     const timeout = new Promise<'timeout'>((resolve) => {
@@ -180,7 +181,7 @@ export class LogWeaveTransport extends TransportStream {
       return 'done'
     }
 
-    const result = await Promise.race([doClose(), timeout])
+    const result = await Promise.race([doClose().catch(() => 'error' as const), timeout])
     if (result === 'timeout') {
       this.closeController.abort()
       this.buffer.destroy()

@@ -293,4 +293,49 @@ describe('LogWeaveTransport', () => {
 
     assert.equal(dropCalled, false, 'onDrop should not be called on success')
   })
+
+  it('does not call onDrop during close timeout (close-abort is not data loss)', async () => {
+    let dropCalled = false
+    const neverResolve: typeof globalThis.fetch = () => new Promise(() => {})
+
+    transport = new LogWeaveTransport({
+      apiKey: 'test-key',
+      service: 'test-service',
+      bufferSize: 100,
+      flushIntervalMs: 60_000,
+      fetch: neverResolve,
+      onDrop: () => {
+        dropCalled = true
+      },
+    })
+
+    transport.log(
+      { level: 'info', message: 'will timeout', [Symbol.for('level')]: 'info' },
+      () => {},
+    )
+
+    await transport.closeAsync()
+    transport = undefined
+
+    assert.equal(dropCalled, false, 'onDrop should not fire during close timeout')
+  })
+
+  it('double closeAsync is safe — second call is a no-op', async () => {
+    const mock = mockFetch(200)
+    transport = new LogWeaveTransport({
+      apiKey: 'test-key',
+      service: 'test-service',
+      bufferSize: 100,
+      flushIntervalMs: 60_000,
+      fetch: mock.fetch,
+    })
+
+    transport.log({ level: 'info', message: 'event', [Symbol.for('level')]: 'info' }, () => {})
+
+    // Call closeAsync twice — second should be a no-op
+    await Promise.all([transport.closeAsync(), transport.closeAsync()])
+    transport = undefined
+
+    assert.equal(mock.calls.length, 1, 'should flush exactly once despite double close')
+  })
 })

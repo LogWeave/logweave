@@ -31,7 +31,7 @@ export interface TransportOptions {
    * Use this to detect data loss — e.g. increment a metric or alert.
    * The callback must not throw; if it does, the error is silently caught.
    */
-  readonly onDrop?: (events: LogEvent[], error: Error) => void
+  readonly onDrop?: (events: readonly LogEvent[], error: Error) => void
 }
 
 /**
