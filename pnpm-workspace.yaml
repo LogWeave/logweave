@@ -1,5 +1,6 @@
 packages:
   - "services/api"
+  - "packages/transport"
 
 catalog:
   typescript: "^5.9.0"
