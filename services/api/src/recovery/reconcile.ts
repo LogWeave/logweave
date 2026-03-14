@@ -40,6 +40,9 @@ export interface RecoveryConfig {
 
 const UUID_MIN = '00000000-0000-0000-0000-000000000000'
 
+// Cross-tenant SELECT is intentional — recovery is an internal background process
+// that must recover all tenants' unclustered rows. Rows are grouped by tenant_id
+// in application code before calling the per-tenant clusterer endpoint.
 const UNCLUSTERED_QUERY = `
 SELECT id, tenant_id, timestamp, service, level, environment,
        anomaly_score, status_code, duration_ms, trace_id, route,
@@ -95,6 +98,8 @@ export class RecoverySweep {
         this.deps.logger.debug('Sweep already running, skipping')
         return
       }
+      const healthy = await this.deps.clustererHealth.check()
+      if (!healthy) return
       try {
         const recovered = await this.sweep(this.config.sweepMaxRows)
         if (recovered > 0) {
@@ -211,7 +216,7 @@ export class RecoverySweep {
       environment: row.environment,
       template_id: result.templateId,
       template_text: result.templateText,
-      is_new_template: result.isNewTemplate ? 1 : 0,
+      is_new_template: 0, // Recovery re-clustering, not a new template discovery
       anomaly_score: row.anomaly_score,
       status_code: row.status_code,
       duration_ms: row.duration_ms,
@@ -239,8 +244,8 @@ export class RecoverySweep {
     // Then DELETE old rows
     try {
       await this.deps.db.command({
-        query: `DELETE FROM logweave.log_metadata WHERE id IN {ids:Array(String)}`,
-        query_params: { ids: oldIds },
+        query: `DELETE FROM logweave.log_metadata WHERE id IN {ids:Array(String)} AND tenant_id = {tenant_id:String}`,
+        query_params: { ids: oldIds, tenant_id: tenantId },
       })
     } catch (err) {
       this.deps.logger.warn(

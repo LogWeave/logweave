@@ -160,11 +160,13 @@ describe('RecoverySweep', () => {
       assert.notEqual(row.template_id, '0')
       assert.equal(row.pre_processed_message, null)
     }
-    // DELETE was called with the 10 old IDs
+    // DELETE was called with the 10 old IDs, scoped by tenant_id
     assert.equal(commandCalls.length, 1)
     assert.ok(commandCalls[0]!.query.includes('DELETE FROM'))
+    assert.ok(commandCalls[0]!.query.includes('tenant_id'), 'DELETE must include tenant_id scope')
     const deletedIds = commandCalls[0]!.query_params?.ids as string[]
     assert.equal(deletedIds.length, 10)
+    assert.equal(commandCalls[0]!.query_params?.tenant_id, 'tenant-a')
   })
 
   it('startup skips when clusterer is unhealthy', async () => {
@@ -214,7 +216,7 @@ describe('RecoverySweep', () => {
     // Template fields updated
     assert.equal(newRow.template_id, 'tpl-pay')
     assert.equal(newRow.template_text, 'Payment failed for user <*>')
-    assert.equal(newRow.is_new_template, 1)
+    assert.equal(newRow.is_new_template, 0, 'Recovery re-clustering should not count as new template')
     assert.equal(newRow.pre_processed_message, null)
     // All other fields preserved
     assert.equal(newRow.tenant_id, 'tenant-x')
