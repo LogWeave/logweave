@@ -43,6 +43,9 @@ services:
       LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123
       LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
       LOGWEAVE_LOG_LEVEL: info
+      LOGWEAVE_API_KEYS: '{"e2e-key-tenant-a":"e2e-tenant-a","e2e-key-tenant-b":"e2e-tenant-b"}'
+      LOGWEAVE_CLUSTERER_TIMEOUT_MS: 5000
+      LOGWEAVE_RECOVERY_INTERVAL_MS: 10000
     depends_on:
       clickhouse:
         condition: service_healthy

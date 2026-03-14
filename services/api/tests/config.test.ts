@@ -68,6 +68,7 @@ describe('loadConfig', () => {
     assert.equal(config.clustererTimeoutMs, 500)
     assert.equal(config.logLevel, 'info')
     assert.equal(config.shutdownTimeoutMs, 10_000)
+    assert.equal(config.recoveryIntervalMs, 60_000)
   })
 
   it('parses LOGWEAVE_API_KEYS into a Map', async () => {

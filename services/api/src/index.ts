@@ -26,7 +26,7 @@ const db = new DbClient(clickhouse)
 
 const recovery = new RecoverySweep(
   { db, clickhouse, clusterClient, clustererHealth, logger },
-  { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
+  { sweepIntervalMs: config.recoveryIntervalMs, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
 )
 
 const server = app.listen(config.port, () => {
