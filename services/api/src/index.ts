@@ -2,12 +2,20 @@ import { createApp } from './app.js'
 import { createClickHouseClient } from './clients/clickhouse.js'
 import { ClustererHealthChecker } from './clients/clusterer.js'
 import { loadConfig } from './config.js'
+import { initSchema } from './db/schema.js'
 import { createLogger } from './logger.js'
 
 const config = loadConfig()
 const logger = createLogger(config.logLevel)
 const clickhouse = createClickHouseClient(config.clickhouseUrl)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)
+
+try {
+  await initSchema(clickhouse, logger)
+} catch (err) {
+  logger.fatal({ err }, 'Failed to initialize ClickHouse schema after retries')
+  process.exit(1)
+}
 
 const app = createApp({ config, logger, clickhouse, clustererHealth })
 

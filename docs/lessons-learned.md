@@ -111,3 +111,22 @@ were no issues and proposed re-scoping — wasting the user's time and contradic
 they could plainly see.
 Fix: When a filtered query returns empty, always verify with an unfiltered query before
 concluding data doesn't exist. Don't trust absence of results as absence of data.
+
+### 2026-03-14 — ClickHouse TTL requires DateTime, not DateTime64
+
+Used `TTL timestamp + toIntervalDay(30) DELETE` where `timestamp` is `DateTime64(3)`.
+ClickHouse rejects this: TTL expressions must evaluate to `DateTime` or `Date`, not
+`DateTime64`. Fix: wrap with `toDateTime()`: `TTL toDateTime(timestamp) + toIntervalDay(30)`.
+
+### 2026-03-14 — ClickHouse default JSON format returns { data: T[] } not T[]
+
+`@clickhouse/client`'s default `JSON` format returns `{ data: T[], meta: [...], ... }`,
+not `T[]`. Casting `result.json() as T[]` compiles but returns wrong type at runtime.
+Fix: use `JSONEachRow` format which returns `T[]` directly, or extract `.data` from
+the JSON wrapper.
+
+### 2026-03-14 — Docker ClickHouse default user is XML-readonly
+
+`ALTER USER default SETTINGS ...` fails on Docker ClickHouse because the default user
+is defined in XML config (readonly storage). The guardrails must be best-effort (catch
+and log, don't crash). For production, use per-query `clickhouse_settings` instead.
