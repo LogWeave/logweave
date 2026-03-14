@@ -53,6 +53,55 @@ Fixes applied:
 - Added verification requirement to reviewer.md (must run tests, not just read code)
 - Added Multi-Agent Review Protocol to CLAUDE.md (verify findings before reporting)
 
+### 2026-03-14 — Reviewer used as implementation safety net, not a design reviewer
+
+During issue #13, the reviewer caught: non-root Dockerfile, pnpm@latest non-deterministic,
+x-powered-by not disabled, no unhandledRejection handler, JSON parse errors returning 500,
+`allowUnreachableCode: true` (set backwards — allows dead code instead of erroring),
+magic number status codes, @types/node missing, dist/ not excluded from Biome.
+
+These are all basic production hygiene — none require a reviewer to catch. They should be
+right on the first commit. The reviewer should be reserved for subtle design issues,
+contract violations, and edge cases.
+
+Root cause: No mental checklist for "production-ready Express service" before committing.
+
+Fix: Before committing any new Express service/route, verify:
+- Dockerfile: non-root USER, pinned pnpm version, dist copied not src
+- app.ts: `app.disable('x-powered-by')`
+- index.ts: `unhandledRejection` handler
+- error-handler: body-parser errors (statusCode < 500) return 4xx not 500
+- No magic HTTP status numbers — always use named constants
+- `@types/node` in devDependencies when using node: built-ins
+- `dist/` excluded from linter config
+- tsconfig: no `allowUnreachableCode: true` (that ALLOWS dead code, wrong direction)
+- Run reviewer in background, not foreground
+
+### 2026-03-14 — Reviewer ran in foreground, blocking the entire session
+
+Ran the first reviewer agent synchronously (foreground), blocking all work for ~11 minutes.
+User had to ask why nothing was happening. The tsconfig reviewer was then correctly launched
+in background but was redundant — its recommendations were already applied while it ran.
+
+Fix: Reviewer agents always run in background (`run_in_background: true`) unless their
+output is needed before the next step can proceed (rare). Check if background results
+are already applied before acting on them.
+
+### 2026-03-14 — Compound Bash commands instead of dedicated tools
+
+Repeatedly used Bash for things that dedicated tools handle better:
+- `cat file` instead of Read tool
+- `grep pattern` instead of Grep tool
+- `ls` / `find` instead of Glob tool
+- Long `&&`-chained commands that appear as one giant approval prompt
+
+The dedicated tools are transparent, reviewable, and purpose-built. Bash should be
+reserved for commands that genuinely need a shell: pnpm, git, docker, system operations.
+Independent Bash calls should be parallel tool calls, not `&&` chains.
+
+Fix: Default to Read/Grep/Glob/Edit/Write. Only use Bash for shell-required operations.
+When multiple independent Bash calls are needed, issue them as parallel tool calls.
+
 ### 2026-03-14 — Trusted empty gh milestone query without fallback
 
 `gh issue list --milestone "Week 1b"` returned empty because the full milestone title is

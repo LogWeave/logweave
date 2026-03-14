@@ -1,2 +1,5 @@
 packages:
   - "services/api"
+
+catalog:
+  typescript: "^5.9.0"
