@@ -8,7 +8,7 @@ let sharedClient: ClickHouseClient | undefined
 
 export function getTestClient(): ClickHouseClient {
   if (!sharedClient) {
-    sharedClient = createClient({ url: CLICKHOUSE_URL, database: 'logweave' })
+    sharedClient = createClient({ url: CLICKHOUSE_URL })
   }
   return sharedClient
 }
@@ -26,8 +26,11 @@ export function testTenantId(suite: string): string {
   return `test-${suite}-${rand}`
 }
 
-/** Type-safe row extraction from ClickHouse ResultSet */
+/**
+ * Type-safe row extraction from ClickHouse ResultSet.
+ * Handles both JSON format ({ data: T[] }) and JSONEachRow format (T[]).
+ */
 export async function jsonRows<T>(result: ResultSet): Promise<T[]> {
-  // ResponseJSON is a union type; for JSONEachRow/JSON queries it's always T[]
-  return (await result.json()) as unknown as T[]
+  const json = (await result.json()) as unknown as { data: T[] } | T[]
+  return Array.isArray(json) ? json : json.data
 }

@@ -1,7 +1,6 @@
 export { DbClient } from './client.js'
 export { batchInsert } from './insert.js'
 export {
-  explainQuery,
   queryLogMetadata,
   queryServiceStats,
   queryTemplateStats,

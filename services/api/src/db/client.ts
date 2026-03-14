@@ -1,14 +1,13 @@
 import type { ClickHouseClient, DataFormat, QueryParams } from '@clickhouse/client'
 
 /**
- * Safe ClickHouse client wrapper — exposes only parameterized methods.
- * No raw SQL execution; string interpolation is structurally impossible.
+ * ClickHouse client wrapper — parameterized queries only.
  */
 export class DbClient {
   constructor(private readonly client: ClickHouseClient) {}
 
   async query<T>(params: QueryParams): Promise<T[]> {
-    const result = await this.client.query(params)
+    const result = await this.client.query({ ...params, format: 'JSONEachRow' })
     return (await result.json()) as T[]
   }
 
@@ -31,10 +30,5 @@ export class DbClient {
 
   async close(): Promise<void> {
     await this.client.close()
-  }
-
-  /** Access the underlying client for initSchema and health checks */
-  get raw(): ClickHouseClient {
-    return this.client
   }
 }

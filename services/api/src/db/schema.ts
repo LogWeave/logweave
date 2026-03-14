@@ -119,7 +119,13 @@ export async function initSchema(client: ClickHouseClient, logger: pino.Logger):
         await client.command({ query: ddl })
       }
 
-      await client.command({ query: RESOURCE_GUARDRAILS })
+      // Resource guardrails are best-effort — ALTER USER may require admin privileges
+      try {
+        await client.command({ query: RESOURCE_GUARDRAILS })
+        logger.info('ClickHouse resource guardrails applied')
+      } catch (guardrailErr) {
+        logger.warn({ err: guardrailErr }, 'Failed to apply resource guardrails (non-fatal)')
+      }
 
       logger.info('ClickHouse schema initialized successfully')
       return
