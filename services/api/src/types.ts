@@ -24,4 +24,5 @@ export interface LogMetadataRow {
   source_type: string
   source_ref: string
   pre_processed_message?: string | null
+  preprocessing_version?: number
 }

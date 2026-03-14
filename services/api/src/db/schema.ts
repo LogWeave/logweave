@@ -25,6 +25,7 @@ const DDL_STATEMENTS = [
     source_type            LowCardinality(String),
     source_ref             String,
     pre_processed_message  Nullable(String),
+    preprocessing_version  UInt8 DEFAULT 1,
     INDEX idx_level level TYPE set(5) GRANULARITY 1,
     INDEX idx_template_id template_id TYPE bloom_filter(0.01) GRANULARITY 1
   ) ENGINE = MergeTree()
