@@ -5,9 +5,12 @@ import type { ClustererHealthChecker } from './clients/clusterer.js'
 import type { Config } from './config.js'
 import { notFound } from './errors.js'
 import { requestContext } from './logger.js'
+import { createAuthMiddleware } from './middleware/auth.js'
 import { createErrorHandler } from './middleware/error-handler.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
+import type { ClusterClient } from './pipeline/cluster-client.js'
 import { healthRoutes } from './routes/health.js'
+import { ingestRoutes } from './routes/ingest.js'
 import type { ClickHouseClient } from './types.js'
 
 export interface AppDependencies {
@@ -15,6 +18,7 @@ export interface AppDependencies {
   logger: pino.Logger
   clickhouse: ClickHouseClient
   clustererHealth: ClustererHealthChecker
+  clusterClient: ClusterClient
 }
 
 export function createApp(deps: AppDependencies): express.Express {
@@ -39,14 +43,35 @@ export function createApp(deps: AppDependencies): express.Express {
       const header = req.headers['x-request-id']
       return (Array.isArray(header) ? header[0] : header) ?? 'unknown'
     },
+    serializers: {
+      req(req) {
+        return {
+          id: req.id,
+          method: req.method,
+          url: req.url,
+          headers: {
+            ...req.raw?.headers,
+            authorization: req.raw?.headers?.authorization ? '[REDACTED]' : undefined,
+          },
+        }
+      },
+    },
   }
   app.use(pinoHttp(httpLoggerOpts))
 
   // Body parsing
   app.use(express.json({ limit: '1mb' }))
 
-  // Routes
+  // Routes — health (unauthenticated)
   app.use(healthRoutes({ clickhouse: deps.clickhouse, clustererHealth: deps.clustererHealth }))
+
+  // Routes — API (authenticated)
+  const auth = createAuthMiddleware(deps.config.apiKeys)
+  app.use('/v1', auth, ingestRoutes({
+    clusterClient: deps.clusterClient,
+    clickhouse: deps.clickhouse,
+    logger: deps.logger,
+  }))
 
   // 404 catch-all
   app.use((_req, _res, next) => {

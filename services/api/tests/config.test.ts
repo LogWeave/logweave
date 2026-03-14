@@ -5,6 +5,7 @@ describe('loadConfig', () => {
   const validEnv = {
     LOGWEAVE_CLICKHOUSE_URL: 'http://localhost:8123',
     LOGWEAVE_CLUSTERER_URL: 'http://localhost:8000',
+    LOGWEAVE_API_KEYS: '{"test-key-1":"tenant-a","test-key-2":"tenant-b"}',
   }
 
   beforeEach(() => {
@@ -19,6 +20,7 @@ describe('loadConfig', () => {
 
   it('throws when LOGWEAVE_CLICKHOUSE_URL is missing', async () => {
     process.env.LOGWEAVE_CLUSTERER_URL = validEnv.LOGWEAVE_CLUSTERER_URL
+    process.env.LOGWEAVE_API_KEYS = validEnv.LOGWEAVE_API_KEYS
 
     const { loadConfig } = await import('../src/config.js')
     assert.throws(
@@ -31,6 +33,7 @@ describe('loadConfig', () => {
 
   it('throws when LOGWEAVE_CLUSTERER_URL is missing', async () => {
     process.env.LOGWEAVE_CLICKHOUSE_URL = validEnv.LOGWEAVE_CLICKHOUSE_URL
+    process.env.LOGWEAVE_API_KEYS = validEnv.LOGWEAVE_API_KEYS
 
     const { loadConfig } = await import('../src/config.js')
     assert.throws(
@@ -65,5 +68,33 @@ describe('loadConfig', () => {
     assert.equal(config.clustererTimeoutMs, 500)
     assert.equal(config.logLevel, 'info')
     assert.equal(config.shutdownTimeoutMs, 10_000)
+  })
+
+  it('parses LOGWEAVE_API_KEYS into a Map', async () => {
+    Object.assign(process.env, validEnv)
+
+    const { loadConfig } = await import('../src/config.js')
+    const config = loadConfig()
+
+    assert.ok(config.apiKeys instanceof Map)
+    assert.equal(config.apiKeys.get('test-key-1'), 'tenant-a')
+    assert.equal(config.apiKeys.get('test-key-2'), 'tenant-b')
+    assert.equal(config.apiKeys.size, 2)
+  })
+
+  it('throws on invalid LOGWEAVE_API_KEYS JSON', async () => {
+    Object.assign(process.env, validEnv)
+    process.env.LOGWEAVE_API_KEYS = 'not json'
+
+    const { loadConfig } = await import('../src/config.js')
+    assert.throws(() => loadConfig())
+  })
+
+  it('throws on empty LOGWEAVE_API_KEYS object', async () => {
+    Object.assign(process.env, validEnv)
+    process.env.LOGWEAVE_API_KEYS = '{}'
+
+    const { loadConfig } = await import('../src/config.js')
+    assert.throws(() => loadConfig())
   })
 })
