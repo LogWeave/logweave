@@ -26,6 +26,12 @@ export interface TransportOptions {
    * Defaults to globalThis.fetch.
    */
   readonly fetch?: typeof globalThis.fetch
+  /**
+   * Called when a batch of events is dropped after retry exhaustion or rejection.
+   * Use this to detect data loss — e.g. increment a metric or alert.
+   * The callback must not throw; if it does, the error is silently caught.
+   */
+  readonly onDrop?: (events: LogEvent[], error: Error) => void
 }
 
 /**

@@ -197,4 +197,51 @@ describe('LogWeaveTransport', () => {
       (err: unknown) => err instanceof Error && err.message.includes('service'),
     )
   })
+
+  it('calls onDrop when batch is dropped after retry exhaustion', async () => {
+    const droppedBatches: { events: unknown[]; error: Error }[] = []
+    const mock = mockFetch(500)
+
+    transport = new LogWeaveTransport({
+      apiKey: 'test-key',
+      service: 'test-service',
+      bufferSize: 1,
+      flushIntervalMs: 60_000,
+      maxRetries: 0,
+      fetch: mock.fetch,
+      onDrop: (events, error) => {
+        droppedBatches.push({ events: [...events], error })
+      },
+    })
+
+    transport.log({ level: 'info', message: 'will be dropped', [Symbol.for('level')]: 'info' }, () => {})
+
+    // Wait for flush + retry to complete
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    assert.equal(droppedBatches.length, 1, 'onDrop should be called once')
+    assert.equal(droppedBatches[0]!.events.length, 1)
+    assert.ok(droppedBatches[0]!.error instanceof Error)
+  })
+
+  it('does not call onDrop when batch succeeds', async () => {
+    let dropCalled = false
+    const mock = mockFetch(200)
+
+    transport = new LogWeaveTransport({
+      apiKey: 'test-key',
+      service: 'test-service',
+      bufferSize: 1,
+      flushIntervalMs: 60_000,
+      fetch: mock.fetch,
+      onDrop: () => {
+        dropCalled = true
+      },
+    })
+
+    transport.log({ level: 'info', message: 'ok', [Symbol.for('level')]: 'info' }, () => {})
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    assert.equal(dropCalled, false, 'onDrop should not be called on success')
+  })
 })
