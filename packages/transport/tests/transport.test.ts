@@ -214,7 +214,10 @@ describe('LogWeaveTransport', () => {
       },
     })
 
-    transport.log({ level: 'info', message: 'will be dropped', [Symbol.for('level')]: 'info' }, () => {})
+    transport.log(
+      { level: 'info', message: 'will be dropped', [Symbol.for('level')]: 'info' },
+      () => {},
+    )
 
     // Wait for flush + retry to complete
     await new Promise((resolve) => setTimeout(resolve, 200))
