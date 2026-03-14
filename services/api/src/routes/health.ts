@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { pingClickHouse } from '../clients/clickhouse.js'
 import type { ClustererHealthChecker } from '../clients/clusterer.js'
+import { HttpStatus } from '../http-status.js'
 import type { ClickHouseClient } from '../types.js'
 
 interface HealthDeps {
@@ -40,7 +41,7 @@ export function healthRoutes(deps: HealthDeps): Router {
     const clustererStatus = deps.clustererHealth.consecutiveFailures === 0 ? 'ok' : 'degraded'
 
     if (!chOk) {
-      res.status(503).json({
+      res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
         status: 'not_ready',
         clickhouse: 'error',
         clusterer: {

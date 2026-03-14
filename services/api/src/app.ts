@@ -19,6 +19,7 @@ export interface AppDependencies {
 
 export function createApp(deps: AppDependencies): express.Express {
   const app = express()
+  app.disable('x-powered-by')
 
   // Request-id middleware (must be first — sets up AsyncLocalStorage context)
   app.use(requestIdMiddleware)

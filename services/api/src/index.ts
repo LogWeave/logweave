@@ -46,3 +46,7 @@ async function shutdown(signal: string): Promise<void> {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 process.on('SIGINT', () => shutdown('SIGINT'))
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ err: reason }, 'Unhandled rejection — shutting down')
+  process.exit(1)
+})

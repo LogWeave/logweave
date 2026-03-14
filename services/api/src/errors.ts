@@ -1,6 +1,8 @@
+import { HttpStatus, type HttpStatusCode } from './http-status.js'
+
 export class AppError extends Error {
   constructor(
-    public readonly statusCode: number,
+    public readonly statusCode: HttpStatusCode,
     public readonly code: string,
     message: string,
   ) {
@@ -10,27 +12,27 @@ export class AppError extends Error {
 }
 
 export function validationError(message: string): AppError {
-  return new AppError(400, 'VALIDATION_ERROR', message)
+  return new AppError(HttpStatus.BAD_REQUEST, 'VALIDATION_ERROR', message)
 }
 
 export function unauthorized(message: string): AppError {
-  return new AppError(401, 'UNAUTHORIZED', message)
+  return new AppError(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', message)
 }
 
 export function notFound(message: string): AppError {
-  return new AppError(404, 'NOT_FOUND', message)
+  return new AppError(HttpStatus.NOT_FOUND, 'NOT_FOUND', message)
 }
 
 export function payloadTooLarge(message: string): AppError {
-  return new AppError(413, 'PAYLOAD_TOO_LARGE', message)
+  return new AppError(HttpStatus.PAYLOAD_TOO_LARGE, 'PAYLOAD_TOO_LARGE', message)
 }
 
 export function internalError(message: string): AppError {
-  return new AppError(500, 'INTERNAL_ERROR', message)
+  return new AppError(HttpStatus.INTERNAL_SERVER_ERROR, 'INTERNAL_ERROR', message)
 }
 
 export function serviceUnavailable(message: string): AppError {
-  return new AppError(503, 'SERVICE_UNAVAILABLE', message)
+  return new AppError(HttpStatus.SERVICE_UNAVAILABLE, 'SERVICE_UNAVAILABLE', message)
 }
 
 export interface ErrorResponseBody {

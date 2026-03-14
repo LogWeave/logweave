@@ -4,13 +4,16 @@ import express from 'express'
 import pino from 'pino'
 import request from 'supertest'
 import { AppError } from '../src/errors.js'
+import { HttpStatus } from '../src/http-status.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
 
 const silentLogger = pino({ level: 'silent' })
 
 function createTestApp(routeHandler: express.RequestHandler): express.Express {
   const app = express()
+  app.use(express.json())
   app.get('/test', routeHandler)
+  app.post('/test', routeHandler)
   app.use(createErrorHandler(silentLogger))
   return app
 }
@@ -51,6 +54,20 @@ describe('error handler', () => {
 
     assert.equal(res.body.error.message, 'Internal server error')
     assert.ok(!JSON.stringify(res.body).includes('secret'))
+  })
+
+  it('returns 400 BAD_REQUEST for malformed JSON body', async () => {
+    const app = createTestApp((_req, res) => {
+      res.json({ ok: true })
+    })
+
+    const res = await request(app)
+      .post('/test')
+      .set('content-type', 'application/json')
+      .send('{ invalid json }')
+
+    assert.equal(res.status, HttpStatus.BAD_REQUEST)
+    assert.equal(res.body.error.code, 'BAD_REQUEST')
   })
 
   it('returns 404 for unknown routes via catch-all', async () => {

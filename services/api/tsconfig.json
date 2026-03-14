@@ -13,8 +13,12 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "allowUnreachableCode": true,
-    "noUnusedParameters": true
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]
