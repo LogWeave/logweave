@@ -15,7 +15,7 @@ export class DbClient {
     await this.client.insert(params)
   }
 
-  async command(params: { query: string }): Promise<void> {
+  async command(params: { query: string; query_params?: Record<string, unknown> }): Promise<void> {
     await this.client.command(params)
   }
 
