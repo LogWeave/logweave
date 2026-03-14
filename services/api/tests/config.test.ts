@@ -1,5 +1,5 @@
-import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
+import { beforeEach, describe, it } from 'node:test'
 
 describe('loadConfig', () => {
   const validEnv = {
@@ -21,18 +21,24 @@ describe('loadConfig', () => {
     process.env.LOGWEAVE_CLUSTERER_URL = validEnv.LOGWEAVE_CLUSTERER_URL
 
     const { loadConfig } = await import('../src/config.js')
-    assert.throws(() => loadConfig(), (err: unknown) => {
-      return err instanceof Error && err.message.includes('clickhouseUrl')
-    })
+    assert.throws(
+      () => loadConfig(),
+      (err: unknown) => {
+        return err instanceof Error && err.message.includes('clickhouseUrl')
+      },
+    )
   })
 
   it('throws when LOGWEAVE_CLUSTERER_URL is missing', async () => {
     process.env.LOGWEAVE_CLICKHOUSE_URL = validEnv.LOGWEAVE_CLICKHOUSE_URL
 
     const { loadConfig } = await import('../src/config.js')
-    assert.throws(() => loadConfig(), (err: unknown) => {
-      return err instanceof Error && err.message.includes('clustererUrl')
-    })
+    assert.throws(
+      () => loadConfig(),
+      (err: unknown) => {
+        return err instanceof Error && err.message.includes('clustererUrl')
+      },
+    )
   })
 
   it('produces correct config with valid env vars', async () => {

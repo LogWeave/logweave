@@ -5,9 +5,7 @@ const configSchema = z.object({
   clickhouseUrl: z.string().min(1),
   clustererUrl: z.string().min(1),
   clustererTimeoutMs: z.coerce.number().int().min(50).max(30_000).default(500),
-  logLevel: z
-    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
-    .default('info'),
+  logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   shutdownTimeoutMs: z.coerce.number().int().min(1000).max(30_000).default(10_000),
 })
 

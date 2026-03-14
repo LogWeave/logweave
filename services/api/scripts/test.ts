@@ -1,5 +1,5 @@
-import { globSync } from 'node:fs'
 import { execSync } from 'node:child_process'
+import { globSync } from 'node:fs'
 
 const files = globSync('tests/**/*.test.ts')
 if (files.length === 0) {
