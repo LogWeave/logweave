@@ -4,11 +4,13 @@ import { ClustererHealthChecker } from './clients/clusterer.js'
 import { loadConfig } from './config.js'
 import { initSchema } from './db/schema.js'
 import { createLogger } from './logger.js'
+import { ClusterClient } from './pipeline/cluster-client.js'
 
 const config = loadConfig()
 const logger = createLogger(config.logLevel)
 const clickhouse = createClickHouseClient(config.clickhouseUrl)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)
+const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTimeoutMs, logger)
 
 try {
   await initSchema(clickhouse, logger)
@@ -17,7 +19,7 @@ try {
   process.exit(1)
 }
 
-const app = createApp({ config, logger, clickhouse, clustererHealth })
+const app = createApp({ config, logger, clickhouse, clustererHealth, clusterClient })
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'API server started')
