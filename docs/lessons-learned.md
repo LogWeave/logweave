@@ -130,3 +130,49 @@ the JSON wrapper.
 `ALTER USER default SETTINGS ...` fails on Docker ClickHouse because the default user
 is defined in XML config (readonly storage). The guardrails must be best-effort (catch
 and log, don't crash). For production, use per-query `clickhouse_settings` instead.
+
+### 2026-03-14 — Worktree agents leave artifacts behind
+
+Subagent running in an isolated worktree completed successfully but left the worktree
+directory (`.claude/worktrees/agent-*`) and a tracking branch (`worktree-agent-*`) behind.
+Had to manually `rm -rf` the directory, `git worktree prune`, and `git branch -D` the
+stale branch. Additionally, the worktree branched from an older commit (pre-#16), requiring
+a rebase with lockfile conflicts.
+
+Fix: After a worktree agent completes, immediately clean up: remove worktree dir, prune,
+delete tracking branch. For lockfile conflicts, run `pnpm install` then `git add pnpm-lock.yaml`
+during rebase.
+
+### 2026-03-14 — Descope during planning, not during review
+
+Issue #17 specified full graduated threshold anomaly scoring (rolling windows, 10x/3x
+thresholds). During plan review, the reviewer correctly identified this as Week 2 scope
+(PLAN.md line 1113). The plan stubbed it as `anomalyScore = 0`, but the issue body was
+never updated to reflect the descoping. The implementation reviewer then flagged the
+same thing again — wasted review cycles.
+
+Fix: When a plan explicitly defers something from the issue scope, update the issue
+comment immediately documenting what was descoped and why. Don't leave the acceptance
+criteria contradicting the implementation.
+
+### 2026-03-14 — Cross-check every acceptance criterion before committing
+
+Issue #17's acceptance criteria explicitly listed "413 on body > 1MB" with a test case
+"POST with oversized body returns 413". This was missed in the initial implementation
+and caught by the reviewer. The feature worked (express.json limit was configured), but
+the test was missing.
+
+Fix: Before the final commit on any issue, manually walk through every acceptance
+criterion line by line and verify each has a corresponding test. Don't rely on memory —
+re-read the issue body.
+
+### 2026-03-14 — API keys in config validation error messages
+
+The Zod config validation for LOGWEAVE_API_KEYS included the actual API key in the
+error message: `tenant_id for key "sk-live-abc123" must be a non-empty string`. This
+gets written to stderr/container logs on startup failure — exactly where keys should not
+appear.
+
+Fix: Never include secrets in error messages. Use generic messages like "All API key
+values must be non-empty tenant_id strings". This applies to any config field that
+contains secrets.
