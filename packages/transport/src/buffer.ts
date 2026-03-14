@@ -25,6 +25,7 @@ export class BufferManager {
   private active: LogEvent[] = []
   private timer: ReturnType<typeof setTimeout> | null = null
   private destroyed = false
+  private inflightFlush: Promise<void> | null = null
 
   private readonly bufferSize: number
   private readonly flushIntervalMs: number
@@ -52,20 +53,33 @@ export class BufferManager {
 
   /**
    * Swap the active buffer and flush the old one.
-   * Fire-and-forget: errors are caught internally.
+   * Capped at 1 concurrent flush — if one is in-flight, this call is skipped
+   * and events stay in the active buffer for the next timer tick.
    */
   triggerFlush(): void {
     if (this.active.length === 0) return
+    if (this.inflightFlush !== null) return
 
     // Synchronous swap — events pushed during async flush go to the new array
     const batch = this.active
     this.active = []
     this.resetTimer()
 
-    // Fire-and-forget — never let flush errors propagate
-    this.onFlush(batch).catch((err) => {
-      console.warn('[LogWeave] flush error:', err)
-    })
+    this.inflightFlush = this.onFlush(batch)
+      .catch((err) => {
+        console.warn('[LogWeave] flush error:', err)
+      })
+      .finally(() => {
+        this.inflightFlush = null
+      })
+  }
+
+  /**
+   * Returns a promise that resolves when any in-flight flush completes.
+   * Resolves immediately if no flush is in-flight.
+   */
+  awaitInflight(): Promise<void> {
+    return this.inflightFlush ?? Promise.resolve()
   }
 
   /**
