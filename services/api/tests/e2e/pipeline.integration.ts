@@ -58,6 +58,7 @@ function createTransport(apiKey: string, opts?: { bufferSize?: number }): LogWea
   })
 }
 
+// Test-only helper — `where` is always a hardcoded literal from callers below, never user input
 async function countRows(tenantId: string, where = ''): Promise<number> {
   const extra = where ? ` AND ${where}` : ''
   const result = await clickhouse.query({
@@ -106,7 +107,9 @@ describe('E2E pipeline (Docker Compose)', () => {
 
     await transport.closeAsync()
 
-    // Poll for events to arrive (fire-and-forget flushes may still be in-flight)
+    // Poll for events to arrive. BufferManager.triggerFlush() is fire-and-forget —
+    // closeAsync() only awaits the drain batch, not in-flight flushes. The 9500
+    // threshold (95%) accounts for any flushes still completing when we start polling.
     await pollUntil(
       async () => (await countRows(TENANT_A)) >= 9500,
       { intervalMs: 2000, timeoutMs: 30_000, label: '10K events ingested' },
@@ -185,19 +188,33 @@ describe('E2E pipeline (Docker Compose)', () => {
     const countB = await countRows(TENANT_B)
     assert.ok(countB >= 90, `Expected tenant B >= 90 rows, got ${countB}`)
 
-    // Tenant A query should not return any tenant B data
-    const crossCheck = await db.query<{ tenant_id: string }>({
-      query: `SELECT tenant_id FROM logweave.log_metadata WHERE tenant_id = {tenant_id:String} AND tenant_id = 'e2e-tenant-b' LIMIT 1`,
+    // Verify application-layer queries only return data for the requested tenant
+    const rowsA = await db.query<{ tenant_id: string }>({
+      query: `SELECT tenant_id FROM logweave.log_metadata WHERE tenant_id = {tenant_id:String} LIMIT 100`,
       query_params: { tenant_id: TENANT_A },
     })
-    assert.equal(crossCheck.length, 0, 'Tenant A query must not return tenant B data')
+    for (const row of rowsA) {
+      assert.equal(row.tenant_id, TENANT_A, 'Tenant A query returned wrong tenant data')
+    }
 
-    // Tenant B query should not return any tenant A data
-    const crossCheck2 = await db.query<{ tenant_id: string }>({
-      query: `SELECT tenant_id FROM logweave.log_metadata WHERE tenant_id = {tenant_id:String} AND tenant_id = 'e2e-tenant-a' LIMIT 1`,
+    const rowsB = await db.query<{ tenant_id: string }>({
+      query: `SELECT tenant_id FROM logweave.log_metadata WHERE tenant_id = {tenant_id:String} LIMIT 100`,
       query_params: { tenant_id: TENANT_B },
     })
-    assert.equal(crossCheck2.length, 0, 'Tenant B query must not return tenant A data')
+    for (const row of rowsB) {
+      assert.equal(row.tenant_id, TENANT_B, 'Tenant B query returned wrong tenant data')
+    }
+
+    // Also verify via application query functions (template_stats, service_stats)
+    await db.command({ query: 'OPTIMIZE TABLE logweave.template_stats FINAL' })
+    const statsA = (await queryTemplateStats(db, TENANT_A)) as Array<{ tenant_id: string }>
+    for (const row of statsA) {
+      assert.equal(row.tenant_id, TENANT_A, 'queryTemplateStats(A) returned tenant B data')
+    }
+    const statsB = (await queryTemplateStats(db, TENANT_B)) as Array<{ tenant_id: string }>
+    for (const row of statsB) {
+      assert.equal(row.tenant_id, TENANT_B, 'queryTemplateStats(B) returned tenant A data')
+    }
   })
 
   // -- Degradation path --
@@ -240,6 +257,7 @@ describe('E2E pipeline (Docker Compose)', () => {
   it('recovery sweep reconciles unclustered rows after clusterer restart', async (t) => {
     if (!reachable) { t.skip('Docker Compose not running'); return }
 
+    const totalBefore = await countRows(TENANT_A)
     const unclusteredBefore = await countRows(TENANT_A, "template_id = '0'")
     assert.ok(unclusteredBefore > 0, 'Expected unclustered rows before recovery')
 
@@ -255,6 +273,10 @@ describe('E2E pipeline (Docker Compose)', () => {
 
     const unclusteredAfter = await countRows(TENANT_A, "template_id = '0'")
     assert.equal(unclusteredAfter, 0, 'All unclustered rows should be recovered')
+
+    // Verify rows were re-inserted (not just deleted) — total count should not decrease
+    const totalAfter = await countRows(TENANT_A)
+    assert.ok(totalAfter >= totalBefore, `Recovery should re-INSERT, not just DELETE (before=${totalBefore}, after=${totalAfter})`)
   })
 
   it('recovered templates appear in template_stats MV', async (t) => {
@@ -303,7 +325,7 @@ describe('E2E pipeline (Docker Compose)', () => {
       const explain = await explainQuery(db, q.query, { tenant_id: TENANT_A })
       const output = JSON.stringify(explain)
       assert.ok(
-        output.includes('PrimaryKey') || output.includes('KeyCondition') || output.includes('tenant_id'),
+        output.includes('PrimaryKey') || output.includes('KeyCondition'),
         `EXPLAIN for ${q.name} should show index usage. Got: ${output.slice(0, 500)}`,
       )
     }
