@@ -224,6 +224,52 @@ describe('LogWeaveTransport', () => {
     assert.ok(droppedBatches[0]!.error instanceof Error)
   })
 
+  it('closeAsync awaits in-flight flush before draining', async () => {
+    let flushCount = 0
+    let resolveFirstFlush: (() => void) | undefined
+    const flushedBatches: unknown[][] = []
+
+    const slowFetch: typeof globalThis.fetch = async (_url, init) => {
+      flushCount++
+      if (flushCount === 1) {
+        await new Promise<void>((r) => {
+          resolveFirstFlush = r
+        })
+      }
+      const body = JSON.parse(init?.body as string)
+      flushedBatches.push(body.events)
+      return new Response(null, { status: 200 })
+    }
+
+    transport = new LogWeaveTransport({
+      apiKey: 'test-key',
+      service: 'test-service',
+      bufferSize: 2,
+      flushIntervalMs: 60_000,
+      fetch: slowFetch,
+    })
+
+    // Push 2 events to trigger auto-flush (in-flight)
+    transport.log({ level: 'info', message: 'batch-1-a', [Symbol.for('level')]: 'info' }, () => {})
+    transport.log({ level: 'info', message: 'batch-1-b', [Symbol.for('level')]: 'info' }, () => {})
+
+    // Push 1 more into fresh buffer (not yet flushed)
+    transport.log({ level: 'info', message: 'batch-2-a', [Symbol.for('level')]: 'info' }, () => {})
+
+    // Start closeAsync — should wait for in-flight, then flush remaining
+    const closePromise = transport.closeAsync()
+    transport = undefined // prevent double-close in afterEach
+
+    // Release first flush after short delay
+    setTimeout(() => resolveFirstFlush!(), 50)
+
+    await closePromise
+
+    assert.equal(flushedBatches.length, 2, 'should flush both in-flight and remaining')
+    assert.equal(flushedBatches[0]!.length, 2, 'first batch (in-flight) should have 2 events')
+    assert.equal(flushedBatches[1]!.length, 1, 'second batch (drain) should have 1 event')
+  })
+
   it('does not call onDrop when batch succeeds', async () => {
     let dropCalled = false
     const mock = mockFetch(200)
