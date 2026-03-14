@@ -2,9 +2,11 @@ import { createApp } from './app.js'
 import { createClickHouseClient } from './clients/clickhouse.js'
 import { ClustererHealthChecker } from './clients/clusterer.js'
 import { loadConfig } from './config.js'
+import { DbClient } from './db/client.js'
 import { initSchema } from './db/schema.js'
 import { createLogger } from './logger.js'
 import { ClusterClient } from './pipeline/cluster-client.js'
+import { RecoverySweep } from './recovery/reconcile.js'
 
 const config = loadConfig()
 const logger = createLogger(config.logLevel)
@@ -20,9 +22,23 @@ try {
 }
 
 const app = createApp({ config, logger, clickhouse, clustererHealth, clusterClient })
+const db = new DbClient(clickhouse)
+
+const recovery = new RecoverySweep(
+  { db, clickhouse, clusterClient, clustererHealth, logger },
+  { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
+)
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'API server started')
+
+  recovery.runStartupReconciliation().then((count) => {
+    if (count > 0) logger.info({ count }, 'Startup reconciliation completed')
+  }).catch((err) => {
+    logger.error({ err }, 'Startup reconciliation failed')
+  })
+
+  recovery.start()
 })
 
 let shuttingDown = false
@@ -39,6 +55,10 @@ async function shutdown(signal: string): Promise<void> {
     process.exit(1)
   }, config.shutdownTimeoutMs)
   forceTimer.unref()
+
+  // Stop recovery sweep before closing connections
+  await recovery.stop()
+  logger.info('Recovery sweep stopped')
 
   // Stop accepting new connections and drain in-flight requests
   server.close(async () => {
