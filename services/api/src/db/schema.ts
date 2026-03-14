@@ -30,7 +30,7 @@ const DDL_STATEMENTS = [
   ) ENGINE = MergeTree()
   PARTITION BY toYYYYMM(timestamp)
   ORDER BY (tenant_id, service, timestamp, level)
-  TTL timestamp + toIntervalDay(30) DELETE
+  TTL toDateTime(timestamp) + toIntervalDay(30) DELETE
   SETTINGS
       index_granularity = 8192,
       ttl_only_drop_parts = 1`,
@@ -49,7 +49,7 @@ const DDL_STATEMENTS = [
   ) ENGINE = AggregatingMergeTree()
   PARTITION BY toYYYYMM(interval_start)
   ORDER BY (tenant_id, service, template_id, interval_start)
-  TTL interval_start + toIntervalDay(30) DELETE
+  TTL toDateTime(interval_start) + toIntervalDay(30) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
 
   // 4. Template stats MV — excludes unclustered rows
@@ -80,7 +80,7 @@ const DDL_STATEMENTS = [
   ) ENGINE = AggregatingMergeTree()
   PARTITION BY toYYYYMM(interval_start)
   ORDER BY (tenant_id, service, interval_start)
-  TTL interval_start + toIntervalDay(30) DELETE
+  TTL toDateTime(interval_start) + toIntervalDay(30) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
 
   // 6. Service stats MV — all rows including unclustered
