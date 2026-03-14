@@ -48,3 +48,6 @@ htmlcov/
 # Experiment outputs (generated data, results, temp files)
 experiments/**/data/
 experiments/**/results/
+
+# Session prompts and scratch docs
+docs/prompts/
