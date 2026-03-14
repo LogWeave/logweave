@@ -39,6 +39,19 @@ export function createApp(deps: AppDependencies): express.Express {
       const header = req.headers['x-request-id']
       return (Array.isArray(header) ? header[0] : header) ?? 'unknown'
     },
+    serializers: {
+      req(req) {
+        return {
+          id: req.id,
+          method: req.method,
+          url: req.url,
+          headers: {
+            ...req.raw?.headers,
+            authorization: req.raw?.headers?.authorization ? '[REDACTED]' : undefined,
+          },
+        }
+      },
+    },
   }
   app.use(pinoHttp(httpLoggerOpts))
 
