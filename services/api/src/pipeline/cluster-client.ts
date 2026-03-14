@@ -78,11 +78,31 @@ export class ClusterClient {
         return this.fallback(messages.length)
       }
 
-      const body = (await response.json()) as unknown
+      let body: unknown
+      try {
+        body = await response.json()
+      } catch {
+        this.logger.warn(
+          { tenantId, url: this.url },
+          'Clusterer returned non-JSON response body',
+        )
+        this.failures++
+        return this.fallback(messages.length)
+      }
+
       if (!this.isValidResponse(body)) {
         this.logger.warn(
           { tenantId, url: this.url },
           'Clusterer returned malformed response body',
+        )
+        this.failures++
+        return this.fallback(messages.length)
+      }
+
+      if (body.results.length !== messages.length) {
+        this.logger.warn(
+          { tenantId, url: this.url, expected: messages.length, got: body.results.length },
+          'Clusterer returned mismatched result count',
         )
         this.failures++
         return this.fallback(messages.length)
@@ -96,7 +116,8 @@ export class ClusterClient {
       }))
     } catch (err) {
       const isTimeout =
-        err instanceof DOMException && err.name === 'AbortError'
+        err instanceof DOMException &&
+        (err.name === 'TimeoutError' || err.name === 'AbortError')
       this.logger.warn(
         { tenantId, url: this.url, err, isTimeout },
         isTimeout ? 'Clusterer request timed out' : 'Clusterer request failed',
@@ -113,6 +134,14 @@ export class ClusterClient {
   private isValidResponse(body: unknown): body is ClustererResponse {
     if (typeof body !== 'object' || body === null) return false
     const obj = body as Record<string, unknown>
-    return Array.isArray(obj.results)
+    if (!Array.isArray(obj.results)) return false
+    return obj.results.every(
+      (r: unknown) =>
+        typeof r === 'object' &&
+        r !== null &&
+        typeof (r as Record<string, unknown>).template_id === 'string' &&
+        typeof (r as Record<string, unknown>).template_text === 'string' &&
+        typeof (r as Record<string, unknown>).is_new === 'boolean',
+    )
   }
 }

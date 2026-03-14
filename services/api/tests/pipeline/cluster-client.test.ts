@@ -183,6 +183,76 @@ describe('ClusterClient', () => {
     assert.equal(results[0]?.templateId, '0')
   })
 
+  it('returns fallback on 200 with malformed result items', async () => {
+    const { logger } = createTestLogger()
+    const badItems = { results: [{ garbage: true }, null, 42] }
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, badItems))
+
+    const results = await client.cluster('tenant-a', ['msg'])
+
+    assert.equal(results.length, 1)
+    assert.equal(results[0]?.templateId, '0')
+  })
+
+  it('returns fallback on 200 with non-JSON body', async () => {
+    const { logger } = createTestLogger()
+    const htmlFetch: typeof globalThis.fetch = async () => {
+      return new Response('<html>502 Bad Gateway</html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+      })
+    }
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, htmlFetch)
+
+    const results = await client.cluster('tenant-a', ['msg'])
+
+    assert.equal(results.length, 1)
+    assert.equal(results[0]?.templateId, '0')
+  })
+
+  it('returns fallback on result count mismatch', async () => {
+    const { logger } = createTestLogger()
+    const mismatch = {
+      results: [
+        { template_id: 'id-1', template_text: 'tpl', is_new: false },
+      ],
+    }
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, mismatch))
+
+    // Send 3 messages but clusterer returns 1 result
+    const results = await client.cluster('tenant-a', ['msg1', 'msg2', 'msg3'])
+
+    assert.equal(results.length, 3)
+    assert.equal(results[0]?.templateId, '0')
+  })
+
+  it('times out on slow response with real AbortSignal.timeout', async () => {
+    const { logger } = createTestLogger()
+    const slowFetch: typeof globalThis.fetch = async (_url, init) => {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve(new Response(JSON.stringify(CLUSTERER_RESPONSE), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }))
+        }, 2000)
+        init?.signal?.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(init.signal?.reason)
+        })
+      })
+    }
+    // 50ms timeout so the test runs fast
+    const client = new ClusterClient(CLUSTERER_URL, 50, logger, slowFetch)
+
+    const start = Date.now()
+    const results = await client.cluster('tenant-a', ['msg'])
+    const elapsed = Date.now() - start
+
+    assert.equal(results[0]?.templateId, '0')
+    assert.ok(elapsed < 200, `Expected timeout around 50ms, got ${elapsed}ms`)
+  })
+
   // -- Health tracking --
 
   it('increments consecutiveFailures on each failure', async () => {
