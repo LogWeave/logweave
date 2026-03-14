@@ -35,8 +35,10 @@ export class LogWeaveTransport extends TransportStream {
   private readonly timeoutMs: number
   private readonly maxRetries: number
   private readonly fetchFn: typeof globalThis.fetch
+  private readonly onDrop: ((events: readonly LogEvent[], error: Error) => void) | undefined
   private readonly buffer: BufferManager
   private closeController: AbortController | null = null
+  private closing = false
 
   constructor(opts: TransportOptions) {
     super(opts as never)
@@ -55,6 +57,7 @@ export class LogWeaveTransport extends TransportStream {
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.maxRetries = opts.maxRetries ?? DEFAULT_MAX_RETRIES
     this.fetchFn = opts.fetch ?? globalThis.fetch
+    this.onDrop = opts.onDrop
 
     // Warn if using default endpoint in production
     if (
@@ -120,7 +123,7 @@ export class LogWeaveTransport extends TransportStream {
       events,
     }
 
-    await retryFetch(
+    const response = await retryFetch(
       this.endpoint,
       {
         method: 'POST',
@@ -137,33 +140,52 @@ export class LogWeaveTransport extends TransportStream {
         signal: this.closeController?.signal,
       },
     )
+
+    if (response === null && this.onDrop && !this.closeController?.signal.aborted) {
+      try {
+        this.onDrop(events, new Error(`[LogWeave] batch of ${events.length} events dropped`))
+      } catch {
+        // onDrop must never throw back into the transport
+      }
+    }
   }
 
   /**
    * Flush remaining events and shut down.
-   * Times out after 2s if the flush hangs.
+   * Awaits any in-flight flush, then drains and sends remaining buffer.
+   * Times out after 2s if the whole sequence hangs.
    * Aborts any inflight retries via AbortController.
    */
   async closeAsync(): Promise<void> {
+    if (this.closing) return
+    this.closing = true
+
     this.closeController = new AbortController()
 
-    const remaining = this.buffer.drain()
-    this.buffer.destroy()
-
-    if (remaining.length === 0) {
-      return
-    }
-
-    const flushPromise = this.sendBatch(remaining)
-    const timeoutPromise = new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        this.closeController?.abort()
-        resolve()
-      }, CLOSE_TIMEOUT_MS)
+    const timeout = new Promise<'timeout'>((resolve) => {
+      const timer = setTimeout(() => resolve('timeout'), CLOSE_TIMEOUT_MS)
       timer.unref()
     })
 
-    await Promise.race([flushPromise, timeoutPromise])
+    const doClose = async (): Promise<'done'> => {
+      // 1. Await any in-flight flush from triggerFlush()
+      await this.buffer.awaitInflight()
+
+      // 2. Drain remaining buffer and send final batch
+      const remaining = this.buffer.drain()
+      this.buffer.destroy()
+
+      if (remaining.length > 0) {
+        await this.sendBatch(remaining)
+      }
+      return 'done'
+    }
+
+    const result = await Promise.race([doClose().catch(() => 'error' as const), timeout])
+    if (result === 'timeout') {
+      this.closeController.abort()
+      this.buffer.destroy()
+    }
   }
 
   /**

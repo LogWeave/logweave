@@ -124,6 +124,79 @@ describe('BufferManager', () => {
     assert.ok(buffer, 'buffer should be created')
   })
 
+  it('skips triggerFlush when another flush is already in-flight', async () => {
+    let flushCount = 0
+    let resolveFirstFlush: (() => void) | undefined
+
+    const firstFlushStarted = new Promise<void>((resolve) => {
+      buffer = new BufferManager({
+        bufferSize: 100,
+        flushIntervalMs: 60_000,
+        onFlush: async () => {
+          flushCount++
+          if (flushCount === 1) {
+            resolve()
+            await new Promise<void>((r) => {
+              resolveFirstFlush = r
+            })
+          }
+        },
+      })
+    })
+
+    // Push events and trigger first flush
+    buffer!.push(makeEvent(0))
+    buffer!.push(makeEvent(1))
+    buffer!.triggerFlush()
+
+    await firstFlushStarted
+
+    // While first flush is in-flight, push more and trigger again
+    buffer!.push(makeEvent(2))
+    buffer!.push(makeEvent(3))
+    buffer!.triggerFlush() // Should be SKIPPED
+
+    // Release first flush
+    resolveFirstFlush!()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    assert.equal(flushCount, 1, 'second triggerFlush should be skipped while first is in-flight')
+
+    // Events from skipped flush should still be in the buffer
+    const remaining = buffer!.drain()
+    assert.equal(remaining.length, 2, 'events from skipped flush should remain in buffer')
+  })
+
+  it('awaitInflight resolves after in-flight flush completes', async () => {
+    let resolveFlush: (() => void) | undefined
+
+    buffer = new BufferManager({
+      bufferSize: 100,
+      flushIntervalMs: 60_000,
+      onFlush: async () => {
+        await new Promise<void>((r) => {
+          resolveFlush = r
+        })
+      },
+    })
+
+    buffer.push(makeEvent(0))
+    buffer.triggerFlush()
+
+    // awaitInflight should be pending
+    let resolved = false
+    const awaiting = buffer.awaitInflight().then(() => {
+      resolved = true
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(resolved, false, 'should not resolve while flush is in-flight')
+
+    resolveFlush!()
+    await awaiting
+    assert.equal(resolved, true, 'should resolve after flush completes')
+  })
+
   it('drain() returns remaining events and clears the buffer', async () => {
     const onFlush = mock.fn(async (_events: readonly LogEvent[]) => {})
 
