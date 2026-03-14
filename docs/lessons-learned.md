@@ -52,3 +52,13 @@ Fixes applied:
 - Added "Renames get their own commit" rule to CLAUDE.md
 - Added verification requirement to reviewer.md (must run tests, not just read code)
 - Added Multi-Agent Review Protocol to CLAUDE.md (verify findings before reporting)
+
+### 2026-03-14 — Trusted empty gh milestone query without fallback
+
+`gh issue list --milestone "Week 1b"` returned empty because the full milestone title is
+`Week 1b — API Server + Transport` and `--milestone` requires an exact match. Instead of
+falling back to `gh issue list` (no filter) to see what actually exists, I declared there
+were no issues and proposed re-scoping — wasting the user's time and contradicting what
+they could plainly see.
+Fix: When a filtered query returns empty, always verify with an unfiltered query before
+concluding data doesn't exist. Don't trust absence of results as absence of data.
