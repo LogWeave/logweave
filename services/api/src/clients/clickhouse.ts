@@ -1,7 +1,7 @@
 import { type ClickHouseClient, createClient } from '@clickhouse/client'
 
 export function createClickHouseClient(url: string): ClickHouseClient {
-  return createClient({ url })
+  return createClient({ url, database: 'logweave' })
 }
 
 export async function pingClickHouse(client: ClickHouseClient): Promise<boolean> {
