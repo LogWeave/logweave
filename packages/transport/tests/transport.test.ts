@@ -24,12 +24,9 @@ describe('LogWeaveTransport', () => {
     })
 
     let callbackCalled = false
-    transport.log(
-      { level: 'info', message: 'hello world', [Symbol.for('level')]: 'info' },
-      () => {
-        callbackCalled = true
-      },
-    )
+    transport.log({ level: 'info', message: 'hello world', [Symbol.for('level')]: 'info' }, () => {
+      callbackCalled = true
+    })
 
     // Callback must have been called synchronously (before any async work)
     assert.equal(callbackCalled, true, 'callback must be called synchronously')
@@ -46,14 +43,8 @@ describe('LogWeaveTransport', () => {
     })
 
     // Push some events (below buffer capacity, so no auto-flush)
-    transport.log(
-      { level: 'info', message: 'event 1', [Symbol.for('level')]: 'info' },
-      () => {},
-    )
-    transport.log(
-      { level: 'warn', message: 'event 2', [Symbol.for('level')]: 'warn' },
-      () => {},
-    )
+    transport.log({ level: 'info', message: 'event 1', [Symbol.for('level')]: 'info' }, () => {})
+    transport.log({ level: 'warn', message: 'event 2', [Symbol.for('level')]: 'warn' }, () => {})
 
     await transport.closeAsync()
     transport = undefined // prevent double-close in afterEach
@@ -76,10 +67,7 @@ describe('LogWeaveTransport', () => {
       fetch: neverResolve,
     })
 
-    transport.log(
-      { level: 'info', message: 'will hang', [Symbol.for('level')]: 'info' },
-      () => {},
-    )
+    transport.log({ level: 'info', message: 'will hang', [Symbol.for('level')]: 'info' }, () => {})
 
     const start = Date.now()
     await transport.closeAsync()
@@ -103,11 +91,6 @@ describe('LogWeaveTransport', () => {
 
     // Wait for the flush to complete after pushing 2 events
     const flushed = new Promise<void>((resolve) => {
-      const originalLength = Object.getOwnPropertyDescriptor(
-        mock.calls,
-        'length',
-      )
-      // Poll briefly for the flush
       const check = setInterval(() => {
         if (mock.calls.length > 0) {
           clearInterval(check)
@@ -180,24 +163,17 @@ describe('LogWeaveTransport', () => {
       check.unref()
     })
 
-    transport.log(
-      { level: 'info', message: 'test', [Symbol.for('level')]: 'info' },
-      () => {},
-    )
+    transport.log({ level: 'info', message: 'test', [Symbol.for('level')]: 'info' }, () => {})
 
     await flushed
 
     const headers = mock.calls[0]!.init?.headers as Record<string, string>
     assert.equal(
-      headers['Authorization'],
+      headers.Authorization,
       'Bearer my-secret-key-123',
       'should send API key as Bearer token',
     )
-    assert.equal(
-      headers['Content-Type'],
-      'application/json',
-      'should set content type to JSON',
-    )
+    assert.equal(headers['Content-Type'], 'application/json', 'should set content type to JSON')
   })
 
   it('throws if apiKey is missing', () => {

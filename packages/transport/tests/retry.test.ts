@@ -12,12 +12,16 @@ describe('retryFetch', () => {
       { status: 200 },
     ])
 
-    const result = await retryFetch('http://test/v1/ingest/batch', { method: 'POST' }, {
-      maxRetries: 3,
-      timeoutMs: 2000,
-      fetchFn: mock.fetch,
-      sleepFn: immediateSleep,
-    })
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      {
+        maxRetries: 3,
+        timeoutMs: 2000,
+        fetchFn: mock.fetch,
+        sleepFn: immediateSleep,
+      },
+    )
 
     assert.equal(mock.calls.length, 4, 'should make 4 total attempts (1 initial + 3 retries)')
     assert.notEqual(result, null, 'should return the successful response')
@@ -33,12 +37,16 @@ describe('retryFetch', () => {
     }
 
     try {
-      const result = await retryFetch('http://test/v1/ingest/batch', { method: 'POST' }, {
-        maxRetries: 3,
-        timeoutMs: 2000,
-        fetchFn: mock.fetch,
-        sleepFn: immediateSleep,
-      })
+      const result = await retryFetch(
+        'http://test/v1/ingest/batch',
+        { method: 'POST' },
+        {
+          maxRetries: 3,
+          timeoutMs: 2000,
+          fetchFn: mock.fetch,
+          sleepFn: immediateSleep,
+        },
+      )
 
       assert.equal(mock.calls.length, 1, 'should NOT retry on 4xx')
       assert.equal(result, null, 'should return null on 4xx')
@@ -61,12 +69,16 @@ describe('retryFetch', () => {
     }
 
     try {
-      const result = await retryFetch('http://test/v1/ingest/batch', { method: 'POST' }, {
-        maxRetries: 3,
-        timeoutMs: 2000,
-        fetchFn: mock.fetch,
-        sleepFn: immediateSleep,
-      })
+      const result = await retryFetch(
+        'http://test/v1/ingest/batch',
+        { method: 'POST' },
+        {
+          maxRetries: 3,
+          timeoutMs: 2000,
+          fetchFn: mock.fetch,
+          sleepFn: immediateSleep,
+        },
+      )
 
       assert.equal(mock.calls.length, 4, 'should make 4 total attempts (1 initial + 3 retries)')
       assert.equal(result, null, 'should return null after exhausting retries')
@@ -91,12 +103,16 @@ describe('retryFetch', () => {
       delays.push(ms)
     }
 
-    await retryFetch('http://test/v1/ingest/batch', { method: 'POST' }, {
-      maxRetries: 3,
-      timeoutMs: 2000,
-      fetchFn: mock.fetch,
-      sleepFn: trackingSleep,
-    })
+    await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      {
+        maxRetries: 3,
+        timeoutMs: 2000,
+        fetchFn: mock.fetch,
+        sleepFn: trackingSleep,
+      },
+    )
 
     assert.equal(delays.length, 3, 'should sleep 3 times (before each retry)')
     // With jitter, each delay should be between 0 and (1000 * 2^attempt)
@@ -114,13 +130,17 @@ describe('retryFetch', () => {
       controller.abort()
     }
 
-    const result = await retryFetch('http://test/v1/ingest/batch', { method: 'POST' }, {
-      maxRetries: 3,
-      timeoutMs: 2000,
-      fetchFn: mock.fetch,
-      sleepFn,
-      signal: controller.signal,
-    })
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      {
+        maxRetries: 3,
+        timeoutMs: 2000,
+        fetchFn: mock.fetch,
+        sleepFn,
+        signal: controller.signal,
+      },
+    )
 
     assert.ok(mock.calls.length < 4, 'should stop retrying when aborted')
     assert.equal(result, null, 'should return null when aborted')

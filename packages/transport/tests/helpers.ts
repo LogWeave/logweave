@@ -13,7 +13,10 @@ interface MockFetchCall {
  * Creates a mock fetch that always returns the same response.
  * Tracks all calls for assertion.
  */
-export function mockFetch(status: number, body?: unknown): { fetch: FetchFn; calls: MockFetchCall[] } {
+export function mockFetch(
+  status: number,
+  body?: unknown,
+): { fetch: FetchFn; calls: MockFetchCall[] } {
   const calls: MockFetchCall[] = []
   const fetch: FetchFn = async (url, init) => {
     calls.push({ url: url as string | URL | Request, init })
@@ -26,9 +29,10 @@ export function mockFetch(status: number, body?: unknown): { fetch: FetchFn; cal
  * Creates a mock fetch that returns different responses in sequence.
  * After the sequence is exhausted, returns the last response.
  */
-export function mockFetchSequence(
-  responses: Array<{ status: number; body?: unknown }>,
-): { fetch: FetchFn; calls: MockFetchCall[] } {
+export function mockFetchSequence(responses: Array<{ status: number; body?: unknown }>): {
+  fetch: FetchFn
+  calls: MockFetchCall[]
+} {
   const calls: MockFetchCall[] = []
   let index = 0
   const fetch: FetchFn = async (url, init) => {

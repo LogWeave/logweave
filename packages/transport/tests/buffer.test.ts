@@ -98,7 +98,11 @@ describe('BufferManager', () => {
     await allFlushed
     assert.equal(flushed.length, 2, 'should have 2 separate flushes')
     assert.equal(flushed[0]!.length, 3, 'first flush should have 3 events')
-    assert.equal(flushed[1]!.length, 3, 'second flush should have 3 events (added during first flush)')
+    assert.equal(
+      flushed[1]!.length,
+      3,
+      'second flush should have 3 events (added during first flush)',
+    )
   })
 
   it('timer uses unref so it does not hold the process open', () => {

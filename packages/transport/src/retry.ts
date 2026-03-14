@@ -69,9 +69,7 @@ export async function retryFetch(
       const timeoutSignal = AbortSignal.timeout(timeoutMs)
 
       // Combine timeout signal with the caller's abort signal
-      const combinedSignal = signal
-        ? AbortSignal.any([timeoutSignal, signal])
-        : timeoutSignal
+      const combinedSignal = signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal
 
       const response = await fetchFn(url, {
         ...init,
@@ -85,30 +83,20 @@ export async function retryFetch(
 
       // 4xx — client error, do not retry
       if (response.status >= 400 && response.status < 500) {
-        console.warn(
-          `[LogWeave] batch rejected with status ${response.status} — not retrying`,
-        )
+        console.warn(`[LogWeave] batch rejected with status ${response.status} — not retrying`)
         return null
       }
 
-      // 5xx — server error, retry if we have attempts left
-      if (attempt < totalAttempts - 1) {
-        continue
-      }
+      // 5xx — server error, will retry on next loop iteration
     } catch {
-      // Network error or timeout — retry if we have attempts left
+      // Network error or timeout — will retry on next loop iteration
       if (signal?.aborted) {
         return null
-      }
-      if (attempt < totalAttempts - 1) {
-        continue
       }
     }
   }
 
   // All retries exhausted
-  console.warn(
-    `[LogWeave] batch failed after ${totalAttempts} attempts — dropping batch`,
-  )
+  console.warn(`[LogWeave] batch failed after ${totalAttempts} attempts — dropping batch`)
   return null
 }

@@ -22,11 +22,6 @@ const DEFAULT_TIMEOUT_MS = 2000
 const DEFAULT_MAX_RETRIES = 3
 const CLOSE_TIMEOUT_MS = 2000
 
-/** Winston internal symbol for the raw level string */
-const LEVEL_SYMBOL = Symbol.for('level')
-/** Winston internal symbol for the splat args */
-const SPLAT_SYMBOL = Symbol.for('splat')
-
 /** Keys to exclude when extracting metadata from Winston info */
 const EXCLUDED_KEYS = new Set(['level', 'message', 'timestamp'])
 
