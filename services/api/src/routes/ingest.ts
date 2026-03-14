@@ -15,7 +15,7 @@ export interface IngestDeps {
 }
 
 const ingestBatchSchema = z.object({
-  events: z.array(z.record(z.unknown())).min(1).max(1000),
+  events: z.array(z.unknown()).min(1).max(1000),
   service: z.string().optional(),
   environment: z.string().optional(),
   neverExtract: z.array(z.string()).optional(),
