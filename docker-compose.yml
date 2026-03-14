@@ -1,7 +1,6 @@
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:24-alpine
-    profiles: [dev]
     ports:
       - "8123:8123"   # HTTP interface
       - "9000:9000"   # Native protocol
@@ -13,6 +12,47 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  clusterer:
+    build:
+      context: services/clusterer
+    ports:
+      - "8000:8000"
+    environment:
+      LOGWEAVE_CLICKHOUSE_URL: clickhouse://clickhouse:9000/logweave
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  api:
+    build:
+      context: services/api
+    ports:
+      - "3000:3000"
+    environment:
+      LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123
+      LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
+      LOGWEAVE_LOG_LEVEL: info
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      clusterer:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
 volumes:
   clickhouse_data:
