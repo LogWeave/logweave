@@ -35,6 +35,7 @@ export class LogWeaveTransport extends TransportStream {
   private readonly timeoutMs: number
   private readonly maxRetries: number
   private readonly fetchFn: typeof globalThis.fetch
+  private readonly onDrop: ((events: LogEvent[], error: Error) => void) | undefined
   private readonly buffer: BufferManager
   private closeController: AbortController | null = null
 
@@ -55,6 +56,7 @@ export class LogWeaveTransport extends TransportStream {
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.maxRetries = opts.maxRetries ?? DEFAULT_MAX_RETRIES
     this.fetchFn = opts.fetch ?? globalThis.fetch
+    this.onDrop = opts.onDrop
 
     // Warn if using default endpoint in production
     if (
@@ -120,7 +122,7 @@ export class LogWeaveTransport extends TransportStream {
       events,
     }
 
-    await retryFetch(
+    const response = await retryFetch(
       this.endpoint,
       {
         method: 'POST',
@@ -137,6 +139,17 @@ export class LogWeaveTransport extends TransportStream {
         signal: this.closeController?.signal,
       },
     )
+
+    if (response === null && this.onDrop) {
+      try {
+        this.onDrop(
+          events as LogEvent[],
+          new Error(`[LogWeave] batch of ${events.length} events dropped`),
+        )
+      } catch {
+        // onDrop must never throw back into the transport
+      }
+    }
   }
 
   /**
