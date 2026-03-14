@@ -38,7 +38,7 @@ function readField(
   keys: readonly string[],
 ): unknown {
   for (const key of keys) {
-    if (key in source) {
+    if (key in source && source[key] != null) {
       return source[key]
     }
   }

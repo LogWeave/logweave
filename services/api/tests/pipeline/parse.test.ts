@@ -104,6 +104,35 @@ describe('parseEvent', () => {
     assert.equal(result.event.route, '/users/:id')
   })
 
+  it('never_extract blocks nested fields via fields.X syntax', () => {
+    const raw = {
+      message: 'hello',
+      level: 'INFO',
+      fields: { status_code: 500, route: '/api' },
+    }
+    const result = parseEvent(raw, 0, {
+      neverExtract: new Set(['fields.status_code']),
+    })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    assert.equal(result.event.statusCode, undefined)
+    assert.equal(result.event.route, '/api')
+  })
+
+  it('treats null field values as missing', () => {
+    const raw = {
+      message: 'hello',
+      service: null,
+      level: 'INFO',
+      status_code: null,
+    }
+    const result = parseEvent(raw, 0, { service: 'fallback-svc' })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    assert.equal(result.event.service, 'fallback-svc')
+    assert.equal(result.event.statusCode, undefined)
+  })
+
   // -- Defensive edge cases --
 
   it('returns error for plain string input', () => {

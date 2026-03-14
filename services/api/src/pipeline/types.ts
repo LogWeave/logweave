@@ -101,6 +101,7 @@ export interface ProcessedEvent {
  * Defined here per issue scope but populated downstream by issue #16.
  */
 export interface EnrichedEvent extends ProcessedEvent {
+  /** UUIDv7 template identifier, or '0' for unclustered events. */
   templateId: string
   templateText: string
   isNewTemplate: boolean

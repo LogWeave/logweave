@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { preprocessMessage, PREPROCESSING_VERSION } from '../../src/pipeline/preprocess.js'
+import {
+  preprocessMessage,
+  processEvent,
+  PREPROCESSING_VERSION,
+} from '../../src/pipeline/preprocess.js'
+import type { ParsedEvent } from '../../src/pipeline/types.js'
 
 describe('preprocessMessage', () => {
   // -- Core patterns --
@@ -113,5 +118,40 @@ describe('preprocessMessage', () => {
 describe('PREPROCESSING_VERSION', () => {
   it('is 1 for current pattern set', () => {
     assert.equal(PREPROCESSING_VERSION, 1)
+  })
+})
+
+describe('processEvent', () => {
+  it('composes ParsedEvent into ProcessedEvent with preprocessing', () => {
+    const parsed: ParsedEvent = {
+      message: 'User 550e8400-e29b-41d4-a716-446655440000 logged in from 10.0.0.1',
+      service: 'auth',
+      level: 'INFO',
+      environment: 'prod',
+      statusCode: 200,
+    }
+    const result = processEvent(parsed)
+    assert.equal(result.preProcessedMessage, 'User <UUID> logged in from <IP>')
+    assert.equal(result.preprocessingVersion, 1)
+    assert.equal(result.service, 'auth')
+    assert.equal(result.level, 'INFO')
+    assert.equal(result.environment, 'prod')
+    assert.equal(result.statusCode, 200)
+  })
+
+  it('passes through all optional fields', () => {
+    const parsed: ParsedEvent = {
+      message: 'request handled',
+      service: 'api',
+      level: 'WARN',
+      environment: 'staging',
+      durationMs: 42.5,
+      traceId: 'abc-123',
+      route: '/users',
+    }
+    const result = processEvent(parsed)
+    assert.equal(result.durationMs, 42.5)
+    assert.equal(result.traceId, 'abc-123')
+    assert.equal(result.route, '/users')
   })
 })
