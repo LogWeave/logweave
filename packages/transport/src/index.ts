@@ -1,3 +1,3 @@
 // @logweave/transport — Winston transport for LogWeave
-// Placeholder — implementation follows in subsequent commits
-export {}
+export { LogWeaveTransport } from './transport.js'
+export type { BatchPayload, LogEvent, TransportOptions } from './types.js'
