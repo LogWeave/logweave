@@ -4,9 +4,29 @@ import pino from 'pino'
 import { batchInsert } from '../../src/db/insert.js'
 import { initSchema } from '../../src/db/schema.js'
 import type { LogMetadataRow } from '../../src/types.js'
-import { closeTestClient, getTestClient, testTenantId } from './helpers.js'
+import { closeTestClient, getTestClient, jsonRows, testTenantId } from './helpers.js'
 
 const logger = pino({ level: 'silent' })
+
+interface TemplateStatsRow {
+  template_id: string
+  cnt: string
+}
+
+interface AvgRow {
+  avg_dur: number
+}
+
+interface ErrorCountRow {
+  errs: string
+}
+
+interface ServiceStatsRow {
+  total: string
+  errs: string
+  warns: string
+  new_tmpls: string
+}
 
 function makeRow(tenantId: string, overrides?: Partial<LogMetadataRow>): LogMetadataRow {
   return {
@@ -41,13 +61,10 @@ describe('materialized views', () => {
     const tenant = testTenantId('mv-exclude')
 
     await batchInsert(client, [
-      // Clustered row — should appear in template_stats
       makeRow(tenant, { template_id: 'tmpl-real', template_text: 'Real template' }),
-      // Unclustered row — should NOT appear in template_stats
       makeRow(tenant, { template_id: '0', template_text: '' }),
     ])
 
-    // Force merge for deterministic results
     await client.command({ query: 'OPTIMIZE TABLE logweave.template_stats FINAL' })
 
     const result = await client.query({
@@ -58,18 +75,18 @@ describe('materialized views', () => {
               GROUP BY template_id`,
       query_params: { tenant_id: tenant },
     })
-    const rows = await result.json<{ template_id: string; cnt: string }>()
+    const rows = await jsonRows<TemplateStatsRow>(result)
 
     assert.equal(rows.length, 1, 'Only clustered rows should appear')
-    assert.equal(rows[0].template_id, 'tmpl-real')
-    assert.equal(rows[0].cnt, '1')
+    const first = rows[0]
+    assert.ok(first, 'Expected at least one row')
+    assert.equal(first.template_id, 'tmpl-real')
+    assert.equal(first.cnt, '1')
   })
 
   it('avgMerge produces correct results after OPTIMIZE', async () => {
     const tenant = testTenantId('mv-avg')
 
-    // Insert rows with known duration_ms values: 100, 200, 300
-    // Expected avg = 200
     await batchInsert(client, [
       makeRow(tenant, { duration_ms: 100 }),
       makeRow(tenant, { duration_ms: 200 }),
@@ -85,9 +102,11 @@ describe('materialized views', () => {
               GROUP BY tenant_id`,
       query_params: { tenant_id: tenant },
     })
-    const [{ avg_dur }] = await result.json<{ avg_dur: number }>()
+    const rows = await jsonRows<AvgRow>(result)
+    const first = rows[0]
+    assert.ok(first, 'Expected at least one row')
 
-    assert.ok(Math.abs(avg_dur - 200) < 0.01, `Expected avg_duration_ms ≈ 200, got ${avg_dur}`)
+    assert.ok(Math.abs(first.avg_dur - 200) < 0.01, `Expected avg ≈ 200, got ${first.avg_dur}`)
   })
 
   it('avgMerge produces correct results WITHOUT OPTIMIZE (production read path)', async () => {
@@ -98,7 +117,6 @@ describe('materialized views', () => {
       makeRow(tenant, { duration_ms: 150 }),
     ])
 
-    // No OPTIMIZE — this simulates the production read path
     const result = await client.query({
       query: `SELECT avgMerge(avg_duration_ms) AS avg_dur
               FROM logweave.template_stats
@@ -106,12 +124,11 @@ describe('materialized views', () => {
               GROUP BY tenant_id`,
       query_params: { tenant_id: tenant },
     })
-    const [{ avg_dur }] = await result.json<{ avg_dur: number }>()
+    const rows = await jsonRows<AvgRow>(result)
+    const first = rows[0]
+    assert.ok(first, 'Expected at least one row')
 
-    assert.ok(
-      Math.abs(avg_dur - 100) < 0.01,
-      `Expected avg_duration_ms ≈ 100 without OPTIMIZE, got ${avg_dur}`,
-    )
+    assert.ok(Math.abs(first.avg_dur - 100) < 0.01, `Expected avg ≈ 100, got ${first.avg_dur}`)
   })
 
   it('countIfMerge correctly counts ERROR rows in template_stats', async () => {
@@ -132,8 +149,10 @@ describe('materialized views', () => {
               GROUP BY tenant_id`,
       query_params: { tenant_id: tenant },
     })
-    const [{ errs }] = await result.json<{ errs: string }>()
-    assert.equal(errs, '2')
+    const rows = await jsonRows<ErrorCountRow>(result)
+    const first = rows[0]
+    assert.ok(first, 'Expected at least one row')
+    assert.equal(first.errs, '2')
   })
 
   it('service_stats MV counts all rows including unclustered', async () => {
@@ -158,12 +177,9 @@ describe('materialized views', () => {
               GROUP BY tenant_id`,
       query_params: { tenant_id: tenant },
     })
-    const [row] = await result.json<{
-      total: string
-      errs: string
-      warns: string
-      new_tmpls: string
-    }>()
+    const rows = await jsonRows<ServiceStatsRow>(result)
+    const row = rows[0]
+    assert.ok(row, 'Expected at least one row')
 
     assert.equal(row.total, '3', 'All 3 rows should be counted')
     assert.equal(row.errs, '1', '1 ERROR row')

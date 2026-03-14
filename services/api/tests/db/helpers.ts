@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import type { ClickHouseClient } from '@clickhouse/client'
+import type { ClickHouseClient, ResultSet } from '@clickhouse/client'
 import { createClient } from '@clickhouse/client'
 
 const CLICKHOUSE_URL = process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://localhost:8123'
@@ -24,4 +24,10 @@ export async function closeTestClient(): Promise<void> {
 export function testTenantId(suite: string): string {
   const rand = crypto.randomBytes(4).toString('hex')
   return `test-${suite}-${rand}`
+}
+
+/** Type-safe row extraction from ClickHouse ResultSet */
+export async function jsonRows<T>(result: ResultSet): Promise<T[]> {
+  // ResponseJSON is a union type; for JSONEachRow/JSON queries it's always T[]
+  return (await result.json()) as unknown as T[]
 }

@@ -6,7 +6,7 @@ import { batchInsert } from '../../src/db/insert.js'
 import { explainQuery, queryLogMetadata, tenantQuery } from '../../src/db/queries.js'
 import { initSchema } from '../../src/db/schema.js'
 import type { LogMetadataRow } from '../../src/types.js'
-import { closeTestClient, getTestClient, testTenantId } from './helpers.js'
+import { closeTestClient, getTestClient, jsonRows, testTenantId } from './helpers.js'
 
 const logger = pino({ level: 'silent' })
 
@@ -82,15 +82,17 @@ describe('queries', () => {
     const maliciousTenant = "'; DROP TABLE logweave.log_metadata; --"
 
     // This should not throw — it just returns no rows
-    const rows = await queryLogMetadata(db, maliciousTenant)
-    assert.equal(rows.length, 0)
+    const injectionResult = await queryLogMetadata(db, maliciousTenant)
+    assert.equal(injectionResult.length, 0)
 
     // Verify table still exists
     const result = await client.query({
       query: 'SELECT count() AS cnt FROM logweave.log_metadata',
     })
-    const [{ cnt }] = await result.json<{ cnt: string }>()
-    assert.ok(Number(cnt) > 0, 'Table should still exist with data')
+    const countRows = await jsonRows<{ cnt: string }>(result)
+    const first = countRows[0]
+    assert.ok(first, 'Expected count result')
+    assert.ok(Number(first.cnt) > 0, 'Table should still exist with data')
   })
 
   it('EXPLAIN shows partition pruning for tenant query', async () => {

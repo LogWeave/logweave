@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { after, describe, it } from 'node:test'
 import pino from 'pino'
 import { initSchema } from '../../src/db/schema.js'
-import { closeTestClient, getTestClient } from './helpers.js'
+import { closeTestClient, getTestClient, jsonRows } from './helpers.js'
 
 const logger = pino({ level: 'silent' })
 
@@ -20,7 +20,7 @@ describe('initSchema', () => {
     await initSchema(client, logger)
 
     const result = await client.query({ query: 'SHOW TABLES FROM logweave' })
-    const rows = await result.json<{ name: string }>()
+    const rows = await jsonRows<{ name: string }>(result)
     const tableNames = rows.map((r) => r.name).sort()
 
     assert.ok(tableNames.includes('log_metadata'), 'log_metadata table should exist')
@@ -36,7 +36,7 @@ describe('initSchema', () => {
               WHERE name IN ('max_execution_time', 'max_memory_usage', 'max_rows_to_read')
               ORDER BY name`,
     })
-    const rows = await result.json<{ name: string; value: string }>()
+    const rows = await jsonRows<{ name: string; value: string }>(result)
 
     const settings = Object.fromEntries(rows.map((r) => [r.name, r.value]))
     assert.equal(settings.max_execution_time, '30')

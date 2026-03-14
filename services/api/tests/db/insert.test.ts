@@ -4,7 +4,7 @@ import pino from 'pino'
 import { batchInsert } from '../../src/db/insert.js'
 import { initSchema } from '../../src/db/schema.js'
 import type { LogMetadataRow } from '../../src/types.js'
-import { closeTestClient, getTestClient, testTenantId } from './helpers.js'
+import { closeTestClient, getTestClient, jsonRows, testTenantId } from './helpers.js'
 
 const logger = pino({ level: 'silent' })
 
@@ -42,22 +42,24 @@ describe('batchInsert', () => {
   })
 
   it('inserts 100 rows and all are readable', async () => {
-    const rows = Array.from({ length: 100 }, (_, i) =>
+    const inputRows = Array.from({ length: 100 }, (_, i) =>
       makeRow(tenantId, {
         timestamp: `2026-03-14 12:${String(i).padStart(2, '0')}:00.000`,
         duration_ms: i * 10,
       }),
     )
 
-    await batchInsert(client, rows)
+    await batchInsert(client, inputRows)
 
     const result = await client.query({
       query: `SELECT count() AS cnt FROM logweave.log_metadata
               WHERE tenant_id = {tenant_id:String}`,
       query_params: { tenant_id: tenantId },
     })
-    const [{ cnt }] = await result.json<{ cnt: string }>()
-    assert.equal(cnt, '100')
+    const countRows = await jsonRows<{ cnt: string }>(result)
+    const first = countRows[0]
+    assert.ok(first, 'Expected count result')
+    assert.equal(first.cnt, '100')
   })
 
   it('round-trips all fields correctly', async () => {
@@ -75,8 +77,9 @@ describe('batchInsert', () => {
               WHERE tenant_id = {tenant_id:String} LIMIT 1`,
       query_params: { tenant_id: singleTenant },
     })
-    const [stored] = await result.json<Record<string, unknown>>()
-
+    const rows = await jsonRows<Record<string, unknown>>(result)
+    const stored = rows[0]
+    assert.ok(stored, 'Expected at least one row')
     assert.equal(stored.tenant_id, singleTenant)
     assert.equal(stored.service, 'test-svc')
     assert.equal(stored.level, 'INFO')
