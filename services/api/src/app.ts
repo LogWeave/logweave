@@ -1,4 +1,5 @@
 import express from 'express'
+import helmet from 'helmet'
 import type pino from 'pino'
 import { type Options as PinoHttpOptions, pinoHttp } from 'pino-http'
 import type { ClustererHealthChecker } from './clients/clusterer.js'
@@ -27,6 +28,9 @@ export function createApp(deps: AppDependencies): express.Express {
 
   // Request-id middleware (must be first — sets up AsyncLocalStorage context)
   app.use(requestIdMiddleware)
+
+  // Security headers
+  app.use(helmet())
 
   // Structured request logging (skip health probes)
   const httpLoggerOpts: PinoHttpOptions = {

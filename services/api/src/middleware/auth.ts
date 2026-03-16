@@ -1,13 +1,25 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import { unauthorized } from '../errors.js'
 
 const TENANT_ID_KEY = 'tenantId'
 
+function sha256(value: string): Buffer {
+  return createHash('sha256').update(value).digest()
+}
+
 /**
  * Create auth middleware that validates Bearer tokens against a key map.
+ * Uses SHA-256 hashing + crypto.timingSafeEqual for constant-time comparison.
  * Resolved tenant_id is stored in res.locals.tenantId.
  */
 export function createAuthMiddleware(keyMap: Map<string, string>): RequestHandler {
+  // Pre-hash all keys at startup for constant-time comparison
+  const hashedKeys: Array<{ hash: Buffer; tenantId: string }> = []
+  for (const [key, tenantId] of keyMap) {
+    hashedKeys.push({ hash: sha256(key), tenantId })
+  }
+
   return (req: Request, res: Response, next: NextFunction): void => {
     const header = req.get('authorization')
     if (!header) {
@@ -26,14 +38,21 @@ export function createAuthMiddleware(keyMap: Map<string, string>): RequestHandle
       return
     }
 
-    // TODO(week-4): switch to crypto.timingSafeEqual for constant-time comparison
-    const tenantId = keyMap.get(token)
-    if (!tenantId) {
+    const tokenHash = sha256(token)
+    let matchedTenantId: string | undefined
+    for (const entry of hashedKeys) {
+      if (timingSafeEqual(tokenHash, entry.hash)) {
+        matchedTenantId = entry.tenantId
+        break
+      }
+    }
+
+    if (!matchedTenantId) {
       next(unauthorized('Invalid API key'))
       return
     }
 
-    res.locals[TENANT_ID_KEY] = tenantId
+    res.locals[TENANT_ID_KEY] = matchedTenantId
     next()
   }
 }
