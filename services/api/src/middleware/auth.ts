@@ -43,7 +43,6 @@ export function createAuthMiddleware(keyMap: Map<string, string>): RequestHandle
     for (const entry of hashedKeys) {
       if (timingSafeEqual(tokenHash, entry.hash)) {
         matchedTenantId = entry.tenantId
-        break
       }
     }
 

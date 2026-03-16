@@ -29,8 +29,8 @@ export function createApp(deps: AppDependencies): express.Express {
   // Request-id middleware (must be first — sets up AsyncLocalStorage context)
   app.use(requestIdMiddleware)
 
-  // Security headers
-  app.use(helmet())
+  // Security headers — CSP disabled until Week 2 dashboard defines its requirements
+  app.use(helmet({ contentSecurityPolicy: false }))
 
   // Structured request logging (skip health probes)
   const httpLoggerOpts: PinoHttpOptions = {
@@ -71,6 +71,7 @@ export function createApp(deps: AppDependencies): express.Express {
 
   // Routes — API (authenticated)
   const auth = createAuthMiddleware(deps.config.apiKeys)
+  deps.config.apiKeys.clear() // Plaintext keys no longer needed — hashed copies live in auth closure
   app.use('/v1', auth, ingestRoutes({
     clusterClient: deps.clusterClient,
     clickhouse: deps.clickhouse,
