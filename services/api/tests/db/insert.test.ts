@@ -71,7 +71,7 @@ describe('batchInsert', () => {
       pre_processed_message: 'User admin logged in',
     })
 
-    await batchInsert(client, [row])
+    await batchInsert(db, [row])
 
     const result = await client.query({
       query: `SELECT * FROM logweave.log_metadata
@@ -94,7 +94,7 @@ describe('batchInsert', () => {
   })
 
   it('throws on empty array', async () => {
-    await assert.rejects(() => batchInsert(client, []), {
+    await assert.rejects(() => batchInsert(db, []), {
       message: 'batchInsert requires at least one row',
     })
   })

@@ -33,7 +33,7 @@ describe('queries', () => {
     await initSchema(client, logger)
 
     // Insert data for two tenants
-    await batchInsert(client, [
+    await batchInsert(db, [
       makeRow(tenantA, { template_id: 'tmpl-a1', template_text: 'A template' }),
       makeRow(tenantA, { template_id: 'tmpl-a2', template_text: 'Another template' }),
       makeRow(tenantB, { template_id: 'tmpl-b1', template_text: 'B template' }),
