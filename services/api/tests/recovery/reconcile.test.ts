@@ -69,6 +69,7 @@ function clusterResults(count: number) {
 interface MockDbOptions {
   pages: Record<string, unknown>[][]
   commandCalls?: Array<{ query: string; query_params?: Record<string, unknown> }>
+  commandError?: Error
 }
 
 /** Create a mock DbClient that returns paginated results and captures commands. */
@@ -85,6 +86,7 @@ function mockDb(options: MockDbOptions) {
       return page
     },
     command: async (params: { query: string; query_params?: Record<string, unknown> }) => {
+      if (options.commandError) throw options.commandError
       commandCalls.push(params)
     },
     insert: async () => {},
@@ -96,10 +98,11 @@ function mockDb(options: MockDbOptions) {
 }
 
 /** Create a mock ClickHouseClient that captures inserts. */
-function mockClickhouse() {
+function mockClickhouse(options?: { insertError?: Error }) {
   const insertedRows: LogMetadataRow[][] = []
   const client = {
     insert: async (params: { values: LogMetadataRow[] }) => {
+      if (options?.insertError) throw options.insertError
       insertedRows.push(params.values)
     },
     ping: async () => ({ success: true }),
@@ -114,9 +117,11 @@ function createSweep(options: {
   healthy?: boolean
   fetchFn?: typeof globalThis.fetch
   sweepMaxRows?: number
+  insertError?: Error
+  commandError?: Error
 }) {
-  const { db, commandCalls, queryCalls } = mockDb({ pages: options.pages })
-  const { client: clickhouse, insertedRows } = mockClickhouse()
+  const { db, commandCalls, queryCalls } = mockDb({ pages: options.pages, commandError: options.commandError })
+  const { client: clickhouse, insertedRows } = mockClickhouse({ insertError: options.insertError })
   const healthChecker = mockHealthChecker(options.healthy ?? true)
 
   const fetchFn = options.fetchFn ?? mockFetch(clusterResults(1))
@@ -344,6 +349,42 @@ describe('RecoverySweep', () => {
     assert.equal(recovered, 0)
     assert.equal(insertedRows.length, 0, 'No INSERT should happen for still-unclustered rows')
     assert.equal(commandCalls.length, 0, 'No DELETE should happen for still-unclustered rows')
+  })
+
+  it('INSERT failure prevents DELETE from running', async () => {
+    const rows = [
+      unclusteredRow({ id: 'id-1', pre_processed_message: 'msg1' }),
+      unclusteredRow({ id: 'id-2', pre_processed_message: 'msg2' }),
+    ]
+    const fetchFn = mockFetch(clusterResults(2))
+    const { sweep, commandCalls, insertedRows } = createSweep({
+      pages: [rows, []],
+      fetchFn,
+      insertError: new Error('ClickHouse insert failed'),
+    })
+
+    const recovered = await sweep.runStartupReconciliation()
+
+    assert.equal(recovered, 0, 'Should return 0 when INSERT fails')
+    assert.equal(insertedRows.length, 0, 'No rows should be captured (INSERT threw)')
+    assert.equal(commandCalls.length, 0, 'DELETE must NOT run when INSERT fails')
+  })
+
+  it('DELETE failure still returns correct recovered count', async () => {
+    const rows = [
+      unclusteredRow({ id: 'id-1', pre_processed_message: 'msg1' }),
+    ]
+    const fetchFn = mockFetch(clusterResults(1))
+    const { sweep, insertedRows } = createSweep({
+      pages: [rows, []],
+      fetchFn,
+      commandError: new Error('ClickHouse delete failed'),
+    })
+
+    const recovered = await sweep.runStartupReconciliation()
+
+    assert.equal(recovered, 1, 'Should return 1 even though DELETE failed')
+    assert.equal(insertedRows.length, 1, 'INSERT should have succeeded')
   })
 
   it('cursor pagination — multiple pages fetched with advancing cursor', async () => {

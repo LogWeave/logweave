@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { retryFetch } from '../src/retry.js'
-import { immediateSleep, mockFetch, mockFetchSequence } from './helpers.js'
+import { immediateSleep, mockFetch, mockFetchError, mockFetchSequence } from './helpers.js'
 
 describe('retryFetch', () => {
   it('retries on 5xx and succeeds after recovery (4 total attempts: 1 initial + 3 retries)', async () => {
@@ -119,6 +119,50 @@ describe('retryFetch', () => {
     assert.ok(delays[0]! >= 0 && delays[0]! <= 1000, `delay 0 (${delays[0]}) should be 0-1000ms`)
     assert.ok(delays[1]! >= 0 && delays[1]! <= 2000, `delay 1 (${delays[1]}) should be 0-2000ms`)
     assert.ok(delays[2]! >= 0 && delays[2]! <= 4000, `delay 2 (${delays[2]}) should be 0-4000ms`)
+  })
+
+  it('retries on network error and exhausts all attempts', async () => {
+    const mock = mockFetchError(new TypeError('fetch failed'))
+
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      {
+        maxRetries: 3,
+        timeoutMs: 2000,
+        fetchFn: mock.fetch,
+        sleepFn: immediateSleep,
+      },
+    )
+
+    assert.equal(mock.calls.length, 4, 'should make 4 total attempts (1 initial + 3 retries)')
+    assert.equal(result, null, 'should return null after all retries exhausted')
+  })
+
+  it('recovers after transient network errors — fail twice then succeed', async () => {
+    let callCount = 0
+    const calls: Array<{ url: string | URL | Request; init: RequestInit | undefined }> = []
+    const recoveringFetch: typeof globalThis.fetch = async (url, init) => {
+      calls.push({ url: url as string | URL | Request, init })
+      callCount++
+      if (callCount <= 2) throw new TypeError('fetch failed')
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }
+
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      {
+        maxRetries: 3,
+        timeoutMs: 2000,
+        fetchFn: recoveringFetch,
+        sleepFn: immediateSleep,
+      },
+    )
+
+    assert.equal(calls.length, 3, 'should make 3 total attempts (2 failures + 1 success)')
+    assert.notEqual(result, null, 'should return successful response')
+    assert.equal(result!.status, 200)
   })
 
   it('respects abort signal and stops retrying', async () => {

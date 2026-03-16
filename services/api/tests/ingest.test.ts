@@ -28,12 +28,13 @@ function mockFetch(status: number, body: unknown): typeof globalThis.fetch {
     })
 }
 
-function createTestApp(options?: { fetchFn?: typeof globalThis.fetch }) {
+function createTestApp(options?: { fetchFn?: typeof globalThis.fetch; insertError?: Error }) {
   const logger = pino({ level: 'silent' })
   const insertedRows: LogMetadataRow[][] = []
 
   const mockClickhouse = {
     insert: async (params: { values: LogMetadataRow[] }) => {
+      if (options?.insertError) throw options.insertError
       insertedRows.push(params.values)
     },
     ping: async () => ({ success: true }),
@@ -229,6 +230,26 @@ describe('POST /v1/ingest/batch', () => {
     assert.equal(rows[0]?.timestamp, '2026-01-01T00:00:00Z')
     // Second row should have ingest time (ISO string starting with current year)
     assert.ok(rows[1]?.timestamp.startsWith('20'), 'Expected ingest time as fallback')
+  })
+
+  it('returns 500 with safe error when ClickHouse INSERT fails', async () => {
+    const { app } = createTestApp({
+      insertError: new Error('Connection refused: clickhouse:8123'),
+    })
+
+    const res = await request(app)
+      .post('/v1/ingest/batch')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({ events: [validEvent()] })
+
+    assert.equal(res.status, 500)
+    assert.equal(res.body.error.code, 'INTERNAL_ERROR')
+    assert.equal(res.body.error.message, 'Internal server error')
+    // Must not leak internal details
+    assert.ok(
+      !JSON.stringify(res.body).includes('Connection refused'),
+      'Error response must not leak internal details',
+    )
   })
 
   it('sets source_type=transport and preprocessing_version', async () => {

@@ -28,7 +28,7 @@ interface ParsedItem {
  * Extract timestamp from a raw event object.
  * Checks timestamp, @timestamp, time fields for ISO 8601 strings.
  */
-function extractTimestamp(event: unknown): string | undefined {
+export function extractTimestamp(event: unknown): string | undefined {
   if (typeof event !== 'object' || event === null) return undefined
   const obj = event as Record<string, unknown>
 
