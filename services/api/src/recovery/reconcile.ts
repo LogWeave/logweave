@@ -2,6 +2,7 @@ import type pino from 'pino'
 import type { ClustererHealthChecker } from '../clients/clusterer.js'
 import type { DbClient } from '../db/client.js'
 import { batchInsert } from '../db/insert.js'
+import * as metrics from '../metrics.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
 import type { LogMetadataRow } from '../types.js'
 
@@ -35,6 +36,7 @@ export interface RecoveryConfig {
   sweepMaxRows: number
   batchSize: number
   backpressureThresholdMs: number
+  lookbackHours: number
 }
 
 const UUID_MIN = '00000000-0000-0000-0000-000000000000'
@@ -49,7 +51,7 @@ SELECT id, tenant_id, timestamp, service, level, environment,
 FROM logweave.log_metadata
 WHERE template_id = '0'
   AND pre_processed_message IS NOT NULL
-  AND ingest_time > now64(3) - INTERVAL 24 HOUR
+  AND ingest_time > now64(3) - toIntervalHour({lookback_hours:UInt32})
   AND id > {cursor:String}
 ORDER BY id ASC
 LIMIT {batch_size:UInt32}`
@@ -108,9 +110,11 @@ export class RecoverySweep {
       try {
         const recovered = await this.sweep(this.config.sweepMaxRows)
         if (recovered > 0) {
+          metrics.increment(metrics.RECOVERY_RECOVERED, recovered)
           this.deps.logger.info({ recovered }, 'Recovery sweep completed')
         }
       } catch (err) {
+        metrics.increment(metrics.RECOVERY_FAILED)
         this.deps.logger.error({ err }, 'Recovery sweep failed')
       }
     }, this.config.sweepIntervalMs)
@@ -265,7 +269,7 @@ export class RecoverySweep {
   private async fetchPage(cursor: string, limit: number): Promise<UnclusteredRow[]> {
     return this.deps.db.query<UnclusteredRow>({
       query: UNCLUSTERED_QUERY,
-      query_params: { cursor, batch_size: limit },
+      query_params: { cursor, batch_size: limit, lookback_hours: this.config.lookbackHours },
     })
   }
 }

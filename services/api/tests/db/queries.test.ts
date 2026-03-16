@@ -13,7 +13,7 @@ const logger = pino({ level: 'silent' })
 function makeRow(tenantId: string, overrides?: Partial<LogMetadataRow>): LogMetadataRow {
   return {
     tenant_id: tenantId,
-    timestamp: '2026-03-14 12:00:00.000',
+    timestamp: new Date().toISOString().replace('T', ' ').replace('Z', ''),
     service: 'test-svc',
     level: 'INFO',
     environment: 'test',

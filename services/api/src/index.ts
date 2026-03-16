@@ -26,7 +26,7 @@ const app = createApp({ config, logger, db, clustererHealth, clusterClient })
 
 const recovery = new RecoverySweep(
   { db, clusterClient, clustererHealth, logger },
-  { sweepIntervalMs: config.recoveryIntervalMs, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
+  { sweepIntervalMs: config.recoveryIntervalMs, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300, lookbackHours: config.recoveryLookbackHours },
 )
 
 const server = app.listen(config.port, () => {

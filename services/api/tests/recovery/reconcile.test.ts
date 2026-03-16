@@ -132,6 +132,7 @@ function createSweep(options: {
       sweepMaxRows: options.sweepMaxRows ?? 1000,
       batchSize: 500,
       backpressureThresholdMs: 300,
+      lookbackHours: 24,
     },
   )
 

@@ -3,6 +3,7 @@ import { pingClickHouse } from '../clients/clickhouse.js'
 import type { ClustererHealthChecker } from '../clients/clusterer.js'
 import type { DbClient } from '../db/client.js'
 import { HttpStatus } from '../http-status.js'
+import * as metrics from '../metrics.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
 
 interface HealthDeps {
@@ -34,6 +35,7 @@ export function healthRoutes(deps: HealthDeps): Router {
           consecutiveFailures: deps.clustererHealth.consecutiveFailures,
           circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
         },
+        metrics: metrics.snapshot(),
       })
       return
     }
@@ -52,6 +54,7 @@ export function healthRoutes(deps: HealthDeps): Router {
           consecutiveFailures: deps.clustererHealth.consecutiveFailures,
           circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
         },
+        metrics: metrics.snapshot(),
       })
       return
     }
@@ -64,6 +67,7 @@ export function healthRoutes(deps: HealthDeps): Router {
         consecutiveFailures: deps.clustererHealth.consecutiveFailures,
         circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
       },
+      metrics: metrics.snapshot(),
     })
   })
 

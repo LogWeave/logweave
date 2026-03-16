@@ -1,7 +1,8 @@
 import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
-import type { LogMetadataRow } from '../types.js'
 import { batchInsert } from '../db/insert.js'
+import * as metrics from '../metrics.js'
+import type { LogMetadataRow } from '../types.js'
 import type { ClusterClient, ClusterResult } from './cluster-client.js'
 import { parseEvent, processEvent, PREPROCESSING_VERSION } from './index.js'
 import type { ParseOptions, ProcessedEvent } from './types.js'
@@ -110,6 +111,8 @@ export async function ingestBatch(
     items.push({ processed, timestamp })
   }
 
+  metrics.increment(metrics.EVENTS_DROPPED, parseErrors)
+
   // Early return if all events failed parsing
   if (items.length === 0) {
     return { accepted: 0, clustered: 0, unclustered: 0, new_templates: 0 }
@@ -143,7 +146,18 @@ export async function ingestBatch(
   }
 
   // Phase 4: Write (single batch INSERT)
+  const insertStart = Date.now()
   await batchInsert(deps.db, rows)
+  const insertMs = Date.now() - insertStart
+
+  // Update global metrics
+  metrics.increment(metrics.EVENTS_INGESTED, items.length)
+  metrics.increment(metrics.EVENTS_CLUSTERED, clustered)
+  metrics.increment(metrics.EVENTS_UNCLUSTERED, unclustered)
+  metrics.increment(metrics.NEW_TEMPLATES, newTemplates)
+  metrics.increment(metrics.INSERT_LATENCY_MS_TOTAL, insertMs)
+  metrics.increment(metrics.INSERT_COUNT)
+  metrics.increment(metrics.BATCH_SIZE_TOTAL, rows.length)
 
   return {
     accepted: items.length,
