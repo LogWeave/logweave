@@ -9,15 +9,15 @@ import { requestContext } from './logger.js'
 import { createAuthMiddleware } from './middleware/auth.js'
 import { createErrorHandler } from './middleware/error-handler.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
+import type { DbClient } from './db/client.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
 import { healthRoutes } from './routes/health.js'
 import { ingestRoutes } from './routes/ingest.js'
-import type { ClickHouseClient } from './types.js'
 
 export interface AppDependencies {
   config: Config
   logger: pino.Logger
-  clickhouse: ClickHouseClient
+  db: DbClient
   clustererHealth: ClustererHealthChecker
   clusterClient: ClusterClient
 }
@@ -67,14 +67,14 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use(express.json({ limit: '1mb' }))
 
   // Routes — health (unauthenticated)
-  app.use(healthRoutes({ clickhouse: deps.clickhouse, clustererHealth: deps.clustererHealth, clusterClient: deps.clusterClient }))
+  app.use(healthRoutes({ db: deps.db, clustererHealth: deps.clustererHealth, clusterClient: deps.clusterClient }))
 
   // Routes — API (authenticated)
   const auth = createAuthMiddleware(deps.config.apiKeys)
   deps.config.apiKeys.clear() // Plaintext keys no longer needed — hashed copies live in auth closure
   app.use('/v1', auth, ingestRoutes({
     clusterClient: deps.clusterClient,
-    clickhouse: deps.clickhouse,
+    db: deps.db,
     logger: deps.logger,
   }))
 

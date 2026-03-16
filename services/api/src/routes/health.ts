@@ -1,12 +1,12 @@
 import { Router } from 'express'
 import { pingClickHouse } from '../clients/clickhouse.js'
 import type { ClustererHealthChecker } from '../clients/clusterer.js'
+import type { DbClient } from '../db/client.js'
 import { HttpStatus } from '../http-status.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
-import type { ClickHouseClient } from '../types.js'
 
 interface HealthDeps {
-  clickhouse: ClickHouseClient
+  db: DbClient
   clustererHealth: ClustererHealthChecker
   clusterClient?: ClusterClient
 }
@@ -38,7 +38,7 @@ export function healthRoutes(deps: HealthDeps): Router {
       return
     }
 
-    const chOk = await pingClickHouse(deps.clickhouse)
+    const chOk = await pingClickHouse(deps.db)
     readyCache = { ok: chOk, ts: now }
 
     const clustererStatus = deps.clustererHealth.consecutiveFailures === 0 ? 'ok' : 'degraded'

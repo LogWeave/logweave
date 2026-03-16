@@ -1,5 +1,5 @@
 import type pino from 'pino'
-import type { ClickHouseClient } from '../types.js'
+import type { DbClient } from '../db/client.js'
 import type { LogMetadataRow } from '../types.js'
 import { batchInsert } from '../db/insert.js'
 import type { ClusterClient, ClusterResult } from './cluster-client.js'
@@ -8,7 +8,7 @@ import type { ParseOptions, ProcessedEvent } from './types.js'
 
 export interface IngestDependencies {
   clusterClient: ClusterClient
-  clickhouse: ClickHouseClient
+  db: DbClient
   logger: pino.Logger
 }
 
@@ -143,7 +143,7 @@ export async function ingestBatch(
   }
 
   // Phase 4: Write (single batch INSERT)
-  await batchInsert(deps.clickhouse, rows)
+  await batchInsert(deps.db, rows)
 
   return {
     accepted: items.length,

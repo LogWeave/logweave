@@ -4,7 +4,7 @@ import pino from 'pino'
 import { batchInsert } from '../../src/db/insert.js'
 import { initSchema } from '../../src/db/schema.js'
 import type { LogMetadataRow } from '../../src/types.js'
-import { closeTestClient, getTestClient, jsonRows, testTenantId } from './helpers.js'
+import { closeTestClient, getTestClient, getTestDb, jsonRows, testTenantId } from './helpers.js'
 
 const logger = pino({ level: 'silent' })
 
@@ -31,6 +31,7 @@ function makeRow(tenantId: string, overrides?: Partial<LogMetadataRow>): LogMeta
 
 describe('batchInsert', () => {
   const client = getTestClient()
+  const db = getTestDb()
   const tenantId = testTenantId('insert')
 
   before(async () => {
@@ -49,7 +50,7 @@ describe('batchInsert', () => {
       }),
     )
 
-    await batchInsert(client, inputRows)
+    await batchInsert(db, inputRows)
 
     const result = await client.query({
       query: `SELECT count() AS cnt FROM logweave.log_metadata

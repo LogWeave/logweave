@@ -2,17 +2,20 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
 import request from 'supertest'
+import type { DbClient } from '../src/db/client.js'
 import { ClusterClient } from '../src/pipeline/cluster-client.js'
 import { createApp } from '../src/app.js'
-import type { ClickHouseClient } from '../src/types.js'
 import type { ClustererHealthChecker } from '../src/clients/clusterer.js'
 
 function createTestApp() {
   const logger = pino({ level: 'silent' })
-  const mockClickhouse = {
-    ping: async () => ({ success: true }),
+  const mockDb = {
+    ping: async () => true,
+    query: async () => [],
+    insert: async () => {},
+    command: async () => {},
     close: async () => {},
-  } as unknown as ClickHouseClient
+  } as unknown as DbClient
   const mockHealth = {
     consecutiveFailures: 0,
     lastChecked: Date.now(),
@@ -32,7 +35,7 @@ function createTestApp() {
       apiKeys: new Map([['test-key', 'tenant-test']]),
     },
     logger,
-    clickhouse: mockClickhouse,
+    db: mockDb,
     clustererHealth: mockHealth,
     clusterClient,
   })

@@ -1,10 +1,12 @@
 import crypto from 'node:crypto'
 import type { ClickHouseClient, ResultSet } from '@clickhouse/client'
 import { createClient } from '@clickhouse/client'
+import { DbClient } from '../../src/db/client.js'
 
 const CLICKHOUSE_URL = process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://default:logweave@localhost:8123'
 
 let sharedClient: ClickHouseClient | undefined
+let sharedDb: DbClient | undefined
 
 export function getTestClient(): ClickHouseClient {
   if (!sharedClient) {
@@ -13,7 +15,15 @@ export function getTestClient(): ClickHouseClient {
   return sharedClient
 }
 
+export function getTestDb(): DbClient {
+  if (!sharedDb) {
+    sharedDb = new DbClient(getTestClient())
+  }
+  return sharedDb
+}
+
 export async function closeTestClient(): Promise<void> {
+  sharedDb = undefined
   if (sharedClient) {
     await sharedClient.close()
     sharedClient = undefined

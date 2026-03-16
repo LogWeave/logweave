@@ -5,12 +5,12 @@ import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { ingestBatch } from '../pipeline/ingest.js'
+import type { DbClient } from '../db/client.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
-import type { ClickHouseClient } from '../types.js'
 
 export interface IngestDeps {
   clusterClient: ClusterClient
-  clickhouse: ClickHouseClient
+  db: DbClient
   logger: pino.Logger
 }
 
@@ -35,7 +35,7 @@ export function ingestRoutes(deps: IngestDeps): Router {
         const result = await ingestBatch(
           {
             clusterClient: deps.clusterClient,
-            clickhouse: deps.clickhouse,
+            db: deps.db,
             logger: deps.logger,
           },
           tenantId,

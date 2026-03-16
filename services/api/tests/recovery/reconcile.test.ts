@@ -4,7 +4,6 @@ import pino from 'pino'
 import { ClusterClient } from '../../src/pipeline/cluster-client.js'
 import { RecoverySweep } from '../../src/recovery/reconcile.js'
 import type { DbClient } from '../../src/db/client.js'
-import type { ClickHouseClient } from '../../src/types.js'
 import type { ClustererHealthChecker } from '../../src/clients/clusterer.js'
 import type { LogMetadataRow } from '../../src/types.js'
 
@@ -70,13 +69,16 @@ interface MockDbOptions {
   pages: Record<string, unknown>[][]
   commandCalls?: Array<{ query: string; query_params?: Record<string, unknown> }>
   commandError?: Error
+  insertError?: Error
+  insertErrorForTenant?: string
 }
 
-/** Create a mock DbClient that returns paginated results and captures commands. */
+/** Create a mock DbClient that returns paginated results, captures commands and inserts. */
 function mockDb(options: MockDbOptions) {
   let queryCallCount = 0
   const commandCalls: Array<{ query: string; query_params?: Record<string, unknown> }> = options.commandCalls ?? []
   const queryCalls: Array<Record<string, unknown>> = []
+  const insertedRows: LogMetadataRow[][] = []
 
   const db = {
     query: async (params: Record<string, unknown>) => {
@@ -89,30 +91,18 @@ function mockDb(options: MockDbOptions) {
       if (options.commandError) throw options.commandError
       commandCalls.push(params)
     },
-    insert: async () => {},
-    ping: async () => true,
-    close: async () => {},
-  } as unknown as DbClient
-
-  return { db, commandCalls, queryCalls }
-}
-
-/** Create a mock ClickHouseClient that captures inserts. */
-function mockClickhouse(options?: { insertError?: Error; insertErrorForTenant?: string }) {
-  const insertedRows: LogMetadataRow[][] = []
-  const client = {
     insert: async (params: { values: LogMetadataRow[] }) => {
-      if (options?.insertError) throw options.insertError
-      if (options?.insertErrorForTenant && params.values[0]?.tenant_id === options.insertErrorForTenant) {
+      if (options.insertError) throw options.insertError
+      if (options.insertErrorForTenant && params.values[0]?.tenant_id === options.insertErrorForTenant) {
         throw new Error(`INSERT failed for tenant ${options.insertErrorForTenant}`)
       }
       insertedRows.push(params.values)
     },
-    ping: async () => ({ success: true }),
+    ping: async () => true,
     close: async () => {},
-  } as unknown as ClickHouseClient
+  } as unknown as DbClient
 
-  return { client, insertedRows }
+  return { db, commandCalls, queryCalls, insertedRows }
 }
 
 function createSweep(options: {
@@ -124,8 +114,9 @@ function createSweep(options: {
   insertErrorForTenant?: string
   commandError?: Error
 }) {
-  const { db, commandCalls, queryCalls } = mockDb({ pages: options.pages, commandError: options.commandError })
-  const { client: clickhouse, insertedRows } = mockClickhouse({
+  const { db, commandCalls, queryCalls, insertedRows } = mockDb({
+    pages: options.pages,
+    commandError: options.commandError,
     insertError: options.insertError,
     insertErrorForTenant: options.insertErrorForTenant,
   })
@@ -135,7 +126,7 @@ function createSweep(options: {
   const clusterClient = new ClusterClient('http://localhost:8000', 500, logger, fetchFn)
 
   const sweep = new RecoverySweep(
-    { db, clickhouse, clusterClient, clustererHealth: healthChecker, logger },
+    { db, clusterClient, clustererHealth: healthChecker, logger },
     {
       sweepIntervalMs: 60_000,
       sweepMaxRows: options.sweepMaxRows ?? 1000,
@@ -315,14 +306,16 @@ describe('RecoverySweep', () => {
         return []
       },
       command: async () => {},
+      insert: async () => {},
+      ping: async () => true,
+      close: async () => {},
     } as unknown as DbClient
 
-    const { client: clickhouse } = mockClickhouse()
     const healthChecker = mockHealthChecker(true)
     const clusterClient = new ClusterClient('http://localhost:8000', 500, logger, mockFetch([]))
 
     const sweep = new RecoverySweep(
-      { db: slowDb, clickhouse, clusterClient, clustererHealth: healthChecker, logger },
+      { db: slowDb, clusterClient, clustererHealth: healthChecker, logger },
       { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
     )
 
@@ -410,13 +403,12 @@ describe('RecoverySweep', () => {
       origWarn(obj, msg)
     }) as typeof testLogger.warn
 
-    const { db } = mockDb({ pages: [rows, []], commandError: new Error('ClickHouse delete failed') })
-    const { client: clickhouse, insertedRows } = mockClickhouse()
+    const { db, insertedRows } = mockDb({ pages: [rows, []], commandError: new Error('ClickHouse delete failed') })
     const healthChecker = mockHealthChecker(true)
     const clusterClient = new ClusterClient('http://localhost:8000', 500, testLogger, fetchFn)
 
     const sweep = new RecoverySweep(
-      { db, clickhouse, clusterClient, clustererHealth: healthChecker, logger: testLogger },
+      { db, clusterClient, clustererHealth: healthChecker, logger: testLogger },
       { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
     )
 

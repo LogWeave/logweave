@@ -3,7 +3,7 @@ import type { ClustererHealthChecker } from '../clients/clusterer.js'
 import type { DbClient } from '../db/client.js'
 import { batchInsert } from '../db/insert.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
-import type { ClickHouseClient, LogMetadataRow } from '../types.js'
+import type { LogMetadataRow } from '../types.js'
 
 interface UnclusteredRow {
   id: string
@@ -25,7 +25,6 @@ interface UnclusteredRow {
 
 export interface RecoveryDependencies {
   db: DbClient
-  clickhouse: ClickHouseClient
   clusterClient: ClusterClient
   clustererHealth: ClustererHealthChecker
   logger: pino.Logger
@@ -238,7 +237,7 @@ export class RecoverySweep {
 
     // INSERT first (safe ordering — no data loss on crash)
     try {
-      await batchInsert(this.deps.clickhouse, newRows)
+      await batchInsert(this.deps.db, newRows)
     } catch (err) {
       this.deps.logger.error(
         { err, tenantId, count: newRows.length },

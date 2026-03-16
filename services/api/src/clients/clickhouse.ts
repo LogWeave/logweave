@@ -1,14 +1,15 @@
 import { type ClickHouseClient, createClient } from '@clickhouse/client'
+import type { DbClient } from '../db/client.js'
 
 export function createClickHouseClient(url: string): ClickHouseClient {
-  return createClient({ url })
+  return createClient({
+    url,
+    request_timeout: 10_000,
+    application: 'logweave-api',
+    compression: { request: true },
+  })
 }
 
-export async function pingClickHouse(client: ClickHouseClient): Promise<boolean> {
-  try {
-    const result = await client.ping()
-    return result.success
-  } catch {
-    return false
-  }
+export async function pingClickHouse(db: DbClient): Promise<boolean> {
+  return db.ping()
 }

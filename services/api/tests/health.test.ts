@@ -4,15 +4,18 @@ import express from 'express'
 import pino from 'pino'
 import request from 'supertest'
 import type { ClustererHealthChecker } from '../src/clients/clusterer.js'
+import type { DbClient } from '../src/db/client.js'
 import { ClusterClient } from '../src/pipeline/cluster-client.js'
 import { _resetReadyCache, healthRoutes } from '../src/routes/health.js'
-import type { ClickHouseClient } from '../src/types.js'
 
-function createMockClickhouse(pingResult: boolean): ClickHouseClient {
+function createMockDb(pingResult: boolean): DbClient {
   return {
-    ping: async () => ({ success: pingResult }),
+    ping: async () => pingResult,
+    query: async () => [],
+    insert: async () => {},
+    command: async () => {},
     close: async () => {},
-  } as unknown as ClickHouseClient
+  } as unknown as DbClient
 }
 
 function createMockClustererHealth(failures = 0): ClustererHealthChecker {
@@ -35,7 +38,7 @@ function createTestApp(
   const app = express()
   app.use(
     healthRoutes({
-      clickhouse: createMockClickhouse(pingResult),
+      db: createMockDb(pingResult),
       clustererHealth: createMockClustererHealth(clustererFailures),
       clusterClient: options?.clusterClient,
     }),

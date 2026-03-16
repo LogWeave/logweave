@@ -11,6 +11,7 @@ import { RecoverySweep } from './recovery/reconcile.js'
 const config = loadConfig()
 const logger = createLogger(config.logLevel)
 const clickhouse = createClickHouseClient(config.clickhouseUrl)
+const db = new DbClient(clickhouse)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)
 const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTimeoutMs, logger)
 
@@ -21,11 +22,10 @@ try {
   process.exit(1)
 }
 
-const app = createApp({ config, logger, clickhouse, clustererHealth, clusterClient })
-const db = new DbClient(clickhouse)
+const app = createApp({ config, logger, db, clustererHealth, clusterClient })
 
 const recovery = new RecoverySweep(
-  { db, clickhouse, clusterClient, clustererHealth, logger },
+  { db, clusterClient, clustererHealth, logger },
   { sweepIntervalMs: config.recoveryIntervalMs, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
 )
 
@@ -64,7 +64,7 @@ async function shutdown(signal: string): Promise<void> {
   server.close(async () => {
     logger.info('HTTP server closed')
     try {
-      await clickhouse.close()
+      await db.close()
       logger.info('ClickHouse client closed')
     } catch (err) {
       logger.error({ err }, 'Error closing ClickHouse client')

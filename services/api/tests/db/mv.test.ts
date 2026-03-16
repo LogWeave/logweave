@@ -4,7 +4,7 @@ import pino from 'pino'
 import { batchInsert } from '../../src/db/insert.js'
 import { initSchema } from '../../src/db/schema.js'
 import type { LogMetadataRow } from '../../src/types.js'
-import { closeTestClient, getTestClient, jsonRows, testTenantId } from './helpers.js'
+import { closeTestClient, getTestClient, getTestDb, jsonRows, testTenantId } from './helpers.js'
 
 const logger = pino({ level: 'silent' })
 
@@ -48,6 +48,7 @@ function makeRow(tenantId: string, overrides?: Partial<LogMetadataRow>): LogMeta
 
 describe('materialized views', () => {
   const client = getTestClient()
+  const db = getTestDb()
 
   before(async () => {
     await initSchema(client, logger)
@@ -60,7 +61,7 @@ describe('materialized views', () => {
   it('template_stats MV excludes unclustered rows (template_id=0)', async () => {
     const tenant = testTenantId('mv-exclude')
 
-    await batchInsert(client, [
+    await batchInsert(db, [
       makeRow(tenant, { template_id: 'tmpl-real', template_text: 'Real template' }),
       makeRow(tenant, { template_id: '0', template_text: '' }),
     ])
@@ -87,7 +88,7 @@ describe('materialized views', () => {
   it('avgMerge produces correct results after OPTIMIZE', async () => {
     const tenant = testTenantId('mv-avg')
 
-    await batchInsert(client, [
+    await batchInsert(db, [
       makeRow(tenant, { duration_ms: 100 }),
       makeRow(tenant, { duration_ms: 200 }),
       makeRow(tenant, { duration_ms: 300 }),
@@ -112,7 +113,7 @@ describe('materialized views', () => {
   it('avgMerge produces correct results WITHOUT OPTIMIZE (production read path)', async () => {
     const tenant = testTenantId('mv-no-optimize')
 
-    await batchInsert(client, [
+    await batchInsert(db, [
       makeRow(tenant, { duration_ms: 50 }),
       makeRow(tenant, { duration_ms: 150 }),
     ])
@@ -134,7 +135,7 @@ describe('materialized views', () => {
   it('countIfMerge correctly counts ERROR rows in template_stats', async () => {
     const tenant = testTenantId('mv-errors')
 
-    await batchInsert(client, [
+    await batchInsert(db, [
       makeRow(tenant, { level: 'ERROR' }),
       makeRow(tenant, { level: 'ERROR' }),
       makeRow(tenant, { level: 'INFO' }),
@@ -158,7 +159,7 @@ describe('materialized views', () => {
   it('service_stats MV counts all rows including unclustered', async () => {
     const tenant = testTenantId('mv-service')
 
-    await batchInsert(client, [
+    await batchInsert(db, [
       makeRow(tenant, { template_id: 'real-1', level: 'ERROR' }),
       makeRow(tenant, { template_id: '0', level: 'WARN' }),
       makeRow(tenant, { template_id: 'real-2', level: 'INFO', is_new_template: 1 }),

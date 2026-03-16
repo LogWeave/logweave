@@ -5,9 +5,9 @@ import pino from 'pino'
 import request from 'supertest'
 import { createAuthMiddleware, getTenantId } from '../src/middleware/auth.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
+import type { DbClient } from '../src/db/client.js'
 import { ClusterClient } from '../src/pipeline/cluster-client.js'
 import { ingestRoutes } from '../src/routes/ingest.js'
-import type { ClickHouseClient } from '../src/types.js'
 import type { LogMetadataRow } from '../src/types.js'
 
 const API_KEY = 'test-key'
@@ -32,14 +32,16 @@ function createTestApp(options?: { fetchFn?: typeof globalThis.fetch; insertErro
   const logger = pino({ level: 'silent' })
   const insertedRows: LogMetadataRow[][] = []
 
-  const mockClickhouse = {
+  const mockDb = {
     insert: async (params: { values: LogMetadataRow[] }) => {
       if (options?.insertError) throw options.insertError
       insertedRows.push(params.values)
     },
-    ping: async () => ({ success: true }),
+    query: async () => [],
+    command: async () => {},
+    ping: async () => true,
     close: async () => {},
-  } as unknown as ClickHouseClient
+  } as unknown as DbClient
 
   const fetchFn = options?.fetchFn ?? mockFetch(200, CLUSTER_RESPONSE)
   const clusterClient = new ClusterClient('http://localhost:8000', 500, logger, fetchFn)
@@ -51,7 +53,7 @@ function createTestApp(options?: { fetchFn?: typeof globalThis.fetch; insertErro
   const auth = createAuthMiddleware(keyMap)
   app.use('/v1', auth, ingestRoutes({
     clusterClient,
-    clickhouse: mockClickhouse,
+    db: mockDb,
     logger,
   }))
 
