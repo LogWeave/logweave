@@ -317,7 +317,7 @@ describe('RecoverySweep', () => {
 
     const sweep = new RecoverySweep(
       { db: slowDb, clusterClient, clustererHealth: healthChecker, logger },
-      { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
+      { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300, lookbackHours: 24 },
     )
 
     // Start first sweep (will block on query)
@@ -410,7 +410,7 @@ describe('RecoverySweep', () => {
 
     const sweep = new RecoverySweep(
       { db, clusterClient, clustererHealth: healthChecker, logger: testLogger },
-      { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
+      { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300, lookbackHours: 24 },
     )
 
     const recovered = await sweep.runStartupReconciliation()

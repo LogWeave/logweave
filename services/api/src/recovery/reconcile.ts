@@ -94,7 +94,16 @@ export class RecoverySweep {
       return 0
     }
 
-    return this.sweep(this.config.sweepMaxRows)
+    try {
+      const recovered = await this.sweep(this.config.sweepMaxRows)
+      if (recovered > 0) {
+        metrics.increment(metrics.RECOVERY_RECOVERED, recovered)
+      }
+      return recovered
+    } catch (err) {
+      metrics.increment(metrics.RECOVERY_FAILED)
+      throw err
+    }
   }
 
   /** Start periodic background sweep. */
