@@ -37,7 +37,7 @@ sequenceDiagram
 
 | Tool | Version | Install |
 |------|---------|---------|
-| Node.js | 20+ | [nodejs.org](https://nodejs.org) |
+| Node.js | 24+ | [nodejs.org](https://nodejs.org) |
 | Python | 3.11+ | [python.org](https://python.org) |
 | pnpm | 9+ | `npm i -g pnpm` |
 | uv | latest | `pip install uv` |

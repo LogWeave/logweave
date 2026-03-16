@@ -33,7 +33,7 @@ graph TB
     Pipeline -->|INSERT| CH
     Recovery -->|POST /cluster| Clusterer
     Recovery -->|INSERT + DELETE| CH
-    Queries -->|SELECT ... FINAL| CH
+    Queries -->|SELECT| CH
     Health -->|ping| CH
     Health -->|GET /health| Clusterer
 ```
@@ -245,22 +245,25 @@ docker compose up clickhouse -d
 
 ```
 tests/
-├── unit/                     Isolated, no external deps
-│   ├── auth.test.ts
-│   ├── config.test.ts
-│   ├── health.test.ts
-│   ├── ingest.test.ts
-│   ├── error-handler.test.ts
-│   ├── request-id.test.ts
-│   ├── security-headers.test.ts
-│   └── pipeline/
-│       ├── parse.test.ts
-│       ├── preprocess.test.ts
-│       ├── cluster-client.test.ts
-│       └── timestamp.test.ts
-├── integration/              Requires ClickHouse
-│   ├── db/                   Schema, insert, queries, MVs
-│   ├── pipeline/             Full cluster flow
-│   └── recovery/             Recovery sweep
+├── auth.test.ts              Auth middleware, getTenantId
+├── config.test.ts            Config parsing, validation
+├── error-handler.test.ts     Error handling
+├── health.test.ts            /healthz, /readyz endpoints
+├── ingest.test.ts            POST /v1/ingest/batch
+├── request-id.test.ts        Request ID generation, context
+├── security-headers.test.ts  Helmet headers, CSP
+├── pipeline/
+│   ├── parse.test.ts         JsonLogParser field extraction
+│   ├── preprocess.test.ts    preprocessMessage regex patterns
+│   ├── cluster-client.test.ts  ClusterClient + circuit breaker
+│   └── timestamp.test.ts    Timestamp extraction
+├── db/                       Requires ClickHouse
+│   ├── schema.test.ts        DDL, table creation
+│   ├── insert.test.ts        batchInsert, row writes
+│   ├── queries.test.ts       Template/service stats queries
+│   └── mv.test.ts            Materialized view aggregation
+├── recovery/
+│   └── reconcile.test.ts     Recovery sweep, cursor pagination
 └── e2e/                      Full stack (docker compose)
+    └── pipeline.integration.ts
 ```
