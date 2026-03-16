@@ -1,13 +1,11 @@
-import type { TransportResult, TransportScenario } from '../lib/types.js'
 import { takeMemorySnapshot } from '../lib/memory.js'
+import type { TransportResult, TransportScenario } from '../lib/types.js'
 
 /**
  * Run a transport SDK benchmark scenario.
  * Creates a LogWeaveTransport with a mock fetch and pushes events as fast as possible.
  */
-export async function runTransportScenario(
-  scenario: TransportScenario,
-): Promise<TransportResult> {
+export async function runTransportScenario(scenario: TransportScenario): Promise<TransportResult> {
   // Dynamic import to avoid requiring winston at module load
   const { LogWeaveTransport } = await import('../../packages/transport/src/index.js')
 
@@ -24,7 +22,12 @@ export async function runTransportScenario(
     }
     batchCount++
     return new Response(
-      JSON.stringify({ accepted: scenario.buffer_size, clustered: scenario.buffer_size, unclustered: 0, new_templates: 0 }),
+      JSON.stringify({
+        accepted: scenario.buffer_size,
+        clustered: scenario.buffer_size,
+        unclustered: 0,
+        new_templates: 0,
+      }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     )
   }

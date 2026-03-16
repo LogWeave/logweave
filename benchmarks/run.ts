@@ -1,11 +1,15 @@
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import type { BenchmarkConfig, CliOptions, ScenarioResult, TransportResult } from './lib/types.js'
-import { startApiServer, stopServer, waitForHealthy } from './lib/runner.js'
-import { buildReport, compareBaseline, printReport, writeReport } from './lib/reporter.js'
-import { startMockClusterer, stopMockClusterer } from './api/mock-clusterer.js'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
 import { generateAllFixtures } from './api/fixtures.js'
 import { runApiScenario } from './api/harness.js'
+import { startMockClusterer, stopMockClusterer } from './api/mock-clusterer.js'
+import { buildReport, compareBaseline, printReport, writeReport } from './lib/reporter.js'
+import { startApiServer, stopServer, waitForHealthy } from './lib/runner.js'
+import type { BenchmarkConfig, CliOptions, ScenarioResult, TransportResult } from './lib/types.js'
 import { runTransportScenario } from './transport/harness.js'
 
 const MOCK_CLUSTERER_PORT = 8001
@@ -39,14 +43,14 @@ function parseArgs(): CliOptions {
 }
 
 function loadConfig(): BenchmarkConfig {
-  const raw = readFileSync(resolve('benchmarks/config/scenarios.json'), 'utf8')
+  const raw = readFileSync(resolve(__dirname, 'config/scenarios.json'), 'utf8')
   return JSON.parse(raw) as BenchmarkConfig
 }
 
 function matchesFilter(name: string, filter?: string): boolean {
   if (!filter) return true
   // Support simple glob-like patterns with *
-  const regex = new RegExp('^' + filter.replace(/\*/g, '.*') + '$')
+  const regex = new RegExp(`^${filter.replace(/\*/g, '.*')}$`)
   return regex.test(name)
 }
 
@@ -160,9 +164,7 @@ async function runTransportBenchmarks(
   config: BenchmarkConfig,
   opts: CliOptions,
 ): Promise<TransportResult[]> {
-  const scenarios = config.transport_scenarios.filter((s) =>
-    matchesFilter(s.name, opts.filter),
-  )
+  const scenarios = config.transport_scenarios.filter((s) => matchesFilter(s.name, opts.filter))
 
   if (scenarios.length === 0) {
     console.log('  No transport scenarios matched filter\n')
@@ -221,7 +223,7 @@ async function main(): Promise<void> {
     printReport(reportWithComparison)
     writeReport(
       reportWithComparison,
-      `benchmarks/results/${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+      resolve(__dirname, `results/${new Date().toISOString().replace(/[:.]/g, '-')}.json`),
     )
 
     if (regressions.length > 0) {
@@ -231,7 +233,7 @@ async function main(): Promise<void> {
     printReport(report)
     writeReport(
       report,
-      `benchmarks/results/${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+      resolve(__dirname, `results/${new Date().toISOString().replace(/[:.]/g, '-')}.json`),
     )
   }
 }

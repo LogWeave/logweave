@@ -1,12 +1,7 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import type {
-  BenchmarkReport,
-  RegressionItem,
-  ScenarioResult,
-  TransportResult,
-} from './types.js'
 import { getGitBranch, getGitSha } from './runner.js'
+import type { BenchmarkReport, RegressionItem, ScenarioResult, TransportResult } from './types.js'
 
 /** Build the full benchmark report from collected results. */
 export function buildReport(
@@ -14,10 +9,7 @@ export function buildReport(
   transportResults: readonly TransportResult[],
   tier: string,
 ): BenchmarkReport {
-  const all = [
-    ...apiResults.map((r) => r.verdict),
-    ...transportResults.map((r) => r.verdict),
-  ]
+  const all = [...apiResults.map((r) => r.verdict), ...transportResults.map((r) => r.verdict)]
   const allEventsPerSec = [
     ...apiResults.map((r) => r.results.events_per_second),
     ...transportResults.map((r) => r.results.events_per_second),
@@ -124,12 +116,8 @@ export function printReport(report: BenchmarkReport): void {
 
   if (report.api_scenarios.length > 0) {
     console.log('  ┌─ API Scenarios ─────────────────────────────────────────────┐')
-    console.log(
-      '  │ Name                        │ ev/s     │ p50   │ p99   │ Err │',
-    )
-    console.log(
-      '  ├─────────────────────────────┼──────────┼───────┼───────┼─────┤',
-    )
+    console.log('  │ Name                        │ ev/s     │ p50   │ p99   │ Err │')
+    console.log('  ├─────────────────────────────┼──────────┼───────┼───────┼─────┤')
     for (const s of report.api_scenarios) {
       const name = s.name.padEnd(27)
       const eps = Math.round(s.results.events_per_second).toString().padStart(8)
@@ -139,19 +127,13 @@ export function printReport(report: BenchmarkReport): void {
       const icon = s.verdict === 'PASS' ? ' ' : s.verdict === 'FAIL' ? '!' : '-'
       console.log(`  │${icon}${name} │ ${eps} │ ${p50} │ ${p99} │ ${err} │`)
     }
-    console.log(
-      '  └─────────────────────────────┴──────────┴───────┴───────┴─────┘\n',
-    )
+    console.log('  └─────────────────────────────┴──────────┴───────┴───────┴─────┘\n')
   }
 
   if (report.transport_scenarios.length > 0) {
     console.log('  ┌─ Transport Scenarios ───────────────────────────────────────┐')
-    console.log(
-      '  │ Name                        │ ev/s     │ Drop  │ Dur(s)│     │',
-    )
-    console.log(
-      '  ├─────────────────────────────┼──────────┼───────┼───────┼─────┤',
-    )
+    console.log('  │ Name                        │ ev/s     │ Drop  │ Dur(s)│     │')
+    console.log('  ├─────────────────────────────┼──────────┼───────┼───────┼─────┤')
     for (const s of report.transport_scenarios) {
       const name = s.name.padEnd(27)
       const eps = Math.round(s.results.events_per_second).toString().padStart(8)
@@ -160,27 +142,31 @@ export function printReport(report: BenchmarkReport): void {
       const icon = s.verdict === 'PASS' ? ' ' : s.verdict === 'FAIL' ? '!' : '-'
       console.log(`  │${icon}${name} │ ${eps} │ ${drop} │ ${dur} │     │`)
     }
-    console.log(
-      '  └─────────────────────────────┴──────────┴───────┴───────┴─────┘\n',
-    )
+    console.log('  └─────────────────────────────┴──────────┴───────┴───────┴─────┘\n')
   }
 
   const s = report.summary
   console.log(`  Summary: ${s.passed} passed, ${s.failed} failed, ${s.skipped} skipped`)
-  console.log(`  Peak throughput: ${Math.round(s.peak_events_per_second).toLocaleString()} events/sec`)
+  console.log(
+    `  Peak throughput: ${Math.round(s.peak_events_per_second).toLocaleString()} events/sec`,
+  )
 
   if (s.baseline_comparison) {
     const bc = s.baseline_comparison
     if (bc.regressions.length > 0) {
       console.log('\n  ⚠ REGRESSIONS:')
       for (const r of bc.regressions) {
-        console.log(`    ${r.scenario} → ${r.metric}: ${r.change_pct > 0 ? '+' : ''}${r.change_pct}%`)
+        console.log(
+          `    ${r.scenario} → ${r.metric}: ${r.change_pct > 0 ? '+' : ''}${r.change_pct}%`,
+        )
       }
     }
     if (bc.improvements.length > 0) {
       console.log('\n  ✓ IMPROVEMENTS:')
       for (const r of bc.improvements) {
-        console.log(`    ${r.scenario} → ${r.metric}: ${r.change_pct > 0 ? '+' : ''}${r.change_pct}%`)
+        console.log(
+          `    ${r.scenario} → ${r.metric}: ${r.change_pct > 0 ? '+' : ''}${r.change_pct}%`,
+        )
       }
     }
     if (bc.regressions.length === 0 && bc.improvements.length === 0) {
@@ -194,6 +180,6 @@ export function printReport(report: BenchmarkReport): void {
 export function writeReport(report: BenchmarkReport, outPath: string): void {
   const fullPath = resolve(outPath)
   mkdirSync(dirname(fullPath), { recursive: true })
-  writeFileSync(fullPath, JSON.stringify(report, null, 2) + '\n', 'utf8')
+  writeFileSync(fullPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
   console.log(`  Report written to: ${outPath}`)
 }

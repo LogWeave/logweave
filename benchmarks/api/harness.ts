@@ -1,7 +1,7 @@
 import autocannon from 'autocannon'
-import type { ApiScenario, ScenarioResult } from '../lib/types.js'
 import { takeMemorySnapshot } from '../lib/memory.js'
 import { aggregate, sleep } from '../lib/runner.js'
+import type { ApiScenario, ScenarioResult } from '../lib/types.js'
 import type { FixtureSet } from './fixtures.js'
 
 /**
@@ -17,10 +17,6 @@ export async function runApiScenario(
   const baseUrl = `http://localhost:${serverPort.toString()}`
   const url = `${baseUrl}${scenario.endpoint}`
 
-  // Pre-serialize payloads for round-robin
-  const bodies = fixtures.payloads
-  let bodyIndex = 0
-
   const autocannonOpts: autocannon.Options = {
     url,
     method: scenario.method as 'POST',
@@ -29,10 +25,7 @@ export async function runApiScenario(
       'Content-Type': 'application/json',
       ...scenario.headers,
     },
-    setupClient(client) {
-      client.setBody(bodies[bodyIndex % bodies.length]!)
-      bodyIndex++
-    },
+    body: fixtures.payloads[0] ?? '{}',
   }
 
   if (scenario.amount != null) {
@@ -41,10 +34,11 @@ export async function runApiScenario(
     autocannonOpts.duration = scenario.duration_seconds ?? 30
   }
 
-  // Warm-up run (results discarded)
+  // Warm-up run (results discarded) — strip amount so warm-up is time-based
   console.log(`    Warm-up (${options.warmUpSeconds}s)...`)
+  const { amount: _amount, ...warmUpOpts } = autocannonOpts
   await autocannon({
-    ...autocannonOpts,
+    ...warmUpOpts,
     duration: options.warmUpSeconds,
   })
   await sleep(1000) // Brief pause between runs
@@ -53,14 +47,17 @@ export async function runApiScenario(
   const runs: autocannon.Result[] = []
   for (let i = 0; i < options.measuredRuns; i++) {
     console.log(`    Run ${(i + 1).toString()}/${options.measuredRuns.toString()}...`)
-    bodyIndex = 0 // Reset round-robin
     const memBefore = takeMemorySnapshot()
     const result = await autocannon(autocannonOpts)
     const memAfter = takeMemorySnapshot()
 
     // Attach memory to result for later aggregation
-    ;(result as autocannon.Result & { _memBefore?: typeof memBefore; _memAfter?: typeof memAfter })._memBefore = memBefore
-    ;(result as autocannon.Result & { _memBefore?: typeof memBefore; _memAfter?: typeof memAfter })._memAfter = memAfter
+    ;(
+      result as autocannon.Result & { _memBefore?: typeof memBefore; _memAfter?: typeof memAfter }
+    )._memBefore = memBefore
+    ;(
+      result as autocannon.Result & { _memBefore?: typeof memBefore; _memAfter?: typeof memAfter }
+    )._memAfter = memAfter
 
     runs.push(result)
     if (i < options.measuredRuns - 1) await sleep(1000)
@@ -77,7 +74,7 @@ export async function runApiScenario(
     options.aggregation,
   )
   const p95 = aggregate(
-    runs.map((r) => (r.latency as autocannon.Result['latency'] & { p95?: number }).p95 ?? r.latency.p99),
+    runs.map((r) => r.latency.p97_5),
     options.aggregation,
   )
   const p99 = aggregate(
@@ -94,8 +91,15 @@ export async function runApiScenario(
   const totalRequests = runs.reduce((sum, r) => sum + r.requests.total, 0)
 
   // Memory from first and last run
-  const firstMem = (runs[0] as autocannon.Result & { _memBefore?: { rss_mb: number; heap_used_mb: number } })._memBefore ?? takeMemorySnapshot()
-  const lastMem = (runs[runs.length - 1] as autocannon.Result & { _memAfter?: { rss_mb: number; heap_used_mb: number } })._memAfter ?? takeMemorySnapshot()
+  const firstMem =
+    (runs[0] as autocannon.Result & { _memBefore?: { rss_mb: number; heap_used_mb: number } })
+      ._memBefore ?? takeMemorySnapshot()
+  const lastMem =
+    (
+      runs[runs.length - 1] as autocannon.Result & {
+        _memAfter?: { rss_mb: number; heap_used_mb: number }
+      }
+    )._memAfter ?? takeMemorySnapshot()
 
   return {
     name: scenario.name,

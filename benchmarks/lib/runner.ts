@@ -1,5 +1,8 @@
-import { type ChildProcess, spawn } from 'node:child_process'
-import { resolve } from 'node:path'
+import { type ChildProcess, execSync, spawn } from 'node:child_process'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /**
  * Shared utilities for benchmark orchestration:
@@ -35,7 +38,7 @@ export interface ServerProcess {
 
 /** Start the API server as a subprocess with custom env vars. */
 export function startApiServer(env: Record<string, string>, port = 3001): ServerProcess {
-  const entrypoint = resolve('services/api/src/index.ts')
+  const entrypoint = resolve(__dirname, '../../services/api/src/index.ts')
   const proc = spawn('node', ['--import', 'tsx', entrypoint], {
     env: {
       ...process.env,
@@ -75,9 +78,9 @@ export function median(values: readonly number[]): number {
   const sorted = [...values].sort((a, b) => a - b)
   const mid = Math.floor(sorted.length / 2)
   if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1]! + sorted[mid]!) / 2
+    return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
   }
-  return sorted[mid]!
+  return sorted[mid] ?? 0
 }
 
 /** Compute the arithmetic mean of a number array. */
@@ -87,10 +90,7 @@ export function mean(values: readonly number[]): number {
 }
 
 /** Pick the aggregation function based on config. */
-export function aggregate(
-  values: readonly number[],
-  method: 'median' | 'mean',
-): number {
+export function aggregate(values: readonly number[], method: 'median' | 'mean'): number {
   return method === 'median' ? median(values) : mean(values)
 }
 
@@ -102,7 +102,6 @@ export function sleep(ms: number): Promise<void> {
 /** Get the current git SHA (short). */
 export function getGitSha(): string {
   try {
-    const { execSync } = require('node:child_process') as typeof import('node:child_process')
     return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
   } catch {
     return 'unknown'
@@ -112,7 +111,6 @@ export function getGitSha(): string {
 /** Get the current git branch. */
 export function getGitBranch(): string {
   try {
-    const { execSync } = require('node:child_process') as typeof import('node:child_process')
     return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim()
   } catch {
     return 'unknown'
