@@ -28,30 +28,54 @@ const FALLBACK_RESULT: Readonly<ClusterResult> = {
  * Returns fallback results on ANY failure — never throws.
  * Best-effort enrichment per PLAN.md degradation contract.
  */
+export interface CircuitBreakerOptions {
+  circuitThreshold?: number
+  probeInterval?: number
+}
+
 export class ClusterClient {
   private url: string
   private timeoutMs: number
   private logger: pino.Logger
   private fetchFn: FetchFn
   private failures = 0
+  private circuitOpen = false
+  private callsSinceOpen = 0
+  private readonly circuitThreshold: number
+  private readonly probeInterval: number
 
   constructor(
     url: string,
     timeoutMs: number,
     logger: pino.Logger,
     fetchFn: FetchFn = globalThis.fetch,
+    options?: CircuitBreakerOptions,
   ) {
     this.url = url
     this.timeoutMs = timeoutMs
     this.logger = logger
     this.fetchFn = fetchFn
+    this.circuitThreshold = options?.circuitThreshold ?? 5
+    this.probeInterval = options?.probeInterval ?? 10
   }
 
   get consecutiveFailures(): number {
     return this.failures
   }
 
+  get isCircuitOpen(): boolean {
+    return this.circuitOpen
+  }
+
   async cluster(tenantId: string, messages: string[]): Promise<ClusterResult[]> {
+    if (this.circuitOpen) {
+      this.callsSinceOpen++
+      if (this.callsSinceOpen % this.probeInterval !== 0) {
+        return this.fallback(messages.length)
+      }
+      this.logger.info({ tenantId }, 'Clusterer circuit probe attempt')
+    }
+
     try {
       const response = await this.fetchFn(`${this.url}/cluster`, {
         method: 'POST',
@@ -65,7 +89,7 @@ export class ClusterClient {
           { tenantId, statusCode: 422, messageCount: messages.length, url: this.url },
           'Clusterer rejected request — likely API server bug',
         )
-        this.failures++
+        this.onFailure()
         return this.fallback(messages.length)
       }
 
@@ -74,7 +98,7 @@ export class ClusterClient {
           { tenantId, statusCode: response.status, url: this.url },
           'Clusterer returned non-OK status',
         )
-        this.failures++
+        this.onFailure()
         return this.fallback(messages.length)
       }
 
@@ -86,7 +110,7 @@ export class ClusterClient {
           { tenantId, url: this.url },
           'Clusterer returned non-JSON response body',
         )
-        this.failures++
+        this.onFailure()
         return this.fallback(messages.length)
       }
 
@@ -95,7 +119,7 @@ export class ClusterClient {
           { tenantId, url: this.url },
           'Clusterer returned malformed response body',
         )
-        this.failures++
+        this.onFailure()
         return this.fallback(messages.length)
       }
 
@@ -104,11 +128,11 @@ export class ClusterClient {
           { tenantId, url: this.url, expected: messages.length, got: body.results.length },
           'Clusterer returned mismatched result count',
         )
-        this.failures++
+        this.onFailure()
         return this.fallback(messages.length)
       }
 
-      this.failures = 0
+      this.onSuccess()
       return body.results.map((r) => ({
         templateId: r.template_id,
         templateText: r.template_text,
@@ -122,8 +146,29 @@ export class ClusterClient {
         { tenantId, url: this.url, err, isTimeout },
         isTimeout ? 'Clusterer request timed out' : 'Clusterer request failed',
       )
-      this.failures++
+      this.onFailure()
       return this.fallback(messages.length)
+    }
+  }
+
+  private onFailure(): void {
+    this.failures++
+    if (!this.circuitOpen && this.failures >= this.circuitThreshold) {
+      this.circuitOpen = true
+      this.callsSinceOpen = 0
+      this.logger.warn(
+        { consecutiveFailures: this.failures },
+        `Clusterer circuit open after ${this.failures} failures`,
+      )
+    }
+  }
+
+  private onSuccess(): void {
+    this.failures = 0
+    if (this.circuitOpen) {
+      this.circuitOpen = false
+      this.callsSinceOpen = 0
+      this.logger.info('Clusterer recovered — circuit closed')
     }
   }
 
