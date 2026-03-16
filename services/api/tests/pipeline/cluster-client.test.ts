@@ -295,4 +295,133 @@ describe('ClusterClient', () => {
     await client.cluster('t', ['m']) // success
     assert.equal(client.consecutiveFailures, 0)
   })
+
+  // -- Circuit breaker --
+
+  it('opens circuit after circuitThreshold consecutive failures', async () => {
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(500, {}), {
+      circuitThreshold: 3,
+      probeInterval: 5,
+    })
+
+    for (let i = 0; i < 3; i++) {
+      await client.cluster('tenant-a', ['msg'])
+    }
+
+    assert.equal(client.isCircuitOpen, true)
+    assert.equal(client.consecutiveFailures, 3)
+  })
+
+  it('returns fallback without HTTP call when circuit is open', async () => {
+    let fetchCallCount = 0
+    const countingFetch: typeof globalThis.fetch = async () => {
+      fetchCallCount++
+      return new Response('', { status: 500 })
+    }
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, countingFetch, {
+      circuitThreshold: 3,
+      probeInterval: 10,
+    })
+
+    // Trip the circuit
+    for (let i = 0; i < 3; i++) {
+      await client.cluster('tenant-a', ['msg'])
+    }
+    assert.equal(fetchCallCount, 3)
+
+    // Next call should NOT make an HTTP call (not a probe call)
+    const results = await client.cluster('tenant-a', ['msg1', 'msg2'])
+    assert.equal(fetchCallCount, 3, 'Should not make HTTP call when circuit is open')
+    assert.equal(results.length, 2)
+    assert.equal(results[0]?.templateId, '0')
+  })
+
+  it('probes on Nth call and closes circuit on success', async () => {
+    let callCount = 0
+    const recoveringFetch: typeof globalThis.fetch = async () => {
+      callCount++
+      if (callCount <= 3) {
+        return new Response('', { status: 500 })
+      }
+      return new Response(JSON.stringify(CLUSTERER_RESPONSE), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, recoveringFetch, {
+      circuitThreshold: 3,
+      probeInterval: 5,
+    })
+
+    // Trip the circuit (3 failures)
+    for (let i = 0; i < 3; i++) {
+      await client.cluster('tenant-a', ['msg'])
+    }
+    assert.equal(client.isCircuitOpen, true)
+
+    // Calls 1-4 in OPEN state: should skip HTTP (not probe calls)
+    for (let i = 0; i < 4; i++) {
+      await client.cluster('tenant-a', ['msg'])
+    }
+    assert.equal(callCount, 3, 'No HTTP calls during non-probe open state')
+
+    // 5th call in OPEN state: should probe (probeInterval=5)
+    const results = await client.cluster('tenant-a', ['msg'])
+    assert.equal(callCount, 4, 'Probe call should make HTTP request')
+    assert.equal(client.isCircuitOpen, false, 'Circuit should close on probe success')
+    assert.equal(client.consecutiveFailures, 0)
+    assert.equal(results[0]?.templateId, 'abc-123')
+  })
+
+  it('keeps circuit open when probe fails', async () => {
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(500, {}), {
+      circuitThreshold: 3,
+      probeInterval: 5,
+    })
+
+    // Trip the circuit
+    for (let i = 0; i < 3; i++) {
+      await client.cluster('tenant-a', ['msg'])
+    }
+    assert.equal(client.isCircuitOpen, true)
+
+    // Calls 1-4 (skipped), then call 5 (probe — fails)
+    for (let i = 0; i < 5; i++) {
+      await client.cluster('tenant-a', ['msg'])
+    }
+
+    assert.equal(client.isCircuitOpen, true, 'Circuit should stay open after failed probe')
+  })
+
+  it('does not open circuit when failures are below threshold', async () => {
+    const { logger } = createTestLogger()
+    let callCount = 0
+    const mixedFetch: typeof globalThis.fetch = async () => {
+      callCount++
+      if (callCount <= 4) return new Response('', { status: 500 })
+      return new Response(JSON.stringify(CLUSTERER_RESPONSE), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mixedFetch, {
+      circuitThreshold: 5,
+    })
+
+    // 4 failures — below threshold of 5
+    for (let i = 0; i < 4; i++) {
+      await client.cluster('tenant-a', ['msg'])
+    }
+    assert.equal(client.isCircuitOpen, false)
+    assert.equal(client.consecutiveFailures, 4)
+
+    // 5th call succeeds — resets failures
+    await client.cluster('tenant-a', ['msg'])
+    assert.equal(client.isCircuitOpen, false)
+    assert.equal(client.consecutiveFailures, 0)
+  })
 })
