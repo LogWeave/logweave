@@ -86,6 +86,12 @@ cmd_down() {
   docker compose down "$@"
 }
 
+cmd_benchmark() {
+  heading "Benchmark suite"
+  (cd benchmarks && pnpm start "$@") || { fail "Benchmarks failed"; return 1; }
+  success "Benchmarks complete"
+}
+
 cmd_help() {
   echo -e "${BOLD}LogWeave Dev Runner${NC}"
   echo ""
@@ -99,6 +105,7 @@ cmd_help() {
   echo "  dev         Start dev servers (ClickHouse + clusterer + API)"
   echo "  up          docker compose up --build"
   echo "  down        docker compose down"
+  echo "  benchmark   Run benchmark suite (pass args after, e.g. --filter 'ingest-*')"
   echo "  help        Show this message"
 }
 
@@ -110,5 +117,6 @@ case "${1:-help}" in
   dev)       cmd_dev ;;
   up)        cmd_up "${@:2}" ;;
   down)      cmd_down "${@:2}" ;;
+  benchmark) cmd_benchmark "${@:2}" ;;
   help|*)    cmd_help ;;
 esac
