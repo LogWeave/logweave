@@ -57,6 +57,13 @@ export class ClusterClient {
     this.fetchFn = fetchFn
     this.circuitThreshold = options?.circuitThreshold ?? 5
     this.probeInterval = options?.probeInterval ?? 10
+
+    if (this.circuitThreshold < 1) {
+      throw new Error('circuitThreshold must be >= 1')
+    }
+    if (this.probeInterval < 2) {
+      throw new Error('probeInterval must be >= 2')
+    }
   }
 
   get consecutiveFailures(): number {

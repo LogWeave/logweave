@@ -82,6 +82,11 @@ export class RecoverySweep {
   async runStartupReconciliation(): Promise<number> {
     if (this.sweepRunning) return 0
 
+    if (this.deps.clusterClient.isCircuitOpen) {
+      this.deps.logger.info('Clusterer circuit open, skipping reconciliation')
+      return 0
+    }
+
     const healthy = await this.deps.clustererHealth.check()
     if (!healthy) {
       this.deps.logger.info('Clusterer unavailable at startup, skipping reconciliation')
@@ -98,6 +103,7 @@ export class RecoverySweep {
         this.deps.logger.debug('Sweep already running, skipping')
         return
       }
+      if (this.deps.clusterClient.isCircuitOpen) return
       const healthy = await this.deps.clustererHealth.check()
       if (!healthy) return
       try {

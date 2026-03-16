@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { beforeEach, describe, it } from 'node:test'
 import express from 'express'
+import pino from 'pino'
 import request from 'supertest'
 import type { ClustererHealthChecker } from '../src/clients/clusterer.js'
+import { ClusterClient } from '../src/pipeline/cluster-client.js'
 import { _resetReadyCache, healthRoutes } from '../src/routes/health.js'
 import type { ClickHouseClient } from '../src/types.js'
 
@@ -23,12 +25,19 @@ function createMockClustererHealth(failures = 0): ClustererHealthChecker {
   } as unknown as ClustererHealthChecker
 }
 
-function createTestApp(pingResult: boolean, clustererFailures = 0): express.Express {
+const logger = pino({ level: 'silent' })
+
+function createTestApp(
+  pingResult: boolean,
+  clustererFailures = 0,
+  options?: { clusterClient?: ClusterClient },
+): express.Express {
   const app = express()
   app.use(
     healthRoutes({
       clickhouse: createMockClickhouse(pingResult),
       clustererHealth: createMockClustererHealth(clustererFailures),
+      clusterClient: options?.clusterClient,
     }),
   )
   return app
@@ -72,5 +81,23 @@ describe('health routes', () => {
     assert.equal(res.status, 200) // clusterer down does NOT cause 503
     assert.equal(res.body.clusterer.status, 'degraded')
     assert.equal(res.body.clusterer.consecutiveFailures, 3)
+    assert.equal(res.body.clusterer.circuitOpen, false)
+  })
+
+  it('GET /readyz reports circuitOpen when circuit breaker is tripped', async () => {
+    const failFetch: typeof globalThis.fetch = async () => new Response('', { status: 500 })
+    const client = new ClusterClient('http://localhost:8000', 500, logger, failFetch, {
+      circuitThreshold: 2,
+      probeInterval: 5,
+    })
+    // Trip the circuit
+    await client.cluster('t', ['m'])
+    await client.cluster('t', ['m'])
+    assert.equal(client.isCircuitOpen, true)
+
+    const app = createTestApp(true, 0, { clusterClient: client })
+    const res = await request(app).get('/readyz')
+
+    assert.equal(res.body.clusterer.circuitOpen, true)
   })
 })

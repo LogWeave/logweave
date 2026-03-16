@@ -2,11 +2,13 @@ import { Router } from 'express'
 import { pingClickHouse } from '../clients/clickhouse.js'
 import type { ClustererHealthChecker } from '../clients/clusterer.js'
 import { HttpStatus } from '../http-status.js'
+import type { ClusterClient } from '../pipeline/cluster-client.js'
 import type { ClickHouseClient } from '../types.js'
 
 interface HealthDeps {
   clickhouse: ClickHouseClient
   clustererHealth: ClustererHealthChecker
+  clusterClient?: ClusterClient
 }
 
 const READY_CACHE_TTL_MS = 5_000
@@ -30,6 +32,7 @@ export function healthRoutes(deps: HealthDeps): Router {
         clusterer: {
           status: deps.clustererHealth.consecutiveFailures === 0 ? 'ok' : 'degraded',
           consecutiveFailures: deps.clustererHealth.consecutiveFailures,
+          circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
         },
       })
       return
@@ -47,6 +50,7 @@ export function healthRoutes(deps: HealthDeps): Router {
         clusterer: {
           status: clustererStatus,
           consecutiveFailures: deps.clustererHealth.consecutiveFailures,
+          circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
         },
       })
       return
@@ -58,6 +62,7 @@ export function healthRoutes(deps: HealthDeps): Router {
       clusterer: {
         status: clustererStatus,
         consecutiveFailures: deps.clustererHealth.consecutiveFailures,
+        circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
       },
     })
   })

@@ -63,7 +63,7 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use(express.json({ limit: '1mb' }))
 
   // Routes — health (unauthenticated)
-  app.use(healthRoutes({ clickhouse: deps.clickhouse, clustererHealth: deps.clustererHealth }))
+  app.use(healthRoutes({ clickhouse: deps.clickhouse, clustererHealth: deps.clustererHealth, clusterClient: deps.clusterClient }))
 
   // Routes — API (authenticated)
   const auth = createAuthMiddleware(deps.config.apiKeys)
