@@ -56,10 +56,10 @@ describe('batchInsert', () => {
               WHERE tenant_id = {tenant_id:String}`,
       query_params: { tenant_id: tenantId },
     })
-    const countRows = await jsonRows<{ cnt: string }>(result)
+    const countRows = await jsonRows<{ cnt: number | string }>(result)
     const first = countRows[0]
     assert.ok(first, 'Expected count result')
-    assert.equal(first.cnt, '100')
+    assert.equal(Number(first.cnt), 100)
   })
 
   it('round-trips all fields correctly', async () => {

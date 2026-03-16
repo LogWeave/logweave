@@ -10,7 +10,7 @@ const logger = pino({ level: 'silent' })
 
 interface TemplateStatsRow {
   template_id: string
-  cnt: string
+  cnt: number | string
 }
 
 interface AvgRow {
@@ -18,14 +18,14 @@ interface AvgRow {
 }
 
 interface ErrorCountRow {
-  errs: string
+  errs: number | string
 }
 
 interface ServiceStatsRow {
-  total: string
-  errs: string
-  warns: string
-  new_tmpls: string
+  total: number | string
+  errs: number | string
+  warns: number | string
+  new_tmpls: number | string
 }
 
 function makeRow(tenantId: string, overrides?: Partial<LogMetadataRow>): LogMetadataRow {
@@ -81,7 +81,7 @@ describe('materialized views', () => {
     const first = rows[0]
     assert.ok(first, 'Expected at least one row')
     assert.equal(first.template_id, 'tmpl-real')
-    assert.equal(first.cnt, '1')
+    assert.equal(Number(first.cnt), 1)
   })
 
   it('avgMerge produces correct results after OPTIMIZE', async () => {
@@ -152,7 +152,7 @@ describe('materialized views', () => {
     const rows = await jsonRows<ErrorCountRow>(result)
     const first = rows[0]
     assert.ok(first, 'Expected at least one row')
-    assert.equal(first.errs, '2')
+    assert.equal(Number(first.errs), 2)
   })
 
   it('service_stats MV counts all rows including unclustered', async () => {
@@ -181,9 +181,9 @@ describe('materialized views', () => {
     const row = rows[0]
     assert.ok(row, 'Expected at least one row')
 
-    assert.equal(row.total, '3', 'All 3 rows should be counted')
-    assert.equal(row.errs, '1', '1 ERROR row')
-    assert.equal(row.warns, '1', '1 WARN row')
-    assert.equal(row.new_tmpls, '1', '1 new template')
+    assert.equal(Number(row.total), 3, 'All 3 rows should be counted')
+    assert.equal(Number(row.errs), 1, '1 ERROR row')
+    assert.equal(Number(row.warns), 1, '1 WARN row')
+    assert.equal(Number(row.new_tmpls), 1, '1 new template')
   })
 })

@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import type { ClickHouseClient, ResultSet } from '@clickhouse/client'
 import { createClient } from '@clickhouse/client'
 
-const CLICKHOUSE_URL = process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://localhost:8123'
+const CLICKHOUSE_URL = process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://default:logweave@localhost:8123'
 
 let sharedClient: ClickHouseClient | undefined
 

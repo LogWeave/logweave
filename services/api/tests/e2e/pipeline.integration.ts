@@ -33,7 +33,7 @@ import {
 
 const API_URL = 'http://localhost:3000'
 const CLUSTERER_URL = 'http://localhost:8000'
-const CLICKHOUSE_URL = 'http://localhost:8123'
+const CLICKHOUSE_URL = 'http://default:logweave@localhost:8123'
 
 const TENANT_A = 'e2e-tenant-a'
 const TENANT_B = 'e2e-tenant-b'
