@@ -98,11 +98,14 @@ function mockDb(options: MockDbOptions) {
 }
 
 /** Create a mock ClickHouseClient that captures inserts. */
-function mockClickhouse(options?: { insertError?: Error }) {
+function mockClickhouse(options?: { insertError?: Error; insertErrorForTenant?: string }) {
   const insertedRows: LogMetadataRow[][] = []
   const client = {
     insert: async (params: { values: LogMetadataRow[] }) => {
       if (options?.insertError) throw options.insertError
+      if (options?.insertErrorForTenant && params.values[0]?.tenant_id === options.insertErrorForTenant) {
+        throw new Error(`INSERT failed for tenant ${options.insertErrorForTenant}`)
+      }
       insertedRows.push(params.values)
     },
     ping: async () => ({ success: true }),
@@ -118,10 +121,14 @@ function createSweep(options: {
   fetchFn?: typeof globalThis.fetch
   sweepMaxRows?: number
   insertError?: Error
+  insertErrorForTenant?: string
   commandError?: Error
 }) {
   const { db, commandCalls, queryCalls } = mockDb({ pages: options.pages, commandError: options.commandError })
-  const { client: clickhouse, insertedRows } = mockClickhouse({ insertError: options.insertError })
+  const { client: clickhouse, insertedRows } = mockClickhouse({
+    insertError: options.insertError,
+    insertErrorForTenant: options.insertErrorForTenant,
+  })
   const healthChecker = mockHealthChecker(options.healthy ?? true)
 
   const fetchFn = options.fetchFn ?? mockFetch(clusterResults(1))
@@ -351,40 +358,76 @@ describe('RecoverySweep', () => {
     assert.equal(commandCalls.length, 0, 'No DELETE should happen for still-unclustered rows')
   })
 
-  it('INSERT failure prevents DELETE from running', async () => {
+  it('INSERT failure prevents DELETE and sweep continues to next tenant', async () => {
+    // Two tenants on the same page: tenant-a INSERT fails, tenant-b should still recover
     const rows = [
-      unclusteredRow({ id: 'id-1', pre_processed_message: 'msg1' }),
-      unclusteredRow({ id: 'id-2', pre_processed_message: 'msg2' }),
+      unclusteredRow({ id: 'id-a1', tenant_id: 'tenant-a', pre_processed_message: 'msg-a1' }),
+      unclusteredRow({ id: 'id-b1', tenant_id: 'tenant-b', pre_processed_message: 'msg-b1' }),
     ]
-    const fetchFn = mockFetch(clusterResults(2))
+
+    const fetchFn: typeof globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(init?.body as string) as { messages: string[] }
+      const results = body.messages.map((_, i) => ({
+        template_id: `tpl-${i + 1}`,
+        template_text: `Template ${i + 1}`,
+        is_new: false,
+      }))
+      return new Response(JSON.stringify({ results }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
     const { sweep, commandCalls, insertedRows } = createSweep({
       pages: [rows, []],
       fetchFn,
-      insertError: new Error('ClickHouse insert failed'),
+      insertErrorForTenant: 'tenant-a',
     })
 
     const recovered = await sweep.runStartupReconciliation()
 
-    assert.equal(recovered, 0, 'Should return 0 when INSERT fails')
-    assert.equal(insertedRows.length, 0, 'No rows should be captured (INSERT threw)')
-    assert.equal(commandCalls.length, 0, 'DELETE must NOT run when INSERT fails')
+    // tenant-a: INSERT failed → no DELETE, 0 recovered
+    // tenant-b: INSERT succeeded → DELETE ran, 1 recovered
+    assert.equal(recovered, 1, 'Only tenant-b should be recovered')
+    assert.equal(insertedRows.length, 1, 'Only tenant-b INSERT should succeed')
+    assert.equal(insertedRows[0]?.[0]?.tenant_id, 'tenant-b')
+    assert.equal(commandCalls.length, 1, 'Only tenant-b DELETE should run')
+    assert.equal(commandCalls[0]?.query_params?.tenant_id, 'tenant-b')
   })
 
-  it('DELETE failure still returns correct recovered count', async () => {
+  it('DELETE failure still returns correct recovered count and logs warning', async () => {
     const rows = [
       unclusteredRow({ id: 'id-1', pre_processed_message: 'msg1' }),
     ]
     const fetchFn = mockFetch(clusterResults(1))
-    const { sweep, insertedRows } = createSweep({
-      pages: [rows, []],
-      fetchFn,
-      commandError: new Error('ClickHouse delete failed'),
-    })
+
+    // Build sweep with a logger that captures warn calls
+    const warnCalls: Array<{ obj: Record<string, unknown>; msg: string }> = []
+    const testLogger = pino({ level: 'silent' })
+    const origWarn = testLogger.warn.bind(testLogger)
+    testLogger.warn = ((obj: Record<string, unknown>, msg: string) => {
+      warnCalls.push({ obj, msg })
+      origWarn(obj, msg)
+    }) as typeof testLogger.warn
+
+    const { db } = mockDb({ pages: [rows, []], commandError: new Error('ClickHouse delete failed') })
+    const { client: clickhouse, insertedRows } = mockClickhouse()
+    const healthChecker = mockHealthChecker(true)
+    const clusterClient = new ClusterClient('http://localhost:8000', 500, testLogger, fetchFn)
+
+    const sweep = new RecoverySweep(
+      { db, clickhouse, clusterClient, clustererHealth: healthChecker, logger: testLogger },
+      { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300 },
+    )
 
     const recovered = await sweep.runStartupReconciliation()
 
     assert.equal(recovered, 1, 'Should return 1 even though DELETE failed')
     assert.equal(insertedRows.length, 1, 'INSERT should have succeeded')
+    // Verify warning was logged for the DELETE failure
+    const deleteWarning = warnCalls.find((c) => c.msg.includes('DELETE failed'))
+    assert.ok(deleteWarning, 'Should log a warning when DELETE fails')
+    assert.equal(deleteWarning?.obj.tenantId, 'tenant-a', 'Warning should include tenant_id')
   })
 
   it('cursor pagination — multiple pages fetched with advancing cursor', async () => {
