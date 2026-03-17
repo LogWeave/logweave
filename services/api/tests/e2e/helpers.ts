@@ -92,17 +92,20 @@ export async function getClickhouseNow(
 /**
  * Count rows inserted since a given time. Uses ClickHouse's ingest_time column
  * for delta-based assertions that are independent of prior test state.
- * The `where` param accepts only hardcoded test literals — never user input.
+ * Optional templateFilter restricts to clustered/unclustered rows.
  */
 export async function countRowsSince(
   clickhouse: ClickHouseClient,
   tenantId: string,
   sinceTime: string,
-  where = '',
+  templateFilter?: 'clustered' | 'unclustered',
 ): Promise<number> {
-  const extra = where ? ` AND ${where}` : ''
+  let templateClause = ''
+  if (templateFilter === 'unclustered') templateClause = " AND template_id = '0'"
+  else if (templateFilter === 'clustered') templateClause = " AND template_id != '0'"
+
   const result = await clickhouse.query({
-    query: `SELECT count() AS cnt FROM logweave.log_metadata WHERE tenant_id = {tenant_id:String} AND ingest_time >= {since:String}${extra}`,
+    query: `SELECT count() AS cnt FROM logweave.log_metadata WHERE tenant_id = {tenant_id:String} AND ingest_time >= {since:String}${templateClause}`,
     query_params: { tenant_id: tenantId, since: sinceTime },
     format: 'JSONEachRow',
   })

@@ -98,8 +98,8 @@ describe('E2E concurrency tests (Docker Compose)', () => {
       `Tenant B: expected >= ${expectedPerTenant}, got ${countB}`,
     )
 
-    // Verify no cross-contamination: tenant A rows all have tenant_id = TENANT_A
-    const crossCheck = await clickhouse.query({
+    // Verify no cross-contamination in both directions
+    const crossCheckAtoB = await clickhouse.query({
       query: `SELECT count() AS cnt FROM logweave.log_metadata
               WHERE tenant_id = {tenant_id:String}
               AND ingest_time >= {since:String}
@@ -107,11 +107,26 @@ describe('E2E concurrency tests (Docker Compose)', () => {
       query_params: { tenant_id: TENANT_A, since: startTime },
       format: 'JSONEachRow',
     })
-    const crossRows = (await crossCheck.json()) as Array<{ cnt: string }>
+    const crossAtoB = (await crossCheckAtoB.json()) as Array<{ cnt: string }>
     assert.equal(
-      Number(crossRows[0]?.cnt ?? 0),
+      Number(crossAtoB[0]?.cnt ?? 0),
       0,
       'Tenant A should have no rows with tenant B service tag',
+    )
+
+    const crossCheckBtoA = await clickhouse.query({
+      query: `SELECT count() AS cnt FROM logweave.log_metadata
+              WHERE tenant_id = {tenant_id:String}
+              AND ingest_time >= {since:String}
+              AND service = 'conc-tenant-a'`,
+      query_params: { tenant_id: TENANT_B, since: startTime },
+      format: 'JSONEachRow',
+    })
+    const crossBtoA = (await crossCheckBtoA.json()) as Array<{ cnt: string }>
+    assert.equal(
+      Number(crossBtoA[0]?.cnt ?? 0),
+      0,
+      'Tenant B should have no rows with tenant A service tag',
     )
   })
 

@@ -78,12 +78,12 @@ describe('E2E failure modes (Docker Compose)', () => {
 
     // Wait for unclustered rows to appear
     await pollUntil(
-      async () => (await countRowsSince(clickhouse, TENANT_A, startTime, "template_id = '0'")) >= 90,
+      async () => (await countRowsSince(clickhouse, TENANT_A, startTime, 'unclustered')) >= 90,
       { intervalMs: 1000, timeoutMs: 15_000, label: 'unclustered rows from flapping' },
     )
 
     const unclusteredCount = await countRowsSince(
-      clickhouse, TENANT_A, startTime, "template_id = '0'",
+      clickhouse, TENANT_A, startTime, 'unclustered',
     )
     assert.ok(
       unclusteredCount >= 90,
@@ -122,7 +122,7 @@ describe('E2E failure modes (Docker Compose)', () => {
 
     // Expect >= 80% clustered (circuit breaker should be closed after warm-up)
     const clusteredAfter = await countRowsSince(
-      clickhouse, TENANT_A, upStart, "template_id != '0'",
+      clickhouse, TENANT_A, upStart, 'clustered',
     )
     const totalAfter = await countRowsSince(clickhouse, TENANT_A, upStart)
     const clusteredPct = (clusteredAfter / totalAfter) * 100
@@ -134,10 +134,10 @@ describe('E2E failure modes (Docker Compose)', () => {
 
     // Verify we have both types of rows from this entire test
     const totalUnclustered = await countRowsSince(
-      clickhouse, TENANT_A, startTime, "template_id = '0'",
+      clickhouse, TENANT_A, startTime, 'unclustered',
     )
     const totalClustered = await countRowsSince(
-      clickhouse, TENANT_A, startTime, "template_id != '0'",
+      clickhouse, TENANT_A, startTime, 'clustered',
     )
 
     assert.ok(totalUnclustered > 0, 'Should have unclustered rows from phase 1')

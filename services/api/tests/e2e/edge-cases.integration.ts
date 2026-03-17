@@ -85,8 +85,10 @@ describe('E2E edge cases (Docker Compose)', () => {
 
   // -- E3: Unicode, emoji, multi-byte characters --
 
-  it('unicode, emoji, and multi-byte characters stored correctly', async (t) => {
+  it('unicode, emoji, and multi-byte characters accepted and persisted', async (t) => {
     if (!reachable) { t.skip('Docker Compose not running'); return }
+
+    const e3Start = await getClickhouseNow(clickhouse)
 
     const unicodeMessages = [
       'CJK: \u4f60\u597d\u4e16\u754c — Chinese hello world',
@@ -106,26 +108,17 @@ describe('E2E edge cases (Docker Compose)', () => {
     assert.equal(status, 200)
     assert.equal(body.accepted, 5)
 
-    // Query back and verify messages are intact
-    const result = await clickhouse.query({
-      query: `SELECT message FROM logweave.log_metadata
-              WHERE tenant_id = {tenant_id:String}
-              AND ingest_time >= {since:String}
-              AND message LIKE '%CJK%' OR message LIKE '%Emoji%' OR message LIKE '%Arabic%'
-              OR message LIKE '%Combining%' OR message LIKE '%Mixed%'
-              LIMIT 10`,
-      query_params: { tenant_id: TENANT_A, since: startTime },
-      format: 'JSONEachRow',
-    })
-    const rows = (await result.json()) as Array<{ message: string }>
-    // At least some unicode messages should be stored
-    assert.ok(rows.length > 0, 'Expected unicode messages to be stored')
+    // Verify rows persisted (we don't store raw messages — only metadata/templates)
+    const count = await countRowsSince(clickhouse, TENANT_A, e3Start)
+    assert.ok(count >= 5, `Expected >= 5 rows from unicode events, got ${count}`)
   })
 
   // -- E4: Timestamps in past and future --
 
-  it('timestamps far in past and future are accepted', async (t) => {
+  it('timestamps far in past and future are accepted and persisted', async (t) => {
     if (!reachable) { t.skip('Docker Compose not running'); return }
+
+    const e4Start = await getClickhouseNow(clickhouse)
 
     const pastDate = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000) // 29 days ago
     const futureDate = new Date(Date.now() + 29 * 24 * 60 * 60 * 1000) // 29 days ahead
@@ -147,6 +140,10 @@ describe('E2E edge cases (Docker Compose)', () => {
 
     assert.equal(status, 200)
     assert.equal(body.accepted, 2)
+
+    // Verify rows actually persisted (not silently dropped by TTL or rejected)
+    const count = await countRowsSince(clickhouse, TENANT_A, e4Start)
+    assert.ok(count >= 2, `Expected >= 2 rows from timestamp edge events, got ${count}`)
   })
 
   // -- E5: Mixed valid/invalid events — partial success --

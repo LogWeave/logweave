@@ -17,7 +17,6 @@ import {
   queryTemplateStats,
   queryServiceStats,
   explainQuery,
-  tenantQuery,
 } from '../../src/db/queries.js'
 // Relative import — avoids workspace:* devDep that would break Dockerfile
 import { LogWeaveTransport } from '../../../../packages/transport/src/transport.js'
@@ -29,6 +28,8 @@ import {
   stopClusterer,
   startClusterer,
   waitForClusterer,
+  getClickhouseNow,
+  countRowsSince,
 } from './helpers.js'
 
 const API_URL = 'http://localhost:3000'
@@ -44,6 +45,7 @@ const UUIDV7_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a
 
 let clickhouse: ClickHouseClient
 let db: DbClient
+let startTime: string
 
 function createTransport(apiKey: string, opts?: { bufferSize?: number }): LogWeaveTransport {
   return new LogWeaveTransport({
@@ -56,18 +58,6 @@ function createTransport(apiKey: string, opts?: { bufferSize?: number }): LogWea
     timeoutMs: 10_000,
     maxRetries: 3,
   })
-}
-
-// Test-only helper — `where` is always a hardcoded literal from callers below, never user input
-async function countRows(tenantId: string, where = ''): Promise<number> {
-  const extra = where ? ` AND ${where}` : ''
-  const result = await clickhouse.query({
-    query: `SELECT count() AS cnt FROM logweave.log_metadata WHERE tenant_id = {tenant_id:String}${extra}`,
-    query_params: { tenant_id: tenantId },
-    format: 'JSONEachRow',
-  })
-  const rows = (await result.json()) as Array<{ cnt: string }>
-  return Number(rows[0]?.cnt ?? 0)
 }
 
 describe('E2E pipeline (Docker Compose)', () => {
@@ -84,6 +74,7 @@ describe('E2E pipeline (Docker Compose)', () => {
     if (reachable) {
       clickhouse = createClient({ url: CLICKHOUSE_URL })
       db = new DbClient(clickhouse)
+      startTime = await getClickhouseNow(clickhouse)
     }
   })
 
@@ -111,15 +102,15 @@ describe('E2E pipeline (Docker Compose)', () => {
     // closeAsync() only awaits the drain batch, not in-flight flushes. The 9500
     // threshold (95%) accounts for any flushes still completing when we start polling.
     await pollUntil(
-      async () => (await countRows(TENANT_A)) >= 9500,
+      async () => (await countRowsSince(clickhouse, TENANT_A, startTime)) >= 9500,
       { intervalMs: 2000, timeoutMs: 30_000, label: '10K events ingested' },
     )
 
-    const total = await countRows(TENANT_A)
+    const total = await countRowsSince(clickhouse, TENANT_A, startTime)
     assert.ok(total >= 9500, `Expected >= 9500 rows, got ${total}`)
 
     // Verify template_ids: sample rows and check most are UUIDv7, not '0'
-    const clustered = await countRows(TENANT_A, "template_id != '0'")
+    const clustered = await countRowsSince(clickhouse, TENANT_A, startTime, 'clustered')
     const clusteredPct = (clustered / total) * 100
     assert.ok(
       clusteredPct >= 80,
@@ -180,12 +171,12 @@ describe('E2E pipeline (Docker Compose)', () => {
     await transport.closeAsync()
 
     await pollUntil(
-      async () => (await countRows(TENANT_B)) >= 90,
+      async () => (await countRowsSince(clickhouse, TENANT_B, startTime)) >= 90,
       { intervalMs: 1000, timeoutMs: 15_000, label: 'tenant B events ingested' },
     )
 
     // Tenant B has rows
-    const countB = await countRows(TENANT_B)
+    const countB = await countRowsSince(clickhouse, TENANT_B, startTime)
     assert.ok(countB >= 90, `Expected tenant B >= 90 rows, got ${countB}`)
 
     // Verify application-layer queries only return data for the requested tenant
@@ -235,11 +226,11 @@ describe('E2E pipeline (Docker Compose)', () => {
 
     // Poll for unclustered rows to appear
     await pollUntil(
-      async () => (await countRows(TENANT_A, "template_id = '0'")) >= 40,
+      async () => (await countRowsSince(clickhouse, TENANT_A, startTime, 'unclustered')) >= 40,
       { intervalMs: 2000, timeoutMs: 20_000, label: 'unclustered rows from degradation' },
     )
 
-    const unclustered = await countRows(TENANT_A, "template_id = '0'")
+    const unclustered = await countRowsSince(clickhouse, TENANT_A, startTime, 'unclustered')
     assert.ok(unclustered >= 40, `Expected >= 40 unclustered rows, got ${unclustered}`)
 
     // Verify pre_processed_message is populated
@@ -257,8 +248,8 @@ describe('E2E pipeline (Docker Compose)', () => {
   it('recovery sweep reconciles unclustered rows after clusterer restart', async (t) => {
     if (!reachable) { t.skip('Docker Compose not running'); return }
 
-    const totalBefore = await countRows(TENANT_A)
-    const unclusteredBefore = await countRows(TENANT_A, "template_id = '0'")
+    const totalBefore = await countRowsSince(clickhouse, TENANT_A, startTime)
+    const unclusteredBefore = await countRowsSince(clickhouse, TENANT_A, startTime, 'unclustered')
     assert.ok(unclusteredBefore > 0, 'Expected unclustered rows before recovery')
 
     startClusterer()
@@ -267,15 +258,15 @@ describe('E2E pipeline (Docker Compose)', () => {
     // Recovery sweep runs every 10s (LOGWEAVE_RECOVERY_INTERVAL_MS in docker-compose)
     // Poll until unclustered count drops to 0
     await pollUntil(
-      async () => (await countRows(TENANT_A, "template_id = '0'")) === 0,
+      async () => (await countRowsSince(clickhouse, TENANT_A, startTime, 'unclustered')) === 0,
       { intervalMs: 3000, timeoutMs: 60_000, label: 'recovery sweep completes' },
     )
 
-    const unclusteredAfter = await countRows(TENANT_A, "template_id = '0'")
+    const unclusteredAfter = await countRowsSince(clickhouse, TENANT_A, startTime, 'unclustered')
     assert.equal(unclusteredAfter, 0, 'All unclustered rows should be recovered')
 
     // Verify rows were re-inserted (not just deleted) — total count should not decrease
-    const totalAfter = await countRows(TENANT_A)
+    const totalAfter = await countRowsSince(clickhouse, TENANT_A, startTime)
     assert.ok(totalAfter >= totalBefore, `Recovery should re-INSERT, not just DELETE (before=${totalBefore}, after=${totalAfter})`)
   })
 
