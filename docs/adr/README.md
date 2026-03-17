@@ -14,3 +14,4 @@ All decisions are **Accepted** unless noted otherwise.
 | 006 | [Week 1a Clusterer Architecture](ADR-006-week1a-clusterer-architecture.md) | 2026-03-13 | UUIDv7 template IDs, ClickHouse registry, in-memory cache, atomic checkpoints |
 | 007 | [Week 1a Postmortem Hardening](ADR-007-postmortem-hardening-decisions.md) | 2026-03-14 | Schema defaults, deferred rate limits, GIL-based safety, optional HMAC |
 | 008 | [ClickHouse Schema Divergences](008-clickhouse-schema-divergences.md) | 2026-03-14 | AggregatingMergeTree MVs, no Nullables, monthly partitioning, Bloom filters |
+| 009 | [Scaling Readiness Assessment](ADR-009-scaling-readiness.md) | 2026-03-17 | Bottleneck thresholds, 5-stage scaling path, horizontal readiness, 429 strategy |
