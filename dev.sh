@@ -92,6 +92,38 @@ cmd_dashboard() {
   (cd services/dashboard && pnpm dev)
 }
 
+cmd_setup() {
+  heading "Setting up local environment"
+
+  # Copy .env.example to .env where missing
+  local envfiles=(
+    "services/api"
+    "services/clusterer"
+    "services/dashboard"
+  )
+  for dir in "${envfiles[@]}"; do
+    if [ -f "$dir/.env.example" ] && [ ! -f "$dir/.env" ]; then
+      cp "$dir/.env.example" "$dir/.env"
+      success "Created $dir/.env from .env.example"
+    elif [ -f "$dir/.env" ]; then
+      echo "  $dir/.env already exists — skipping"
+    fi
+  done
+
+  # Also create dashboard .env.local if missing
+  if [ ! -f "services/dashboard/.env.local" ]; then
+    cp "services/dashboard/.env.example" "services/dashboard/.env.local"
+    success "Created services/dashboard/.env.local"
+  fi
+
+  heading "Installing dependencies"
+  pnpm install
+  success "Dependencies installed"
+
+  echo ""
+  echo -e "${GREEN}${BOLD}Setup complete!${NC} Run ${BOLD}./dev.sh dev${NC} to start all services."
+}
+
 cmd_up() {
   heading "Docker Compose up"
   docker compose up --build "$@"
@@ -114,6 +146,7 @@ cmd_help() {
   echo "Usage: ./dev.sh <command>"
   echo ""
   echo "Commands:"
+  echo "  setup       Create .env files from examples + install deps (run once)"
   echo "  test        Run all tests (clusterer + API + transport)"
   echo "  lint        Lint all services (ruff + biome)"
   echo "  typecheck   TypeScript type checking (API + transport)"
@@ -127,6 +160,7 @@ cmd_help() {
 }
 
 case "${1:-help}" in
+  setup)     cmd_setup ;;
   test)      cmd_test ;;
   lint)      cmd_lint ;;
   typecheck) cmd_typecheck ;;
