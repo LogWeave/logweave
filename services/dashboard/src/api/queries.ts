@@ -71,12 +71,14 @@ export function useTemplates() {
 export function useSparklines(templateIds: string[]) {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const hours = timeRangeToHours(timeRange)
+  // Stabilize the key — array reference changes on every render but content may be the same
+  const idsKey = templateIds.join(',')
   return useQuery({
-    queryKey: ['dashboard', 'sparklines', hours, templateIds],
+    queryKey: ['dashboard', 'sparklines', hours, idsKey],
     queryFn: () =>
       api.get<ApiResponse<SparklineData>>('/v1/dashboard/template-sparklines', {
         hours,
-        template_ids: templateIds.join(','),
+        template_ids: idsKey,
       }),
     enabled: templateIds.length > 0,
     refetchInterval: config.pollIntervalMs,

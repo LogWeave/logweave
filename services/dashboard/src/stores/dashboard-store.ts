@@ -23,7 +23,7 @@ export const useDashboardStore = create<DashboardState>()(
       timeRange: '24h',
       setTimeRange: (timeRange) => set({ timeRange }),
       serviceFilter: null,
-      setServiceFilter: (serviceFilter) => set({ serviceFilter }),
+      setServiceFilter: (serviceFilter) => set({ serviceFilter, selectedTemplateId: null }),
       colorMode: 'dark',
       toggleColorMode: () =>
         set((state) => ({ colorMode: state.colorMode === 'dark' ? 'light' : 'dark' })),
