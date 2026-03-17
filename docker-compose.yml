@@ -6,6 +6,7 @@ services:
       - "9000:9000"   # Native protocol
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
     environment:
       CLICKHOUSE_DB: logweave
     ulimits:
@@ -13,7 +14,7 @@ services:
         soft: 262144
         hard: 262144
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
       interval: 5s
       timeout: 3s
       retries: 5
