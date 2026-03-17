@@ -69,9 +69,9 @@ if (clStatus !== 'running') {
   sleep(3000)
 }
 
-const clHealth = check('docker inspect --format={{.State.Health.Status}} logweave-clusterer-1')
-if (clHealth === 'unhealthy') {
-  console.error(`${RED}Clusterer is unhealthy. Check: docker compose logs clusterer${RESET}`)
+const clRunning = check('docker inspect --format={{.State.Status}} logweave-clusterer-1')
+if (clRunning !== 'running') {
+  console.error(`${RED}Clusterer failed to start. Check: docker compose logs clusterer${RESET}`)
   process.exit(1)
 }
 console.log(`${GREEN}Clusterer running${RESET}\n`)

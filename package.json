@@ -1,5 +1,6 @@
 {
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "node scripts/dev-start.js",
     "dev:no-sim": "concurrently -k -n api,dashboard -c blue,magenta \"pnpm -C services/api dev\" \"pnpm -C services/dashboard dev\"",
