@@ -1,29 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/layout'
-
-function DashboardPage() {
-  return (
-    <div className="space-y-6">
-      <div className="text-center py-20">
-        <h2 className="text-xl font-semibold text-text-primary mb-2">Dashboard</h2>
-        <p className="text-text-secondary text-sm">
-          KPI strip, volume chart, service cards, and template table coming next.
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function DashboardV2Page() {
-  return (
-    <div className="space-y-6">
-      <div className="text-center py-20">
-        <h2 className="text-xl font-semibold text-text-primary mb-2">Dashboard V2</h2>
-        <p className="text-text-secondary text-sm">Alternative charts-first layout.</p>
-      </div>
-    </div>
-  )
-}
+import { DashboardPage } from './features/dashboard/dashboard-page'
+import { DashboardV2Page } from './features/dashboard-v2/dashboard-v2-page'
 
 export function App() {
   return (
