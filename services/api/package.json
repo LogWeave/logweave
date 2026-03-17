@@ -12,7 +12,7 @@
     "test": "tsx scripts/test.ts",
     "test:unit": "tsx scripts/test.ts --unit",
     "test:integration": "tsx scripts/test.ts --integration",
-    "test:e2e": "pnpm -C ../../packages/transport build && node --import tsx --test --test-timeout 300000 tests/e2e/pipeline.integration.ts",
+    "test:e2e": "pnpm -C ../../packages/transport build && node --import tsx --test --test-concurrency=1 --test-timeout 300000 tests/e2e/*.integration.ts",
     "lint": "biome check .",
     "lint:fix": "biome check --fix .",
     "format": "biome format --write .",
