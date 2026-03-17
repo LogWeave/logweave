@@ -25,7 +25,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      LOGWEAVE_CLICKHOUSE_URL: clickhouse://clickhouse:9000/logweave
+      LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123/logweave
     depends_on:
       clickhouse:
         condition: service_healthy
