@@ -206,7 +206,7 @@
   ],
   "spike": {
     "error_weight_multiplier": 4,
-    "templates": [
+    "extra_templates": [
       {
         "message": "Rolling restart: payments-api instance draining — {{retry_count}} in-flight transactions being re-routed",
         "level": "warn",

@@ -60,13 +60,13 @@ services:
 
   # Log simulator — generates realistic events for development + demo
   # Usage: docker compose --profile simulator up
+  # Primary mode: pnpm simulate (runs on host, targets localhost:3000)
   simulator:
     image: node:24-alpine
     working_dir: /app
     volumes:
       - .:/app
-      - simulator_modules:/app/simulator/node_modules
-    command: ["npx", "tsx", "simulator/src/index.ts"]
+    entrypoint: ["sh", "-c", "npm install -g tsx && tsx simulator/src/index.ts"]
     profiles:
       - simulator
     environment:
@@ -79,4 +79,3 @@ services:
 
 volumes:
   clickhouse_data:
-  simulator_modules:

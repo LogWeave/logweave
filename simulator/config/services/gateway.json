@@ -221,7 +221,7 @@
   ],
   "spike": {
     "error_weight_multiplier": 5,
-    "templates": [
+    "extra_templates": [
       {
         "message": "Upstream {{upstream}} restarting — 502 Bad Gateway for {{route}}, request_id={{request_id}} routing to standby",
         "level": "error",

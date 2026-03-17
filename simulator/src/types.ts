@@ -69,4 +69,10 @@ export interface CliOptions {
   bufferSize: number
   flushMs: number
   dryRun: boolean
+  /** Tracks which flags were explicitly provided (vs defaults) */
+  _explicit: {
+    rate: boolean
+    bufferSize: boolean
+    flushMs: boolean
+  }
 }

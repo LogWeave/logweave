@@ -13,7 +13,8 @@ function hasFlag(args: string[], flag: string): boolean {
 }
 
 export function parseArgs(argv: string[] = process.argv.slice(2)): CliOptions {
-  const rate = Number(getArg(argv, '--rate') ?? '10')
+  const rateRaw = getArg(argv, '--rate')
+  const rate = Number(rateRaw ?? '10')
   if (Number.isNaN(rate) || rate <= 0) {
     throw new Error('--rate must be a positive number')
   }
@@ -21,7 +22,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliOptions {
   const servicesRaw = getArg(argv, '--services') ?? 'all'
   const services = servicesRaw === 'all' ? ['all'] : servicesRaw.split(',').map((s) => s.trim())
 
-  const modeRaw = getArg(argv, '--mode') ?? 'steady'
+  const modeRaw = getArg(argv, '--mode') ?? process.env.LOGWEAVE_SIM_MODE ?? 'steady'
   if (!VALID_MODES.includes(modeRaw as Mode)) {
     throw new Error(`--mode must be one of: ${VALID_MODES.join(', ')}`)
   }
@@ -39,8 +40,17 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliOptions {
     process.env.LOGWEAVE_SIM_ENDPOINT ??
     'http://localhost:3000/v1/ingest/batch'
 
-  const bufferSize = Number(getArg(argv, '--buffer-size') ?? '100')
-  const flushMs = Number(getArg(argv, '--flush-ms') ?? '2000')
+  const bufferSizeRaw = getArg(argv, '--buffer-size')
+  const bufferSize = Number(bufferSizeRaw ?? '100')
+  if (Number.isNaN(bufferSize) || bufferSize <= 0) {
+    throw new Error('--buffer-size must be a positive number')
+  }
+
+  const flushMsRaw = getArg(argv, '--flush-ms')
+  const flushMs = Number(flushMsRaw ?? '2000')
+  if (Number.isNaN(flushMs) || flushMs <= 0) {
+    throw new Error('--flush-ms must be a positive number')
+  }
 
   const dryRun = hasFlag(argv, '--dry-run')
 
@@ -54,5 +64,10 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliOptions {
     bufferSize,
     flushMs,
     dryRun,
+    _explicit: {
+      rate: rateRaw !== undefined,
+      bufferSize: bufferSizeRaw !== undefined,
+      flushMs: flushMsRaw !== undefined,
+    },
   }
 }

@@ -23,10 +23,10 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  // Apply defaults to options
-  if (options.rate === 10) options.rate = defaults.rate
-  if (options.bufferSize === 100) options.bufferSize = defaults.buffer_size
-  if (options.flushMs === 2000) options.flushMs = defaults.flush_interval_ms
+  // Apply defaults only for flags not explicitly provided
+  if (!options._explicit.rate) options.rate = defaults.rate
+  if (!options._explicit.bufferSize) options.bufferSize = defaults.buffer_size
+  if (!options._explicit.flushMs) options.flushMs = defaults.flush_interval_ms
 
   const runner = new Runner({ services, options, defaults })
 

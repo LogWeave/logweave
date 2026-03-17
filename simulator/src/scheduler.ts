@@ -51,7 +51,9 @@ export class Scheduler {
     if (!this.running) return
 
     // Poisson inter-arrival time: exponential distribution
-    const delay = Math.max(1, -Math.log(Math.random()) * (1000 / this.rate))
+    // Clamp random away from 0 to avoid Math.log(0) = -Infinity
+    const r = Math.max(Number.EPSILON, Math.random())
+    const delay = Math.min(10_000, Math.max(1, -Math.log(r) * (1000 / this.rate)))
 
     this.timer = setTimeout(() => {
       if (!this.running) return

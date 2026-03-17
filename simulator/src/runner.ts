@@ -56,12 +56,21 @@ export class Runner {
     )
   }
 
+  private stopped = false
+  private durationTimer: ReturnType<typeof setTimeout> | null = null
+
   private emitEvent(serviceIndex: number): void {
     const idx = serviceIndex % this.engines.length
     const engine = this.engines[idx]
     if (!engine) return
 
-    const event = engine.generate()
+    let event: ReturnType<TemplateEngine['generate']>
+    try {
+      event = engine.generate()
+    } catch (err) {
+      console.error(`[${engine.serviceName}] Event generation failed: ${err}`)
+      return
+    }
     this.eventCount++
 
     if (this.options.dryRun) {
@@ -107,13 +116,21 @@ export class Runner {
     this.modeController.start()
 
     if (this.options.duration > 0) {
-      setTimeout(() => {
+      this.durationTimer = setTimeout(() => {
         this.stop()
       }, this.options.duration * 1000)
     }
   }
 
   async stop(): Promise<void> {
+    if (this.stopped) return
+    this.stopped = true
+
+    if (this.durationTimer) {
+      clearTimeout(this.durationTimer)
+      this.durationTimer = null
+    }
+
     const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(1)
     console.log(`\n\x1b[1mShutting down...\x1b[0m`)
 

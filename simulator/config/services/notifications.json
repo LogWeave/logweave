@@ -182,7 +182,7 @@
   ],
   "spike": {
     "error_weight_multiplier": 6,
-    "templates": [
+    "extra_templates": [
       {
         "message": "Provider failover: {{provider}} returning 5xx — switching to fallback provider for {{notification_type}} traffic",
         "level": "error",

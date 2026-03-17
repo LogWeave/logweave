@@ -144,6 +144,30 @@ function validateGenerators(raw: unknown, source: string, context: string): void
           `Valid: ${validTypes.join(', ')}`,
       )
     }
+
+    // Per-type required field validation
+    const ctx = `[${source}] ${context}.generators["${name}"]`
+    switch (g.type) {
+      case 'choice':
+        if (!Array.isArray(g.values) || g.values.length === 0)
+          throw new Error(`${ctx} "choice" requires non-empty "values" array`)
+        break
+      case 'weighted_choice':
+        if (!Array.isArray(g.values) || g.values.length === 0)
+          throw new Error(`${ctx} "weighted_choice" requires non-empty "values" array`)
+        break
+      case 'int':
+      case 'float':
+        if (typeof g.min !== 'number' || typeof g.max !== 'number')
+          throw new Error(`${ctx} "${g.type}" requires numeric "min" and "max"`)
+        if (g.min > g.max)
+          throw new Error(`${ctx} "${g.type}" requires min <= max`)
+        break
+      case 'sequence':
+        if (typeof g.prefix !== 'string')
+          throw new Error(`${ctx} "sequence" requires string "prefix"`)
+        break
+    }
   }
 }
 
