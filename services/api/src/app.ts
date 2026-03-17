@@ -12,6 +12,7 @@ import { requestIdMiddleware } from './middleware/request-id.js'
 import type { DbClient } from './db/client.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
 import { healthRoutes } from './routes/health.js'
+import { dashboardRoutes } from './routes/dashboard.js'
 import { ingestRoutes } from './routes/ingest.js'
 
 export interface AppDependencies {
@@ -74,6 +75,10 @@ export function createApp(deps: AppDependencies): express.Express {
   deps.config.apiKeys.clear() // Plaintext keys no longer needed — hashed copies live in auth closure
   app.use('/v1', auth, ingestRoutes({
     clusterClient: deps.clusterClient,
+    db: deps.db,
+    logger: deps.logger,
+  }))
+  app.use('/v1', auth, dashboardRoutes({
     db: deps.db,
     logger: deps.logger,
   }))
