@@ -1,11 +1,16 @@
 {
   "private": true,
   "scripts": {
+    "dev": "concurrently -k -n api,dashboard,simulator -c blue,magenta,yellow \"pnpm -C services/api dev\" \"pnpm -C services/dashboard dev\" \"sleep 3 && pnpm -C simulator start -- --api-key dev-key\"",
+    "dev:no-sim": "concurrently -k -n api,dashboard -c blue,magenta \"pnpm -C services/api dev\" \"pnpm -C services/dashboard dev\"",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
     "benchmark": "pnpm -C benchmarks start",
-    "simulate": "pnpm -C simulator start"
+    "simulate": "pnpm -C simulator start -- --api-key dev-key"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
