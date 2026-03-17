@@ -37,6 +37,10 @@ cmd_lint() {
   (cd services/api && pnpm lint) || { fail "API lint failed"; return 1; }
   success "API lint passed"
 
+  heading "Dashboard lint (biome)"
+  (cd services/dashboard && pnpm lint) || { fail "Dashboard lint failed"; return 1; }
+  success "Dashboard lint passed"
+
   heading "Transport lint (biome)"
   (cd packages/transport && pnpm lint) || { fail "Transport lint failed"; return 1; }
   success "Transport lint passed"
@@ -46,6 +50,10 @@ cmd_typecheck() {
   heading "API server typecheck"
   (cd services/api && pnpm typecheck) || { fail "API typecheck failed"; return 1; }
   success "API typecheck passed"
+
+  heading "Dashboard typecheck"
+  (cd services/dashboard && pnpm typecheck) || { fail "Dashboard typecheck failed"; return 1; }
+  success "Dashboard typecheck passed"
 
   heading "Transport typecheck"
   (cd packages/transport && pnpm typecheck) || { fail "Transport typecheck failed"; return 1; }
@@ -73,7 +81,15 @@ cmd_dev() {
   echo "Starting API server..."
   (cd services/api && pnpm dev) &
 
+  echo "Starting dashboard..."
+  (cd services/dashboard && pnpm dev) &
+
   wait
+}
+
+cmd_dashboard() {
+  heading "Starting dashboard dev server"
+  (cd services/dashboard && pnpm dev)
 }
 
 cmd_up() {
@@ -102,7 +118,8 @@ cmd_help() {
   echo "  lint        Lint all services (ruff + biome)"
   echo "  typecheck   TypeScript type checking (API + transport)"
   echo "  build       Build all TypeScript packages"
-  echo "  dev         Start dev servers (ClickHouse + clusterer + API)"
+  echo "  dev         Start dev servers (ClickHouse + clusterer + API + dashboard)"
+  echo "  dashboard   Start dashboard dev server only"
   echo "  up          docker compose up --build"
   echo "  down        docker compose down"
   echo "  benchmark   Run benchmark suite (pass args after, e.g. --filter 'ingest-*')"
@@ -115,6 +132,7 @@ case "${1:-help}" in
   typecheck) cmd_typecheck ;;
   build)     cmd_build ;;
   dev)       cmd_dev ;;
+  dashboard) cmd_dashboard ;;
   up)        cmd_up "${@:2}" ;;
   down)      cmd_down "${@:2}" ;;
   benchmark) cmd_benchmark "${@:2}" ;;
