@@ -3,6 +3,8 @@ import { StrictMode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './app'
 import './globals.css'
+import './theme/echarts-dark'
+import './theme/echarts-light'
 import { useDashboardStore } from './stores/dashboard-store'
 
 const queryClient = new QueryClient({
