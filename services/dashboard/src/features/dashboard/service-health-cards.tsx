@@ -1,4 +1,5 @@
 import { Server } from 'lucide-react'
+import { useShallow } from 'zustand/shallow'
 import { useServices } from '../../api/queries'
 import { Badge } from '../../components/ui/badge'
 import { Card } from '../../components/ui/card'
@@ -9,8 +10,9 @@ import { useDashboardStore } from '../../stores/dashboard-store'
 export function ServiceHealthCards({ className }: { className?: string }) {
   const { data: response, isLoading } = useServices()
   const services = response?.data ?? []
-  const serviceFilter = useDashboardStore((s) => s.serviceFilter)
-  const setServiceFilter = useDashboardStore((s) => s.setServiceFilter)
+  const { serviceFilter, setServiceFilter } = useDashboardStore(
+    useShallow((s) => ({ serviceFilter: s.serviceFilter, setServiceFilter: s.setServiceFilter })),
+  )
 
   if (isLoading) {
     return (

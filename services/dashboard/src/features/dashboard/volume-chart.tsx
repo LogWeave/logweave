@@ -69,6 +69,7 @@ export function VolumeChart({ className }: { className?: string }) {
         type: 'category',
         data: sortedTimestamps.map((t) => {
           const d = new Date(t)
+          if (Number.isNaN(d.getTime())) return String(t)
           return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
         }),
         boundaryGap: false,

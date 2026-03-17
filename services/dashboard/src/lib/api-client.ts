@@ -24,6 +24,7 @@ class ApiClient {
         Authorization: `Bearer ${config.apiKey}`,
         Accept: 'application/json',
       },
+      signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))

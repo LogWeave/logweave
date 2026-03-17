@@ -1,4 +1,5 @@
 import { Moon, RefreshCw, Sun } from 'lucide-react'
+import { useShallow } from 'zustand/shallow'
 import { type TimeRange, useDashboardStore } from '../stores/dashboard-store'
 import { Button } from './ui/button'
 import { ToggleGroup } from './ui/toggle'
@@ -11,16 +12,20 @@ const timeRangeOptions = [
 ]
 
 export function Header() {
-  const timeRange = useDashboardStore((s) => s.timeRange)
-  const setTimeRange = useDashboardStore((s) => s.setTimeRange)
-  const colorMode = useDashboardStore((s) => s.colorMode)
-  const toggleColorMode = useDashboardStore((s) => s.toggleColorMode)
-  const serviceFilter = useDashboardStore((s) => s.serviceFilter)
-  const setServiceFilter = useDashboardStore((s) => s.setServiceFilter)
+  const { timeRange, setTimeRange, colorMode, toggleColorMode, serviceFilter, setServiceFilter } =
+    useDashboardStore(
+      useShallow((s) => ({
+        timeRange: s.timeRange,
+        setTimeRange: s.setTimeRange,
+        colorMode: s.colorMode,
+        toggleColorMode: s.toggleColorMode,
+        serviceFilter: s.serviceFilter,
+        setServiceFilter: s.setServiceFilter,
+      })),
+    )
 
   return (
     <header className="h-14 flex items-center justify-between px-4 md:px-6 border-b border-border-subtle bg-surface-raised">
-      {/* Left: Title + service filter */}
       <div className="flex items-center gap-3">
         <h1 className="text-sm font-semibold text-text-primary hidden sm:block">Dashboard</h1>
         {serviceFilter && (
@@ -35,7 +40,6 @@ export function Header() {
         )}
       </div>
 
-      {/* Right: Controls */}
       <div className="flex items-center gap-2">
         <ToggleGroup
           options={timeRangeOptions}

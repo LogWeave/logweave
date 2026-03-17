@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { StrictMode, useEffect } from 'react'
+import { memo, StrictMode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './app'
 import './globals.css'
@@ -16,14 +16,14 @@ const queryClient = new QueryClient({
   },
 })
 
-function ThemeSync() {
+const ThemeSync = memo(function ThemeSync() {
   const colorMode = useDashboardStore((s) => s.colorMode)
   useEffect(() => {
     document.documentElement.classList.toggle('dark', colorMode === 'dark')
     document.documentElement.classList.toggle('light', colorMode === 'light')
   }, [colorMode])
   return null
-}
+})
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
