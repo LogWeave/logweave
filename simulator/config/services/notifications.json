@@ -1,0 +1,217 @@
+{
+  "service": "notifications-svc",
+  "environment": "production",
+  "metadata": {
+    "team": "comms",
+    "region": "us-east-1"
+  },
+  "generators": {
+    "notification_id": {
+      "type": "uuid"
+    },
+    "request_id": {
+      "type": "uuid"
+    },
+    "recipient_email": {
+      "type": "email"
+    },
+    "phone_prefix": {
+      "type": "choice",
+      "values": ["+1-555", "+1-646", "+1-415", "+44-20", "+49-30", "+33-1"]
+    },
+    "phone_suffix": {
+      "type": "int",
+      "min": 1000000,
+      "max": 9999999
+    },
+    "provider": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": "sendgrid", "weight": 45 },
+        { "value": "ses", "weight": 30 },
+        { "value": "mailgun", "weight": 15 },
+        { "value": "postmark", "weight": 10 }
+      ]
+    },
+    "sms_provider": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": "twilio", "weight": 60 },
+        { "value": "vonage", "weight": 25 },
+        { "value": "messagebird", "weight": 15 }
+      ]
+    },
+    "push_provider": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": "fcm", "weight": 55 },
+        { "value": "apns", "weight": 40 },
+        { "value": "web_push", "weight": 5 }
+      ]
+    },
+    "template_name": {
+      "type": "choice",
+      "values": [
+        "welcome_email",
+        "password_reset",
+        "order_confirmation",
+        "shipping_update",
+        "payment_receipt",
+        "account_alert",
+        "weekly_digest",
+        "promo_campaign",
+        "invoice_ready",
+        "trial_expiring"
+      ]
+    },
+    "delivery_ms": {
+      "type": "int",
+      "min": 30,
+      "max": 2800
+    },
+    "render_ms": {
+      "type": "int",
+      "min": 5,
+      "max": 120
+    },
+    "notification_type": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": "transactional", "weight": 65 },
+        { "value": "marketing", "weight": 20 },
+        { "value": "system", "weight": 15 }
+      ]
+    },
+    "bounce_reason": {
+      "type": "choice",
+      "values": [
+        "mailbox_full",
+        "invalid_address",
+        "domain_not_found",
+        "spam_rejected",
+        "rate_limited",
+        "connection_timeout"
+      ]
+    },
+    "queue_depth": {
+      "type": "int",
+      "min": 50,
+      "max": 15000
+    },
+    "rate_limit_window": {
+      "type": "choice",
+      "values": ["1m", "5m", "1h"]
+    }
+  },
+  "templates": [
+    {
+      "message": "Email sent: {{template_name}} to {{recipient_email}} via {{provider}} in {{delivery_ms}}ms",
+      "level": "info",
+      "weight": 30,
+      "fields": {
+        "event": "notification.email.sent",
+        "notification_id": { "$gen": "notification_id" },
+        "request_id": { "$gen": "request_id" },
+        "notification_type": { "$gen": "notification_type" },
+        "duration_ms": { "$gen": "delivery_ms" }
+      }
+    },
+    {
+      "message": "SMS delivered: {{phone_prefix}}-{{phone_suffix}} via {{sms_provider}} in {{delivery_ms}}ms",
+      "level": "info",
+      "weight": 12,
+      "fields": {
+        "event": "notification.sms.delivered",
+        "notification_id": { "$gen": "notification_id" },
+        "request_id": { "$gen": "request_id" },
+        "duration_ms": { "$gen": "delivery_ms" }
+      }
+    },
+    {
+      "message": "Push notification sent via {{push_provider}}: {{template_name}} — {{delivery_ms}}ms",
+      "level": "info",
+      "weight": 15,
+      "fields": {
+        "event": "notification.push.sent",
+        "notification_id": { "$gen": "notification_id" },
+        "request_id": { "$gen": "request_id" },
+        "duration_ms": { "$gen": "delivery_ms" }
+      }
+    },
+    {
+      "message": "Delivery failed: {{recipient_email}} via {{provider}} — {{bounce_reason}}",
+      "level": "error",
+      "weight": 5,
+      "fields": {
+        "event": "notification.delivery.failed",
+        "notification_id": { "$gen": "notification_id" },
+        "request_id": { "$gen": "request_id" },
+        "duration_ms": { "$gen": "delivery_ms" }
+      }
+    },
+    {
+      "message": "Rate limit exceeded: {{recipient_email}} — {{notification_type}} capped at window={{rate_limit_window}}",
+      "level": "warn",
+      "weight": 4,
+      "fields": {
+        "event": "notification.rate_limit.exceeded",
+        "notification_id": { "$gen": "notification_id" },
+        "request_id": { "$gen": "request_id" }
+      }
+    },
+    {
+      "message": "Template rendered: {{template_name}} ({{notification_type}}) in {{render_ms}}ms — {{provider}}",
+      "level": "debug",
+      "weight": 25,
+      "fields": {
+        "event": "notification.template.rendered",
+        "request_id": { "$gen": "request_id" },
+        "duration_ms": { "$gen": "render_ms" }
+      }
+    },
+    {
+      "message": "Duplicate suppressed: {{recipient_email}} already received {{template_name}} within dedup window",
+      "level": "info",
+      "weight": 6,
+      "fields": {
+        "event": "notification.dedup.suppressed",
+        "notification_id": { "$gen": "notification_id" },
+        "request_id": { "$gen": "request_id" }
+      }
+    }
+  ],
+  "spike": {
+    "error_weight_multiplier": 6,
+    "templates": [
+      {
+        "message": "Provider failover: {{provider}} returning 5xx — switching to fallback provider for {{notification_type}} traffic",
+        "level": "error",
+        "weight": 18,
+        "fields": {
+          "event": "notification.provider.failover",
+          "request_id": { "$gen": "request_id" },
+          "duration_ms": { "$gen": "delivery_ms" }
+        }
+      },
+      {
+        "message": "Queue backlog critical: {{queue_depth}} messages pending — oldest message age 45s, consumers lagging",
+        "level": "error",
+        "weight": 15,
+        "fields": {
+          "event": "notification.queue.backlog",
+          "request_id": { "$gen": "request_id" }
+        }
+      },
+      {
+        "message": "Bulk send stalled: {{template_name}} campaign — {{provider}} throttling at 100 req/s, {{queue_depth}} remaining",
+        "level": "warn",
+        "weight": 10,
+        "fields": {
+          "event": "notification.bulk.throttled",
+          "request_id": { "$gen": "request_id" },
+          "notification_type": "marketing"
+        }
+      }
+    ]
+  }
+}

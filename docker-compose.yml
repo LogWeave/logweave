@@ -58,5 +58,25 @@ services:
       timeout: 3s
       retries: 3
 
+  # Log simulator — generates realistic events for development + demo
+  # Usage: docker compose --profile simulator up
+  simulator:
+    image: node:24-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - simulator_modules:/app/simulator/node_modules
+    command: ["npx", "tsx", "simulator/src/index.ts"]
+    profiles:
+      - simulator
+    environment:
+      LOGWEAVE_SIM_API_KEY: "e2e-key-tenant-a"
+      LOGWEAVE_SIM_ENDPOINT: "http://api:3000/v1/ingest/batch"
+      LOGWEAVE_SIM_MODE: "chaos"
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   clickhouse_data:
+  simulator_modules:

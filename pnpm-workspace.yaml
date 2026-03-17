@@ -2,6 +2,7 @@ packages:
   - "services/api"
   - "packages/transport"
   - "benchmarks"
+  - "simulator"
 
 catalog:
   typescript: "^5.9.0"

@@ -102,6 +102,27 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
+  simulator:
+    devDependencies:
+      '@biomejs/biome':
+        specifier: ^2.0.0
+        version: 2.4.7
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
+      tsx:
+        specifier: ^4.19
+        version: 4.21.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      winston:
+        specifier: ^3.0.0
+        version: 3.19.0
+      winston-transport:
+        specifier: ^4.0.0
+        version: 4.9.0
+
 packages:
 
   '@assemblyscript/loader@0.19.23':
