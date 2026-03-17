@@ -1,42 +1,50 @@
-import { Router, type Response } from 'express'
+import { type Response, Router } from 'express'
 import type pino from 'pino'
 import type { ZodType } from 'zod'
-import { HttpStatus } from '../http-status.js'
-import { getTenantId } from '../middleware/auth.js'
-import { validateQuery, getQuery } from '../middleware/validate-query.js'
 import type { DbClient } from '../db/client.js'
 import {
-  queryDashboardTemplates,
-  queryNewTodayIds,
-  queryDashboardServices,
-  queryDashboardVolume,
-  queryDashboardOverviewAggregates,
-  queryDashboardOverviewCounts,
-  queryTemplateSparklines,
+  queryNewTemplates,
+  queryResolvedTemplates,
+  queryTemplateSpikes,
+} from '../db/dashboard-changes-queries.js'
+import {
   queryClusteringHealthSnapshot,
   queryClusteringHealthTrend,
+  queryDashboardOverviewAggregates,
+  queryDashboardOverviewCounts,
+  queryDashboardServices,
+  queryDashboardTemplates,
+  queryDashboardVolume,
+  queryNewTodayIds,
+  queryTemplateSparklines,
 } from '../db/dashboard-queries.js'
+import { HttpStatus } from '../http-status.js'
+import { getTenantId } from '../middleware/auth.js'
+import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import {
   type ApiResponse,
-  type TemplateRow,
-  type ServiceRow,
-  type VolumePoint,
-  type VolumeData,
-  type OverviewData,
-  type SparklineData,
+  type ChangeEvent,
+  type ChangesQuery,
   type ClusteringHealthData,
-  type TemplatesQuery,
-  type ServicesQuery,
-  type VolumeQuery,
-  type OverviewQuery,
-  type SparklineQuery,
   type ClusteringHealthQuery,
-  templatesQuerySchema,
-  servicesQuerySchema,
-  volumeQuerySchema,
-  overviewQuerySchema,
-  sparklineQuerySchema,
+  changesQuerySchema,
   clusteringHealthQuerySchema,
+  type OverviewData,
+  type OverviewQuery,
+  overviewQuerySchema,
+  type ServiceRow,
+  type ServicesQuery,
+  type SparklineData,
+  type SparklineQuery,
+  servicesQuerySchema,
+  sparklineQuerySchema,
+  type TemplateRow,
+  type TemplatesQuery,
+  templatesQuerySchema,
+  type VolumeData,
+  type VolumePoint,
+  type VolumeQuery,
+  volumeQuerySchema,
 } from './dashboard-types.js'
 
 // ---------------------------------------------------------------------------
@@ -135,6 +143,48 @@ function mapSparklineRows(rows: RawRow[]): SparklineData {
 }
 
 // ---------------------------------------------------------------------------
+// Change event mapping helpers
+// ---------------------------------------------------------------------------
+
+function mapNewEvents(rows: RawRow[]): ChangeEvent[] {
+  return rows.map((r) => ({
+    type: 'new' as const,
+    templateId: r.template_id as string,
+    templateText: r.template_text as string,
+    service: r.service as string,
+    currentCount: Number(r.occurrence_count),
+    previousCount: 0,
+    ratio: 999,
+    firstSeen: r.first_seen as string,
+  }))
+}
+
+function mapSpikeEvents(rows: RawRow[]): ChangeEvent[] {
+  return rows.map((r) => ({
+    type: 'spike' as const,
+    templateId: r.template_id as string,
+    templateText: r.template_text as string,
+    service: r.service as string,
+    currentCount: Number(r.current_count),
+    previousCount: Number(r.previous_count),
+    ratio: Number(r.spike_ratio),
+  }))
+}
+
+function mapResolvedEvents(rows: RawRow[]): ChangeEvent[] {
+  return rows.map((r) => ({
+    type: 'resolved' as const,
+    templateId: r.template_id as string,
+    templateText: r.template_text as string,
+    service: r.service as string,
+    currentCount: 0,
+    previousCount: Number(r.prev_count),
+    ratio: 0,
+    lastSeen: r.last_seen as string,
+  }))
+}
+
+// ---------------------------------------------------------------------------
 // Route factory
 // ---------------------------------------------------------------------------
 
@@ -170,102 +220,87 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
   )
 
   // 2. GET /dashboard/services
-  router.get(
-    '/dashboard/services',
-    validateQuery(servicesQuerySchema),
-    async (req, res, next) => {
-      try {
-        const tenantId = getTenantId(res)
-        const params = getQuery<ServicesQuery>(req)
+  router.get('/dashboard/services', validateQuery(servicesQuerySchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<ServicesQuery>(req)
 
-        const rows = await queryDashboardServices(deps.db, tenantId, {
-          hours: params.hours,
-          limit: params.limit,
-        })
+      const rows = await queryDashboardServices(deps.db, tenantId, {
+        hours: params.hours,
+        limit: params.limit,
+      })
 
-        const data = mapServiceRows(toRawRows(rows))
+      const data = mapServiceRows(toRawRows(rows))
 
-        respond(res, data, { hours: params.hours, limit: params.limit, count: data.length })
-      } catch (err) {
-        next(err)
-      }
-    },
-  )
+      respond(res, data, { hours: params.hours, limit: params.limit, count: data.length })
+    } catch (err) {
+      next(err)
+    }
+  })
 
   // 3. GET /dashboard/volume
-  router.get(
-    '/dashboard/volume',
-    validateQuery(volumeQuerySchema),
-    async (req, res, next) => {
-      try {
-        const tenantId = getTenantId(res)
-        const params = getQuery<VolumeQuery>(req)
+  router.get('/dashboard/volume', validateQuery(volumeQuerySchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<VolumeQuery>(req)
 
-        const currentPromise = queryDashboardVolume(deps.db, tenantId, {
-          hours: params.hours,
-          service: params.service,
-        })
+      const currentPromise = queryDashboardVolume(deps.db, tenantId, {
+        hours: params.hours,
+        service: params.service,
+      })
 
-        const previousPromise =
-          params.offset > 0
-            ? queryDashboardVolume(deps.db, tenantId, {
-                hours: params.hours,
-                service: params.service,
-                offset: params.offset,
-              })
-            : undefined
+      const previousPromise =
+        params.offset > 0
+          ? queryDashboardVolume(deps.db, tenantId, {
+              hours: params.hours,
+              service: params.service,
+              offset: params.offset,
+            })
+          : undefined
 
-        const [currentRows, previousRows] = await Promise.all([
-          currentPromise,
-          previousPromise,
-        ])
+      const [currentRows, previousRows] = await Promise.all([currentPromise, previousPromise])
 
-        const data: VolumeData = {
-          current: mapVolumeRows(toRawRows(currentRows)),
-          ...(previousRows ? { previous: mapVolumeRows(toRawRows(previousRows)) } : {}),
-        }
-
-        respond(res, data, { hours: params.hours, count: data.current.length })
-      } catch (err) {
-        next(err)
+      const data: VolumeData = {
+        current: mapVolumeRows(toRawRows(currentRows)),
+        ...(previousRows ? { previous: mapVolumeRows(toRawRows(previousRows)) } : {}),
       }
-    },
-  )
+
+      respond(res, data, { hours: params.hours, count: data.current.length })
+    } catch (err) {
+      next(err)
+    }
+  })
 
   // 4. GET /dashboard/overview
-  router.get(
-    '/dashboard/overview',
-    validateQuery(overviewQuerySchema),
-    async (req, res, next) => {
-      try {
-        const tenantId = getTenantId(res)
-        const params = getQuery<OverviewQuery>(req)
+  router.get('/dashboard/overview', validateQuery(overviewQuerySchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<OverviewQuery>(req)
 
-        const [aggRaw, countsRaw] = await Promise.all([
-          queryDashboardOverviewAggregates(deps.db, tenantId, { hours: params.hours }),
-          queryDashboardOverviewCounts(deps.db, tenantId, { hours: params.hours }),
-        ])
+      const [aggRaw, countsRaw] = await Promise.all([
+        queryDashboardOverviewAggregates(deps.db, tenantId, { hours: params.hours }),
+        queryDashboardOverviewCounts(deps.db, tenantId, { hours: params.hours }),
+      ])
 
-        const agg = aggRaw as unknown as RawRow
-        const counts = countsRaw as unknown as RawRow
-        const totalEvents = Number(agg.total_events)
-        const errorCount = Number(agg.error_count)
+      const agg = aggRaw as unknown as RawRow
+      const counts = countsRaw as unknown as RawRow
+      const totalEvents = Number(agg.total_events)
+      const errorCount = Number(agg.error_count)
 
-        const data: OverviewData = {
-          totalEvents,
-          totalTemplates: Number(counts.unique_templates),
-          newTemplatesToday: Number(agg.new_template_count),
-          unclusteredCount: Number(counts.unclustered_count),
-          errorRate: totalEvents > 0 ? (errorCount / totalEvents) * 100 : 0,
-          serviceCount: Number(counts.service_count),
-        }
-
-        respond(res, data, { hours: params.hours, count: 1 })
-      } catch (err) {
-        next(err)
+      const data: OverviewData = {
+        totalEvents,
+        totalTemplates: Number(counts.unique_templates),
+        newTemplatesToday: Number(agg.new_template_count),
+        unclusteredCount: Number(counts.unclustered_count),
+        errorRate: totalEvents > 0 ? (errorCount / totalEvents) * 100 : 0,
+        serviceCount: Number(counts.service_count),
       }
-    },
-  )
+
+      respond(res, data, { hours: params.hours, count: 1 })
+    } catch (err) {
+      next(err)
+    }
+  })
 
   // 5. GET /dashboard/template-sparklines
   router.get(
@@ -332,6 +367,33 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       }
     },
   )
+
+  // 7. GET /dashboard/changes
+  router.get('/dashboard/changes', validateQuery(changesQuerySchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<ChangesQuery>(req)
+
+      const [newRows, spikeRows, resolvedRows] = await Promise.all([
+        queryNewTemplates(deps.db, tenantId, params),
+        queryTemplateSpikes(deps.db, tenantId, params),
+        queryResolvedTemplates(deps.db, tenantId, params),
+      ])
+
+      const events: ChangeEvent[] = [
+        ...mapNewEvents(toRawRows(newRows)),
+        ...mapSpikeEvents(toRawRows(spikeRows)),
+        ...mapResolvedEvents(toRawRows(resolvedRows)),
+      ]
+
+      // Sort by ratio descending (spikes first), then new, then resolved
+      events.sort((a, b) => b.ratio - a.ratio)
+
+      respond(res, events, { hours: params.hours, limit: params.limit, count: events.length })
+    } catch (err) {
+      next(err)
+    }
+  })
 
   return router
 }

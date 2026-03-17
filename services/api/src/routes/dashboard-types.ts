@@ -57,6 +57,12 @@ export const sparklineQuerySchema = timeRangeSchema.extend({
 
 export const clusteringHealthQuerySchema = timeRangeSchema
 
+export const changesQuerySchema = timeRangeSchema.extend({
+  service: z.string().optional(),
+  threshold: z.coerce.number().min(1).max(100).default(3),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+})
+
 // ---------------------------------------------------------------------------
 // Inferred query types
 // ---------------------------------------------------------------------------
@@ -67,6 +73,7 @@ export type VolumeQuery = z.infer<typeof volumeQuerySchema>
 export type OverviewQuery = z.infer<typeof overviewQuerySchema>
 export type SparklineQuery = z.infer<typeof sparklineQuerySchema>
 export type ClusteringHealthQuery = z.infer<typeof clusteringHealthQuerySchema>
+export type ChangesQuery = z.infer<typeof changesQuerySchema>
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -131,4 +138,16 @@ export interface ClusteringHealthData {
     unclustered: number
     ratio: number
   }>
+}
+
+export interface ChangeEvent {
+  type: 'new' | 'spike' | 'resolved'
+  templateId: string
+  templateText: string
+  service: string
+  currentCount: number
+  previousCount: number
+  ratio: number
+  firstSeen?: string
+  lastSeen?: string
 }

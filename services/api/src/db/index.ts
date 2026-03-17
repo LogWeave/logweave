@@ -1,14 +1,19 @@
 export { DbClient } from './client.js'
 export {
-  queryDashboardTemplates,
-  queryNewTodayIds,
-  queryDashboardServices,
-  queryDashboardVolume,
-  queryDashboardOverviewAggregates,
-  queryDashboardOverviewCounts,
-  queryTemplateSparklines,
+  queryNewTemplates,
+  queryResolvedTemplates,
+  queryTemplateSpikes,
+} from './dashboard-changes-queries.js'
+export {
   queryClusteringHealthSnapshot,
   queryClusteringHealthTrend,
+  queryDashboardOverviewAggregates,
+  queryDashboardOverviewCounts,
+  queryDashboardServices,
+  queryDashboardTemplates,
+  queryDashboardVolume,
+  queryNewTodayIds,
+  queryTemplateSparklines,
 } from './dashboard-queries.js'
 export { batchInsert } from './insert.js'
 export {
