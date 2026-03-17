@@ -56,6 +56,18 @@ export interface SparklineData {
   [templateId: string]: Array<{ intervalStart: string; count: number }>
 }
 
+export interface ChangeEvent {
+  type: 'new' | 'spike' | 'resolved'
+  templateId: string
+  templateText: string
+  service: string
+  currentCount: number
+  previousCount: number
+  ratio: number
+  firstSeen?: string
+  lastSeen?: string
+}
+
 export interface ClusteringHealthData {
   totalEvents: number
   clusteredEvents: number

@@ -4,6 +4,7 @@ import { api } from '../lib/api-client'
 import { timeRangeToHours, useDashboardStore } from '../stores/dashboard-store'
 import type {
   ApiResponse,
+  ChangeEvent,
   ClusteringHealthData,
   OverviewData,
   ServiceRow,
@@ -90,6 +91,22 @@ export function useClusteringHealth() {
     queryKey: ['dashboard', 'clustering-health', hours],
     queryFn: () =>
       api.get<ApiResponse<ClusteringHealthData>>('/v1/dashboard/clustering-health', { hours }),
+    refetchInterval: config.pollIntervalMs,
+    staleTime: config.staleTimeMs,
+  })
+}
+
+export function useChanges() {
+  const timeRange = useDashboardStore((s) => s.timeRange)
+  const serviceFilter = useDashboardStore((s) => s.serviceFilter)
+  const hours = timeRangeToHours(timeRange)
+  return useQuery({
+    queryKey: ['dashboard', 'changes', hours, serviceFilter],
+    queryFn: () =>
+      api.get<ApiResponse<ChangeEvent[]>>('/v1/dashboard/changes', {
+        hours,
+        service: serviceFilter ?? undefined,
+      }),
     refetchInterval: config.pollIntervalMs,
     staleTime: config.staleTimeMs,
   })

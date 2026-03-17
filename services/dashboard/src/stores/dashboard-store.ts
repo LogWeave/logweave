@@ -13,6 +13,8 @@ interface DashboardState {
   toggleColorMode: () => void
   sidebarCollapsed: boolean
   toggleSidebar: () => void
+  selectedTemplateId: string | null
+  setSelectedTemplateId: (id: string | null) => void
 }
 
 export const useDashboardStore = create<DashboardState>()(
@@ -27,6 +29,8 @@ export const useDashboardStore = create<DashboardState>()(
         set((state) => ({ colorMode: state.colorMode === 'dark' ? 'light' : 'dark' })),
       sidebarCollapsed: false,
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      selectedTemplateId: null,
+      setSelectedTemplateId: (selectedTemplateId) => set({ selectedTemplateId }),
     }),
     {
       name: 'logweave-dashboard',
