@@ -13,5 +13,13 @@ Scope out the milestone: $ARGUMENTS
    - Write acceptance criteria with specific, testable outcomes
    - Include the test gate from PLAN.md if one exists
    - Add labels: `feature`, `test`, `infra`, or `decision`
-4. Create the issues with `gh issue create` and assign them to the milestone
-5. List all created issues for review
+   - Include a **Context** section with:
+     - **Files**: source files/directories the implementer will need to read or modify
+     - **ADRs**: any applicable architecture decision records (e.g., "see docs/adr/007-...")
+     - **PLAN.md ref**: the specific section of PLAN.md to reference
+     - **Constraints**: task-specific constraints beyond CLAUDE.md (e.g., "no new dependencies", "must handle <200ms", "do not modify clusterer")
+   - Include a **User Story** (As a _____, I want _____, so that _____)
+   - Include **Named Test Cases** — specific test names the implementer should write
+4. Identify dependency order between issues and note it in each issue body
+5. Create the issues with `gh issue create` and assign them to the milestone
+6. List all created issues with dependency order for review
