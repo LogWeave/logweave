@@ -27,7 +27,7 @@ export function createErrorHandler(logger: pino.Logger) {
       }
     }
 
-    logger.error({ err }, 'Unhandled error')
+    logger.error({ err, errMessage: err.message, errStack: err.stack }, 'Unhandled error')
     const body: ErrorResponseBody = {
       error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
     }
