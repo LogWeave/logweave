@@ -1,6 +1,5 @@
 import { type Response, Router } from 'express'
 import type pino from 'pino'
-import type { ZodType } from 'zod'
 import type { DbClient } from '../db/client.js'
 import {
   queryNewTemplates,
@@ -211,8 +210,9 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
             hours: params.hours,
             limit: params.limit,
             service: params.service,
+            level: params.level,
           }),
-          queryNewTodayIds(deps.db, tenantId),
+          queryNewTodayIds(deps.db, tenantId, { level: params.level }),
         ])
 
         const newTodayIds = new Set(newTodayIdList)
@@ -234,6 +234,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       const rows = await queryDashboardServices(deps.db, tenantId, {
         hours: params.hours,
         limit: params.limit,
+        level: params.level,
       })
 
       const data = mapServiceRows(toRawRows(rows))
@@ -253,6 +254,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       const currentPromise = queryDashboardVolume(deps.db, tenantId, {
         hours: params.hours,
         service: params.service,
+        level: params.level,
       })
 
       const previousPromise =
@@ -261,6 +263,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
               hours: params.hours,
               service: params.service,
               offset: params.offset,
+              level: params.level,
             })
           : undefined
 
@@ -284,8 +287,8 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       const params = getQuery<OverviewQuery>(req)
 
       const [aggRaw, countsRaw] = await Promise.all([
-        queryDashboardOverviewAggregates(deps.db, tenantId, { hours: params.hours }),
-        queryDashboardOverviewCounts(deps.db, tenantId, { hours: params.hours }),
+        queryDashboardOverviewAggregates(deps.db, tenantId, { hours: params.hours, level: params.level }),
+        queryDashboardOverviewCounts(deps.db, tenantId, { hours: params.hours, level: params.level }),
       ])
 
       const agg = aggRaw as unknown as RawRow
@@ -311,7 +314,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
   // 5. GET /dashboard/template-sparklines
   router.get(
     '/dashboard/template-sparklines',
-    validateQuery(sparklineQuerySchema as unknown as ZodType<SparklineQuery>),
+    validateQuery(sparklineQuerySchema),
     async (req, res, next) => {
       try {
         const tenantId = getTenantId(res)
@@ -320,6 +323,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         const rows = await queryTemplateSparklines(deps.db, tenantId, {
           hours: params.hours,
           templateIds: params.template_ids,
+          level: params.level,
         })
 
         const data = mapSparklineRows(toRawRows(rows))
@@ -341,8 +345,8 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         const params = getQuery<ClusteringHealthQuery>(req)
 
         const [snapshotRaw, trendRows] = await Promise.all([
-          queryClusteringHealthSnapshot(deps.db, tenantId, { hours: params.hours }),
-          queryClusteringHealthTrend(deps.db, tenantId, { hours: params.hours }),
+          queryClusteringHealthSnapshot(deps.db, tenantId, { hours: params.hours, level: params.level }),
+          queryClusteringHealthTrend(deps.db, tenantId, { hours: params.hours, level: params.level }),
         ])
 
         const snapshot = snapshotRaw as unknown as RawRow

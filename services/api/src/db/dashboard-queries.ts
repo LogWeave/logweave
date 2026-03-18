@@ -79,11 +79,13 @@ interface ClusteringHealthTrendRow {
 
 interface DashboardTemplateOptions extends PaginationOptions {
   service?: string
+  level?: string[]
 }
 
 interface DashboardVolumeOptions extends PaginationOptions {
   service?: string
   offset?: number
+  level?: string[]
 }
 
 interface LevelDistributionRow {
@@ -105,8 +107,10 @@ export async function queryDashboardTemplates(
   const limit = clamp(options?.limit ?? DEFAULT_STATS_LIMIT, MAX_STATS_LIMIT)
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
   const service = options?.service
+  const levels = options?.level
 
   const serviceFilter = service ? 'AND service = {service:String}' : ''
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 SELECT
@@ -123,12 +127,14 @@ FROM logweave.template_stats
 WHERE tenant_id = {tenant_id:String}
   AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
   ${serviceFilter}
+  ${levelFilter}
 GROUP BY template_id, template_text, service
 ORDER BY occurrence_count DESC
 LIMIT {limit:UInt32}`
 
   const params: Record<string, unknown> = { limit, hours }
   if (service) params.service = service
+  if (levels?.length) params.levels = levels
 
   return db.query<DashboardTemplateRow>(tenantQuery(query, tenantId, params))
 }
@@ -137,16 +143,28 @@ LIMIT {limit:UInt32}`
  * Returns the set of template IDs that were first seen (is_new_template=1)
  * in the last 24 hours.
  */
-export async function queryNewTodayIds(db: DbClient, tenantId: string): Promise<string[]> {
+export async function queryNewTodayIds(
+  db: DbClient,
+  tenantId: string,
+  options?: { level?: string[] },
+): Promise<string[]> {
+  const levels = options?.level
+
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
+
   const query = `
 SELECT DISTINCT template_id
 FROM logweave.log_metadata
 WHERE tenant_id = {tenant_id:String}
   AND template_id != '0'
   AND is_new_template = 1
-  AND timestamp > now64(3) - toIntervalHour(24)`
+  AND timestamp > now64(3) - toIntervalHour(24)
+  ${levelFilter}`
 
-  const rows = await db.query<NewTemplateIdRow>(tenantQuery(query, tenantId))
+  const params: Record<string, unknown> = {}
+  if (levels?.length) params.levels = levels
+
+  const rows = await db.query<NewTemplateIdRow>(tenantQuery(query, tenantId, params))
   return rows.map((r) => r.template_id)
 }
 
@@ -157,10 +175,13 @@ WHERE tenant_id = {tenant_id:String}
 export async function queryDashboardServices(
   db: DbClient,
   tenantId: string,
-  options?: PaginationOptions,
+  options?: PaginationOptions & { level?: string[] },
 ): Promise<DashboardServiceRow[]> {
   const limit = clamp(options?.limit ?? DEFAULT_STATS_LIMIT, MAX_STATS_LIMIT)
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
+  const levels = options?.level
+
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 SELECT
@@ -173,11 +194,15 @@ SELECT
 FROM logweave.service_stats
 WHERE tenant_id = {tenant_id:String}
   AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
+  ${levelFilter}
 GROUP BY service
 ORDER BY log_count DESC
 LIMIT {limit:UInt32}`
 
-  return db.query<DashboardServiceRow>(tenantQuery(query, tenantId, { limit, hours }))
+  const params: Record<string, unknown> = { limit, hours }
+  if (levels?.length) params.levels = levels
+
+  return db.query<DashboardServiceRow>(tenantQuery(query, tenantId, params))
 }
 
 /**
@@ -192,8 +217,10 @@ export async function queryDashboardVolume(
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
   const offset = Math.max(0, Math.round(options?.offset ?? 0))
   const service = options?.service
+  const levels = options?.level
 
   const serviceFilter = service ? 'AND service = {service:String}' : ''
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const timeFilter =
     offset > 0
@@ -211,12 +238,14 @@ FROM logweave.service_stats
 WHERE tenant_id = {tenant_id:String}
   ${timeFilter}
   ${serviceFilter}
+  ${levelFilter}
 GROUP BY interval_start, service
 ORDER BY interval_start ASC`
 
   const params: Record<string, unknown> =
     offset > 0 ? { window_end: hours + offset, offset } : { hours }
   if (service) params.service = service
+  if (levels?.length) params.levels = levels
 
   return db.query<DashboardVolumeRow>(tenantQuery(query, tenantId, params))
 }
@@ -228,9 +257,12 @@ ORDER BY interval_start ASC`
 export async function queryDashboardOverviewAggregates(
   db: DbClient,
   tenantId: string,
-  options?: Pick<PaginationOptions, 'hours'>,
+  options?: Pick<PaginationOptions, 'hours'> & { level?: string[] },
 ): Promise<OverviewAggregatesRow> {
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
+  const levels = options?.level
+
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 SELECT
@@ -240,9 +272,13 @@ SELECT
     countIfMerge(new_template_count)  AS new_template_count
 FROM logweave.service_stats
 WHERE tenant_id = {tenant_id:String}
-  AND interval_start > now64(3) - toIntervalHour({hours:UInt32})`
+  AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
+  ${levelFilter}`
 
-  const rows = await db.query<OverviewAggregatesRow>(tenantQuery(query, tenantId, { hours }))
+  const params: Record<string, unknown> = { hours }
+  if (levels?.length) params.levels = levels
+
+  const rows = await db.query<OverviewAggregatesRow>(tenantQuery(query, tenantId, params))
   return rows[0] ?? { total_events: 0, error_count: 0, warn_count: 0, new_template_count: 0 }
 }
 
@@ -253,9 +289,12 @@ WHERE tenant_id = {tenant_id:String}
 export async function queryDashboardOverviewCounts(
   db: DbClient,
   tenantId: string,
-  options?: Pick<PaginationOptions, 'hours'>,
+  options?: Pick<PaginationOptions, 'hours'> & { level?: string[] },
 ): Promise<OverviewCountsRow> {
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
+  const levels = options?.level
+
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 SELECT
@@ -264,9 +303,13 @@ SELECT
     uniq(service)                           AS service_count
 FROM logweave.log_metadata
 WHERE tenant_id = {tenant_id:String}
-  AND timestamp > now64(3) - toIntervalHour({hours:UInt32})`
+  AND timestamp > now64(3) - toIntervalHour({hours:UInt32})
+  ${levelFilter}`
 
-  const rows = await db.query<OverviewCountsRow>(tenantQuery(query, tenantId, { hours }))
+  const params: Record<string, unknown> = { hours }
+  if (levels?.length) params.levels = levels
+
+  const rows = await db.query<OverviewCountsRow>(tenantQuery(query, tenantId, params))
   return rows[0] ?? { unique_templates: 0, unclustered_count: 0, service_count: 0 }
 }
 
@@ -277,12 +320,15 @@ WHERE tenant_id = {tenant_id:String}
 export async function queryTemplateSparklines(
   db: DbClient,
   tenantId: string,
-  options: { hours?: number; templateIds: string[] },
+  options: { hours?: number; templateIds: string[]; level?: string[] },
 ): Promise<TemplateSparklineRow[]> {
   const hours = clamp(options.hours ?? DEFAULT_HOURS, MAX_HOURS)
   const templateIds = options.templateIds
+  const levels = options.level
 
   if (templateIds.length === 0) return []
+
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 SELECT
@@ -293,12 +339,14 @@ FROM logweave.template_stats
 WHERE tenant_id = {tenant_id:String}
   AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
   AND template_id IN ({template_ids:Array(String)})
+  ${levelFilter}
 GROUP BY template_id, interval_start
 ORDER BY template_id, interval_start ASC`
 
-  return db.query<TemplateSparklineRow>(
-    tenantQuery(query, tenantId, { hours, template_ids: templateIds }),
-  )
+  const params: Record<string, unknown> = { hours, template_ids: templateIds }
+  if (levels?.length) params.levels = levels
+
+  return db.query<TemplateSparklineRow>(tenantQuery(query, tenantId, params))
 }
 
 /**
@@ -308,9 +356,12 @@ ORDER BY template_id, interval_start ASC`
 export async function queryClusteringHealthSnapshot(
   db: DbClient,
   tenantId: string,
-  options?: Pick<PaginationOptions, 'hours'>,
+  options?: Pick<PaginationOptions, 'hours'> & { level?: string[] },
 ): Promise<ClusteringHealthSnapshotRow> {
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
+  const levels = options?.level
+
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 SELECT
@@ -320,9 +371,13 @@ SELECT
     uniqIf(template_id, template_id != '0')         AS unique_templates
 FROM logweave.log_metadata
 WHERE tenant_id = {tenant_id:String}
-  AND timestamp > now64(3) - toIntervalHour({hours:UInt32})`
+  AND timestamp > now64(3) - toIntervalHour({hours:UInt32})
+  ${levelFilter}`
 
-  const rows = await db.query<ClusteringHealthSnapshotRow>(tenantQuery(query, tenantId, { hours }))
+  const params: Record<string, unknown> = { hours }
+  if (levels?.length) params.levels = levels
+
+  const rows = await db.query<ClusteringHealthSnapshotRow>(tenantQuery(query, tenantId, params))
   return (
     rows[0] ?? { total_events: 0, clustered_events: 0, unclustered_events: 0, unique_templates: 0 }
   )
@@ -335,9 +390,12 @@ WHERE tenant_id = {tenant_id:String}
 export async function queryClusteringHealthTrend(
   db: DbClient,
   tenantId: string,
-  options?: Pick<PaginationOptions, 'hours'>,
+  options?: Pick<PaginationOptions, 'hours'> & { level?: string[] },
 ): Promise<ClusteringHealthTrendRow[]> {
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
+  const levels = options?.level
+
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 SELECT
@@ -347,10 +405,14 @@ SELECT
 FROM logweave.log_metadata
 WHERE tenant_id = {tenant_id:String}
   AND timestamp > now64(3) - toIntervalHour({hours:UInt32})
+  ${levelFilter}
 GROUP BY interval_start
 ORDER BY interval_start ASC`
 
-  return db.query<ClusteringHealthTrendRow>(tenantQuery(query, tenantId, { hours }))
+  const params: Record<string, unknown> = { hours }
+  if (levels?.length) params.levels = levels
+
+  return db.query<ClusteringHealthTrendRow>(tenantQuery(query, tenantId, params))
 }
 
 /**

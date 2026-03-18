@@ -1,5 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
-import type { ZodType } from 'zod'
+import type { ZodType, ZodTypeDef } from 'zod'
 import { validationError } from '../errors.js'
 
 const PARSED_QUERY_KEY = Symbol('parsedQuery')
@@ -11,8 +11,11 @@ const PARSED_QUERY_KEY = Symbol('parsedQuery')
  *
  * Query params arrive as strings from Express — use z.coerce in the schema
  * for numeric/boolean fields.
+ *
+ * The `Input` type parameter is `unknown` by default so schemas using
+ * .transform() or .default() (where input != output) don't cause type errors.
  */
-export function validateQuery<T>(schema: ZodType<T>): RequestHandler {
+export function validateQuery<T, Input = unknown>(schema: ZodType<T, ZodTypeDef, Input>): RequestHandler {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.query)
     if (!result.success) {

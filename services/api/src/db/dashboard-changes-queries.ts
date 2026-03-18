@@ -35,6 +35,7 @@ interface ChangesOptions {
   hours?: number
   service?: string
   limit?: number
+  level?: string[]
 }
 
 interface SpikesOptions extends ChangesOptions {
@@ -57,8 +58,10 @@ export async function queryNewTemplates(
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
   const limit = clamp(options?.limit ?? DEFAULT_CHANGES_LIMIT, MAX_CHANGES_LIMIT)
   const service = options?.service
+  const levels = options?.level
 
   const serviceFilter = service ? 'AND service = {service:String}' : ''
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 SELECT
@@ -74,12 +77,14 @@ WHERE tenant_id = {tenant_id:String}
   AND is_new_template = 1
   AND template_id != '0'
   ${serviceFilter}
+  ${levelFilter}
 GROUP BY template_id
 ORDER BY occurrence_count DESC
 LIMIT {limit:UInt32}`
 
   const params: Record<string, unknown> = { hours, limit }
   if (service) params.service = service
+  if (levels?.length) params.levels = levels
 
   return db.query<NewTemplateRow>(tenantQuery(query, tenantId, params))
 }
@@ -98,8 +103,10 @@ export async function queryTemplateSpikes(
   const threshold = Math.max(1, Math.min(100, options?.threshold ?? 3))
   const window = hours * 2
   const service = options?.service
+  const levels = options?.level
 
   const serviceFilter = service ? 'AND service = {service:String}' : ''
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 WITH
@@ -110,6 +117,7 @@ WITH
     WHERE tenant_id = {tenant_id:String}
       AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
       ${serviceFilter}
+      ${levelFilter}
     GROUP BY template_id
   ),
   previous AS (
@@ -119,6 +127,7 @@ WITH
       AND interval_start > now64(3) - toIntervalHour({window:UInt32})
       AND interval_start <= now64(3) - toIntervalHour({hours:UInt32})
       ${serviceFilter}
+      ${levelFilter}
     GROUP BY template_id
   )
 SELECT
@@ -134,6 +143,7 @@ LIMIT {limit:UInt32}`
 
   const params: Record<string, unknown> = { hours, limit, threshold, window }
   if (service) params.service = service
+  if (levels?.length) params.levels = levels
 
   return db.query<TemplateSpikeRow>(tenantQuery(query, tenantId, params))
 }
@@ -151,8 +161,10 @@ export async function queryResolvedTemplates(
   const limit = clamp(options?.limit ?? DEFAULT_CHANGES_LIMIT, MAX_CHANGES_LIMIT)
   const window = hours * 2
   const service = options?.service
+  const levels = options?.level
 
   const serviceFilter = service ? 'AND service = {service:String}' : ''
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
 WITH
@@ -162,6 +174,7 @@ WITH
     WHERE tenant_id = {tenant_id:String}
       AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
       ${serviceFilter}
+      ${levelFilter}
   ),
   previous_active AS (
     SELECT template_id, any(template_text) AS template_text,
@@ -173,6 +186,7 @@ WITH
       AND interval_start > now64(3) - toIntervalHour({window:UInt32})
       AND interval_start <= now64(3) - toIntervalHour({hours:UInt32})
       ${serviceFilter}
+      ${levelFilter}
     GROUP BY template_id
     HAVING prev_count >= 5
   )
@@ -187,6 +201,7 @@ LIMIT {limit:UInt32}`
 
   const params: Record<string, unknown> = { hours, limit, window }
   if (service) params.service = service
+  if (levels?.length) params.levels = levels
 
   return db.query<ResolvedTemplateRow>(tenantQuery(query, tenantId, params))
 }

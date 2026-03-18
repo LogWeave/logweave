@@ -28,24 +28,38 @@ export const paginatedSchema = timeRangeSchema.extend({
 })
 
 // ---------------------------------------------------------------------------
+// Reusable level filter field
+// ---------------------------------------------------------------------------
+
+const levelFilterField = z
+  .string()
+  .optional()
+  .transform((s) => (s ? s.split(',').filter(Boolean) : undefined))
+
+// ---------------------------------------------------------------------------
 // Per-endpoint query schemas
 // ---------------------------------------------------------------------------
 
 export const templatesQuerySchema = paginatedSchema.extend({
   service: z.string().optional(),
   sort: z.enum(['occurrence', 'error', 'recent']).default('occurrence'),
+  level: levelFilterField,
 })
 
 export const servicesQuerySchema = paginatedSchema.extend({
   limit: z.coerce.number().int().min(1).max(100).default(100),
+  level: levelFilterField,
 })
 
 export const volumeQuerySchema = timeRangeSchema.extend({
   service: z.string().optional(),
   offset: z.coerce.number().int().min(0).max(168).default(0),
+  level: levelFilterField,
 })
 
-export const overviewQuerySchema = timeRangeSchema
+export const overviewQuerySchema = timeRangeSchema.extend({
+  level: levelFilterField,
+})
 
 export const sparklineQuerySchema = timeRangeSchema.extend({
   template_ids: z
@@ -53,14 +67,18 @@ export const sparklineQuerySchema = timeRangeSchema.extend({
     .min(1)
     .transform((s) => s.split(','))
     .pipe(z.array(z.string().min(1)).min(1).max(20)),
+  level: levelFilterField,
 })
 
-export const clusteringHealthQuerySchema = timeRangeSchema
+export const clusteringHealthQuerySchema = timeRangeSchema.extend({
+  level: levelFilterField,
+})
 
 export const changesQuerySchema = timeRangeSchema.extend({
   service: z.string().optional(),
   threshold: z.coerce.number().min(1).max(100).default(3),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  level: levelFilterField,
 })
 
 export const levelsQuerySchema = timeRangeSchema.extend({
