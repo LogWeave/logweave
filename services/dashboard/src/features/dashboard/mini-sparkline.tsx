@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { cn } from '../../lib/cn'
 
 interface MiniSparklineProps {
@@ -8,7 +8,7 @@ interface MiniSparklineProps {
   className?: string
 }
 
-export function MiniSparkline({ points, width = 80, height = 28, className }: MiniSparklineProps) {
+export const MiniSparkline = memo(function MiniSparkline({ points, width = 80, height = 28, className }: MiniSparklineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -77,4 +77,4 @@ export function MiniSparkline({ points, width = 80, height = 28, className }: Mi
   }
 
   return <canvas ref={canvasRef} className={cn(className)} style={{ width, height }} />
-}
+})
