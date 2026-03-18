@@ -1,35 +1,78 @@
 import { Info } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useCallback, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '../../lib/cn'
 
-const popoverClass = cn(
-  'pointer-events-none absolute z-50 w-60 rounded-md px-2.5 py-2',
-  'bg-surface-card border border-border shadow-lg',
-  'text-xs text-text-secondary leading-relaxed whitespace-normal',
-  'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
-  // position: above by default, centred on trigger
-  'bottom-full left-1/2 -translate-x-1/2 mb-2',
-)
+// ---------------------------------------------------------------------------
+// Portal tooltip — renders into document.body so no overflow:hidden can clip it
+// ---------------------------------------------------------------------------
 
-/**
- * Inline ⓘ icon that reveals a tooltip on hover.
- * Use next to labels for metric explanations.
- */
+interface Pos {
+  top: number
+  left: number
+}
+
+function TooltipPortal({ content, pos }: { content: string; pos: Pos }) {
+  return createPortal(
+    <div
+      role="tooltip"
+      style={{
+        position: 'fixed',
+        top: pos.top - 8,
+        left: pos.left,
+        transform: 'translate(-50%, -100%)',
+        zIndex: 9999,
+        maxWidth: '14rem',
+        pointerEvents: 'none',
+      }}
+      className="rounded-md px-2.5 py-2 bg-surface-card border border-border shadow-xl text-xs text-text-secondary leading-relaxed"
+    >
+      {content}
+    </div>,
+    document.body,
+  )
+}
+
+function useTooltip() {
+  const ref = useRef<HTMLElement | null>(null)
+  const [pos, setPos] = useState<Pos | null>(null)
+
+  const show = useCallback(() => {
+    if (ref.current) {
+      const r = ref.current.getBoundingClientRect()
+      setPos({ top: r.top, left: r.left + r.width / 2 })
+    }
+  }, [])
+
+  const hide = useCallback(() => setPos(null), [])
+
+  return { ref, pos, show, hide }
+}
+
+// ---------------------------------------------------------------------------
+// InfoTooltip — ⓘ icon trigger, use next to labels
+// ---------------------------------------------------------------------------
+
 export function InfoTooltip({ content, className }: { content: string; className?: string }) {
+  const { ref, pos, show, hide } = useTooltip()
+
   return (
-    <span className={cn('group relative inline-flex items-center', className)}>
-      <Info size={11} className="text-text-muted cursor-help" aria-hidden="true" />
-      <span role="tooltip" className={popoverClass}>
-        {content}
-      </span>
+    <span
+      ref={ref as React.RefObject<HTMLSpanElement>}
+      className={cn('inline-flex items-center cursor-help', className)}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+    >
+      <Info size={11} className="text-text-muted" aria-hidden="true" />
+      {pos && <TooltipPortal content={content} pos={pos} />}
     </span>
   )
 }
 
-/**
- * Wraps any element and shows a tooltip on hover.
- * Use for badges, values, and other non-label elements.
- */
+// ---------------------------------------------------------------------------
+// Tooltip — wraps any element, shows tooltip on hover
+// ---------------------------------------------------------------------------
+
 export function Tooltip({
   content,
   children,
@@ -39,12 +82,17 @@ export function Tooltip({
   children: ReactNode
   className?: string
 }) {
+  const { ref, pos, show, hide } = useTooltip()
+
   return (
-    <span className={cn('group relative inline-flex items-center', className)}>
+    <span
+      ref={ref as React.RefObject<HTMLSpanElement>}
+      className={cn('inline-flex items-center', className)}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+    >
       {children}
-      <span role="tooltip" className={popoverClass}>
-        {content}
-      </span>
+      {pos && <TooltipPortal content={content} pos={pos} />}
     </span>
   )
 }
