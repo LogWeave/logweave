@@ -110,6 +110,25 @@ describe('DELETE /v1/watches/:templateId', () => {
     assert.equal(res.status, 204)
   })
 
+  it('tenant B cannot delete tenant A watch', async () => {
+    const { app } = createTestApp()
+    await request(app)
+      .post('/v1/watches')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ templateId: 'tmpl-1' })
+
+    // Tenant B tries to delete tenant A's watch
+    await request(app)
+      .delete('/v1/watches/tmpl-1')
+      .set('Authorization', 'Bearer key-b')
+
+    // Tenant A's watch should still be there
+    const res = await request(app)
+      .get('/v1/watches')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+    assert.deepEqual(res.body.data, ['tmpl-1'])
+  })
+
   it('returns 204 for nonexistent watch (idempotent)', async () => {
     const { app } = createTestApp()
     const res = await request(app)

@@ -116,6 +116,12 @@ export class AlertEvaluator {
       }
     }
 
+    // Prune stale cooldown entries (older than 2x cooldown period)
+    const cooldownCutoff = currentTime - this.cooldownMs * 2
+    for (const [key, lastAlerted] of this.cooldowns) {
+      if (lastAlerted < cooldownCutoff) this.cooldowns.delete(key)
+    }
+
     return alertCount
   }
 }

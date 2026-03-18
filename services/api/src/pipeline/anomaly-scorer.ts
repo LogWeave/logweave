@@ -12,6 +12,10 @@ const DEFAULT_WARMUP_THRESHOLD = 10
 const DEFAULT_STEADY_THRESHOLD = 3
 const DEFAULT_NEW_TEMPLATE_THRESHOLD = 20
 
+// Null byte delimiter — cannot appear in user-supplied strings (tenantId, service, templateId).
+// Prevents key collision when identifiers contain colons or other common delimiters.
+const D = '\0'
+
 export interface WatchedScore {
   templateId: string
   service: string
@@ -117,7 +121,7 @@ export class AnomalyScorer {
     const currentTime = this.now()
 
     // Track warmup
-    const warmupKey = `${tenantId}:${service}`
+    const warmupKey = `${tenantId}${D}${service}`
     const entry = this.warmupTracker.get(warmupKey)
     if (entry === undefined) {
       this.warmupTracker.set(warmupKey, { firstSeen: currentTime, lastSeen: currentTime })
@@ -131,7 +135,7 @@ export class AnomalyScorer {
 
     // Increment interval counter
     const intervalStart = this.currentIntervalStart()
-    const counterKey = `${tenantId}:${service}:${templateId}:${intervalStart}`
+    const counterKey = `${tenantId}${D}${service}${D}${templateId}${D}${intervalStart}`
     const count = (this.intervalCounters.get(counterKey) ?? 0) + 1
     this.intervalCounters.set(counterKey, count)
 
@@ -148,12 +152,12 @@ export class AnomalyScorer {
 
     const results: WatchedScore[] = []
     const currentInterval = this.currentIntervalStart()
-    const prefix = `${tenantId}:`
+    const prefix = `${tenantId}${D}`
 
     for (const [key, count] of this.intervalCounters) {
       if (!key.startsWith(prefix)) continue
-      // Parse: {tenant}:{service}:{templateId}:{intervalStart}
-      const parts = key.split(':')
+      // Parse: {tenant}\0{service}\0{templateId}\0{intervalStart}
+      const parts = key.split(D)
       const intervalStart = Number(parts[parts.length - 1])
       if (intervalStart !== currentInterval) continue
       const templateId = parts[parts.length - 2]
@@ -161,14 +165,14 @@ export class AnomalyScorer {
       if (!templateId || !service || !templateIds.has(templateId)) continue
 
       // Look up warmup age for this tenant+service
-      const warmupEntry = this.warmupTracker.get(`${tenantId}:${service}`)
+      const warmupEntry = this.warmupTracker.get(`${tenantId}${D}${service}`)
       if (!warmupEntry) continue
       const age = this.now() - warmupEntry.firstSeen
       if (age < this.coldStartMs) continue
 
       const score = this.computeScore(tenantId, service, templateId, count, age)
       if (score > 0) {
-        const baselineKey = `${tenantId}:${service}:${templateId}`
+        const baselineKey = `${tenantId}${D}${service}${D}${templateId}`
         results.push({
           templateId,
           service,
@@ -190,7 +194,7 @@ export class AnomalyScorer {
    * Shared by recordAndScore (hot path) and getWatchedScores (evaluator).
    */
   private computeScore(tenantId: string, service: string, templateId: string, count: number, age: number): number {
-    const baselineKey = `${tenantId}:${service}:${templateId}`
+    const baselineKey = `${tenantId}${D}${service}${D}${templateId}`
     const baseline = this.baselineCache.get(baselineKey)
 
     // No baseline or baseline=0 → use absolute threshold for new templates
@@ -229,7 +233,7 @@ export class AnomalyScorer {
       // Derive active tenants from warmup tracker
       const tenants = new Set<string>()
       for (const key of this.warmupTracker.keys()) {
-        const tenantId = key.split(':')[0]
+        const tenantId = key.split(D)[0]
         if (tenantId) tenants.add(tenantId)
       }
 
@@ -237,7 +241,7 @@ export class AnomalyScorer {
         try {
           const rows = await queryAnomalyBaselines(this.db, tenantId)
           // Clear-and-replace: remove stale entries for this tenant, then add fresh ones
-          const prefix = `${tenantId}:`
+          const prefix = `${tenantId}${D}`
           for (const key of this.baselineCache.keys()) {
             if (key.startsWith(prefix)) this.baselineCache.delete(key)
           }
@@ -265,7 +269,7 @@ export class AnomalyScorer {
     const currentTime = this.now()
     const counterCutoff = currentTime - TEN_MINUTES_MS
     for (const key of this.intervalCounters.keys()) {
-      const parts = key.split(':')
+      const parts = key.split(D)
       const intervalStart = Number(parts[parts.length - 1])
       if (intervalStart < counterCutoff) {
         this.intervalCounters.delete(key)
@@ -287,11 +291,11 @@ export class AnomalyScorer {
 
   /** @internal Set baseline for a specific template (testing only). */
   setBaseline(tenantId: string, service: string, templateId: string, avgCount: number): void {
-    this.baselineCache.set(`${tenantId}:${service}:${templateId}`, avgCount)
+    this.baselineCache.set(`${tenantId}${D}${service}${D}${templateId}`, avgCount)
   }
 
   /** @internal Set warmup first-seen time for a tenant+service (testing only). */
   setWarmup(tenantId: string, service: string, firstSeenMs: number): void {
-    this.warmupTracker.set(`${tenantId}:${service}`, { firstSeen: firstSeenMs, lastSeen: firstSeenMs })
+    this.warmupTracker.set(`${tenantId}${D}${service}`, { firstSeen: firstSeenMs, lastSeen: firstSeenMs })
   }
 }
