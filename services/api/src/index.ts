@@ -5,6 +5,7 @@ import { loadConfig } from './config.js'
 import { DbClient } from './db/client.js'
 import { initSchema } from './db/schema.js'
 import { createLogger } from './logger.js'
+import { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import { ClusterClient } from './pipeline/cluster-client.js'
 import { RecoverySweep } from './recovery/reconcile.js'
 
@@ -14,6 +15,7 @@ const clickhouse = createClickHouseClient(config.clickhouseUrl)
 const db = new DbClient(clickhouse)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)
 const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTimeoutMs, logger)
+const anomalyScorer = new AnomalyScorer({ db, logger })
 
 try {
   await initSchema(clickhouse, logger)
@@ -22,7 +24,7 @@ try {
   process.exit(1)
 }
 
-const app = createApp({ config, logger, db, clustererHealth, clusterClient })
+const app = createApp({ config, logger, db, clustererHealth, clusterClient, anomalyScorer })
 
 const recovery = new RecoverySweep(
   { db, clusterClient, clustererHealth, logger },
@@ -39,6 +41,7 @@ const server = app.listen(config.port, () => {
   })
 
   recovery.start()
+  anomalyScorer.start()
 })
 
 let shuttingDown = false
@@ -56,7 +59,8 @@ async function shutdown(signal: string): Promise<void> {
   }, config.shutdownTimeoutMs)
   forceTimer.unref()
 
-  // Stop recovery sweep before closing connections
+  // Stop anomaly scorer and recovery sweep before closing connections
+  anomalyScorer.stop()
   await recovery.stop()
   logger.info('Recovery sweep stopped')
 

@@ -6,12 +6,14 @@ import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { ingestBatch } from '../pipeline/ingest.js'
 import type { DbClient } from '../db/client.js'
+import type { AnomalyScorer } from '../pipeline/anomaly-scorer.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
 
 export interface IngestDeps {
   clusterClient: ClusterClient
   db: DbClient
   logger: pino.Logger
+  anomalyScorer: AnomalyScorer
 }
 
 const ingestBatchSchema = z.object({
@@ -37,6 +39,7 @@ export function ingestRoutes(deps: IngestDeps): Router {
             clusterClient: deps.clusterClient,
             db: deps.db,
             logger: deps.logger,
+            anomalyScorer: deps.anomalyScorer,
           },
           tenantId,
           body.events,

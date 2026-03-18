@@ -6,6 +6,7 @@ import request from 'supertest'
 import { createAuthMiddleware, getTenantId } from '../src/middleware/auth.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
 import type { DbClient } from '../src/db/client.js'
+import { AnomalyScorer } from '../src/pipeline/anomaly-scorer.js'
 import { ClusterClient } from '../src/pipeline/cluster-client.js'
 import { ingestRoutes } from '../src/routes/ingest.js'
 import type { LogMetadataRow } from '../src/types.js'
@@ -51,10 +52,12 @@ function createTestApp(options?: { fetchFn?: typeof globalThis.fetch; insertErro
   app.use(express.json({ limit: '1mb' }))
 
   const auth = createAuthMiddleware(keyMap)
+  const anomalyScorer = new AnomalyScorer({ db: mockDb, logger, coldStartMs: Infinity })
   app.use('/v1', auth, ingestRoutes({
     clusterClient,
     db: mockDb,
     logger,
+    anomalyScorer,
   }))
 
   app.use(createErrorHandler(logger))

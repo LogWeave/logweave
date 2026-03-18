@@ -12,6 +12,7 @@ import { requestContext } from './logger.js'
 import { createAuthMiddleware } from './middleware/auth.js'
 import { createErrorHandler } from './middleware/error-handler.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
+import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { healthRoutes } from './routes/health.js'
@@ -23,6 +24,7 @@ export interface AppDependencies {
   db: DbClient
   clustererHealth: ClustererHealthChecker
   clusterClient: ClusterClient
+  anomalyScorer: AnomalyScorer
 }
 
 export function createApp(deps: AppDependencies): express.Express {
@@ -88,6 +90,7 @@ export function createApp(deps: AppDependencies): express.Express {
       clusterClient: deps.clusterClient,
       db: deps.db,
       logger: deps.logger,
+      anomalyScorer: deps.anomalyScorer,
     }),
   )
   app.use(

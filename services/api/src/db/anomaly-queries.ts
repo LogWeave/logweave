@@ -1,0 +1,30 @@
+import type { DbClient } from './client.js'
+import { tenantQuery } from './queries.js'
+
+export interface BaselineRow {
+  template_id: string
+  service: string
+  avg_count_per_interval: number
+}
+
+const BASELINE_QUERY = `
+SELECT
+  template_id,
+  service,
+  countMerge(occurrence_count) / uniq(interval_start) AS avg_count_per_interval
+FROM logweave.template_stats
+WHERE tenant_id = {tenant_id:String}
+  AND interval_start > now64(3) - toIntervalHour(1)
+GROUP BY template_id, service`
+
+/**
+ * Fetch rolling 1-hour baseline averages for all templates belonging to a tenant.
+ * Returns avg 5-minute occurrence count per (template_id, service).
+ * Uses uniq(interval_start) instead of count() to handle unmerged AggregatingMergeTree rows.
+ */
+export async function queryAnomalyBaselines(
+  db: DbClient,
+  tenantId: string,
+): Promise<BaselineRow[]> {
+  return db.query<BaselineRow>(tenantQuery(BASELINE_QUERY, tenantId))
+}

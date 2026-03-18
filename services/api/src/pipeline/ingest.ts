@@ -3,6 +3,7 @@ import type { DbClient } from '../db/client.js'
 import { batchInsert } from '../db/insert.js'
 import * as metrics from '../metrics.js'
 import type { LogMetadataRow } from '../types.js'
+import type { AnomalyScorer } from './anomaly-scorer.js'
 import type { ClusterClient, ClusterResult } from './cluster-client.js'
 import { parseEvent, processEvent, PREPROCESSING_VERSION } from './index.js'
 import type { ParseOptions, ProcessedEvent } from './types.js'
@@ -11,6 +12,7 @@ export interface IngestDependencies {
   clusterClient: ClusterClient
   db: DbClient
   logger: pino.Logger
+  anomalyScorer: AnomalyScorer
 }
 
 export interface IngestResult {
@@ -131,7 +133,11 @@ export async function ingestBatch(
   for (let i = 0; i < items.length; i++) {
     const item = items[i]!
     const cluster = clusterResults[i]!
-    const anomalyScore = 0 // Stub — real scoring deferred to Week 2
+    const anomalyScore = deps.anomalyScorer.recordAndScore(
+      tenantId,
+      item.processed.service,
+      cluster.templateId,
+    )
 
     rows.push(toMetadataRow(tenantId, item, cluster, anomalyScore))
 
@@ -158,6 +164,10 @@ export async function ingestBatch(
   metrics.increment(metrics.INSERT_LATENCY_MS_TOTAL, insertMs)
   metrics.increment(metrics.INSERT_COUNT)
   metrics.increment(metrics.BATCH_SIZE_TOTAL, rows.length)
+  const anomalyCount = rows.filter((r) => (r.anomaly_score ?? 0) > 0).length
+  if (anomalyCount > 0) {
+    metrics.increment(metrics.ANOMALY_SCORED, anomalyCount)
+  }
 
   return {
     accepted: items.length,
