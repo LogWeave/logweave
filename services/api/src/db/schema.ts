@@ -42,6 +42,7 @@ const DDL_STATEMENTS = [
     service         LowCardinality(String),
     template_id     String,
     template_text   String,
+    level           LowCardinality(String),
     interval_start  DateTime64(3),
     occurrence_count    AggregateFunction(count),
     error_count         AggregateFunction(countIf, UInt8),
@@ -58,7 +59,7 @@ const DDL_STATEMENTS = [
   `CREATE MATERIALIZED VIEW IF NOT EXISTS logweave.template_stats_mv
   TO logweave.template_stats AS
   SELECT
-      tenant_id, service, template_id, template_text,
+      tenant_id, service, template_id, template_text, level,
       toStartOfFiveMinutes(timestamp)   AS interval_start,
       countState()                      AS occurrence_count,
       countIfState(level = 'ERROR')     AS error_count,
@@ -66,12 +67,13 @@ const DDL_STATEMENTS = [
       maxState(anomaly_score)           AS max_anomaly_score
   FROM logweave.log_metadata
   WHERE template_id != '0'
-  GROUP BY tenant_id, service, template_id, template_text, interval_start`,
+  GROUP BY tenant_id, service, template_id, template_text, level, interval_start`,
 
   // 5. Service stats target table
   `CREATE TABLE IF NOT EXISTS logweave.service_stats (
     tenant_id       LowCardinality(String),
     service         LowCardinality(String),
+    level           LowCardinality(String),
     interval_start  DateTime64(3),
     log_count           AggregateFunction(count),
     error_count         AggregateFunction(countIf, UInt8),
@@ -88,7 +90,7 @@ const DDL_STATEMENTS = [
   `CREATE MATERIALIZED VIEW IF NOT EXISTS logweave.service_stats_mv
   TO logweave.service_stats AS
   SELECT
-      tenant_id, service,
+      tenant_id, service, level,
       toStartOfHour(timestamp) AS interval_start,
       countState()                      AS log_count,
       countIfState(level = 'ERROR')     AS error_count,
@@ -96,13 +98,45 @@ const DDL_STATEMENTS = [
       countIfState(is_new_template = 1) AS new_template_count,
       avgState(anomaly_score)           AS avg_anomaly_score
   FROM logweave.log_metadata
-  GROUP BY tenant_id, service, interval_start`,
+  GROUP BY tenant_id, service, level, interval_start`,
 ]
 
 // Migrations — add columns that may be missing from older schema versions.
 // ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent.
 const MIGRATIONS = [
   `ALTER TABLE logweave.log_metadata ADD COLUMN IF NOT EXISTS preprocessing_version UInt8 DEFAULT 1`,
+
+  // Level dimension in template_stats MV
+  `DROP VIEW IF EXISTS logweave.template_stats_mv`,
+  `ALTER TABLE logweave.template_stats ADD COLUMN IF NOT EXISTS level LowCardinality(String) DEFAULT ''`,
+  `CREATE MATERIALIZED VIEW IF NOT EXISTS logweave.template_stats_mv
+TO logweave.template_stats AS
+SELECT
+    tenant_id, service, template_id, template_text, level,
+    toStartOfFiveMinutes(timestamp) AS interval_start,
+    countState()                    AS occurrence_count,
+    countIfState(level = 'ERROR')   AS error_count,
+    avgState(duration_ms)           AS avg_duration_ms,
+    maxState(anomaly_score)         AS max_anomaly_score
+FROM logweave.log_metadata
+WHERE template_id != '0'
+GROUP BY tenant_id, service, template_id, template_text, level, interval_start`,
+
+  // Level dimension in service_stats MV
+  `DROP VIEW IF EXISTS logweave.service_stats_mv`,
+  `ALTER TABLE logweave.service_stats ADD COLUMN IF NOT EXISTS level LowCardinality(String) DEFAULT ''`,
+  `CREATE MATERIALIZED VIEW IF NOT EXISTS logweave.service_stats_mv
+TO logweave.service_stats AS
+SELECT
+    tenant_id, service, level,
+    toStartOfHour(timestamp) AS interval_start,
+    countState()                      AS log_count,
+    countIfState(level = 'ERROR')     AS error_count,
+    countIfState(level = 'WARN')      AS warn_count,
+    countIfState(is_new_template = 1) AS new_template_count,
+    avgState(anomaly_score)           AS avg_anomaly_score
+FROM logweave.log_metadata
+GROUP BY tenant_id, service, level, interval_start`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS
