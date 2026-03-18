@@ -317,6 +317,64 @@ describe('AnomalyScorer', () => {
     assert.ok(nonZero.length > 0, 'should have some anomalous scores in a 50-event batch')
   })
 
+  // ---------------------------------------------------------------------------
+  // getWatchedScores tests
+  // ---------------------------------------------------------------------------
+
+  it('getWatchedScores returns correct scores for active watched templates', () => {
+    const now = Date.now()
+    const scorer = createScorer({
+      clock: now,
+      coldStartMs: 0,
+      steadyThreshold: 3,
+    })
+    scorer.setWarmup('t1', 'api', now - 2 * 3_600_000)
+    scorer.setBaseline('t1', 'api', 'tmpl-1', 10)
+
+    // Record 50 events to build up counter
+    for (let i = 0; i < 50; i++) {
+      scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    }
+
+    const scores = scorer.getWatchedScores('t1', new Set(['tmpl-1', 'tmpl-not-active']))
+    assert.equal(scores.length, 1, 'should return 1 active template')
+    assert.equal(scores[0].templateId, 'tmpl-1')
+    assert.equal(scores[0].service, 'api')
+    assert.equal(scores[0].currentCount, 50)
+    assert.equal(scores[0].baselineCount, 10)
+    assert.ok(scores[0].score > 1.0, `score should be > 1.0, got ${scores[0].score}`)
+  })
+
+  it('getWatchedScores returns empty for unwatched templates', () => {
+    const now = Date.now()
+    const scorer = createScorer({ clock: now, coldStartMs: 0 })
+    scorer.setWarmup('t1', 'api', now - 2 * 3_600_000)
+    scorer.setBaseline('t1', 'api', 'tmpl-1', 10)
+
+    for (let i = 0; i < 50; i++) {
+      scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    }
+
+    const scores = scorer.getWatchedScores('t1', new Set(['tmpl-other']))
+    assert.equal(scores.length, 0, 'should return empty for unwatched templates')
+  })
+
+  it('getWatchedScores does not mutate interval counters', () => {
+    const now = Date.now()
+    const scorer = createScorer({ clock: now, coldStartMs: 0, steadyThreshold: 3 })
+    scorer.setWarmup('t1', 'api', now - 2 * 3_600_000)
+    scorer.setBaseline('t1', 'api', 'tmpl-1', 10)
+
+    for (let i = 0; i < 50; i++) {
+      scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    }
+
+    const scores1 = scorer.getWatchedScores('t1', new Set(['tmpl-1']))
+    const scores2 = scorer.getWatchedScores('t1', new Set(['tmpl-1']))
+    assert.equal(scores1[0].currentCount, scores2[0].currentCount, 'counters should not change')
+    assert.equal(scores1[0].score, scores2[0].score, 'scores should not change')
+  })
+
   it('baseline=0 edge case: treated as no baseline (absolute threshold)', () => {
     const now = Date.now()
     const scorer = createScorer({

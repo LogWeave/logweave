@@ -7,6 +7,7 @@ import type { ClustererHealthChecker } from '../src/clients/clusterer.js'
 import type { DbClient } from '../src/db/client.js'
 import { AnomalyScorer } from '../src/pipeline/anomaly-scorer.js'
 import { ClusterClient } from '../src/pipeline/cluster-client.js'
+import { WatchStore } from '../src/watches/watch-store.js'
 
 function createTestApp() {
   const logger = pino({ level: 'silent' })
@@ -43,6 +44,7 @@ function createTestApp() {
     clustererHealth: mockHealth,
     clusterClient,
     anomalyScorer,
+    watchStore: new WatchStore(),
   })
 }
 

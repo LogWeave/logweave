@@ -12,6 +12,14 @@ const DEFAULT_WARMUP_THRESHOLD = 10
 const DEFAULT_STEADY_THRESHOLD = 3
 const DEFAULT_NEW_TEMPLATE_THRESHOLD = 20
 
+export interface WatchedScore {
+  templateId: string
+  service: string
+  score: number
+  currentCount: number
+  baselineCount: number
+}
+
 export interface AnomalyScorerOptions {
   db: DbClient
   logger: pino.Logger
@@ -122,12 +130,66 @@ export class AnomalyScorer {
     if (age < this.coldStartMs) return 0
 
     // Increment interval counter
-    const intervalStart = currentTime - (currentTime % FIVE_MINUTES_MS)
+    const intervalStart = this.currentIntervalStart()
     const counterKey = `${tenantId}:${service}:${templateId}:${intervalStart}`
     const count = (this.intervalCounters.get(counterKey) ?? 0) + 1
     this.intervalCounters.set(counterKey, count)
 
-    // Get baseline
+    return this.computeScore(tenantId, service, templateId, count, age)
+  }
+
+  /**
+   * Read-only scoring for watched templates. Does NOT increment counters.
+   * Returns entries only for templates with active counters in the current interval.
+   * Used by AlertEvaluator to check anomaly status of watched templates.
+   */
+  getWatchedScores(tenantId: string, templateIds: Set<string>): WatchedScore[] {
+    if (templateIds.size === 0) return []
+
+    const results: WatchedScore[] = []
+    const currentInterval = this.currentIntervalStart()
+    const prefix = `${tenantId}:`
+
+    for (const [key, count] of this.intervalCounters) {
+      if (!key.startsWith(prefix)) continue
+      // Parse: {tenant}:{service}:{templateId}:{intervalStart}
+      const parts = key.split(':')
+      const intervalStart = Number(parts[parts.length - 1])
+      if (intervalStart !== currentInterval) continue
+      const templateId = parts[parts.length - 2]
+      const service = parts[parts.length - 3]
+      if (!templateId || !service || !templateIds.has(templateId)) continue
+
+      // Look up warmup age for this tenant+service
+      const warmupEntry = this.warmupTracker.get(`${tenantId}:${service}`)
+      if (!warmupEntry) continue
+      const age = this.now() - warmupEntry.firstSeen
+      if (age < this.coldStartMs) continue
+
+      const score = this.computeScore(tenantId, service, templateId, count, age)
+      if (score > 0) {
+        const baselineKey = `${tenantId}:${service}:${templateId}`
+        results.push({
+          templateId,
+          service,
+          score,
+          currentCount: count,
+          baselineCount: this.baselineCache.get(baselineKey) ?? 0,
+        })
+      }
+    }
+    return results
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scoring internals (pure arithmetic)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Pure scoring arithmetic — no side effects, no counter mutation.
+   * Shared by recordAndScore (hot path) and getWatchedScores (evaluator).
+   */
+  private computeScore(tenantId: string, service: string, templateId: string, count: number, age: number): number {
     const baselineKey = `${tenantId}:${service}:${templateId}`
     const baseline = this.baselineCache.get(baselineKey)
 
@@ -147,6 +209,11 @@ export class AnomalyScorer {
     const score = count / effectiveBaseline / threshold
 
     return score >= 1.0 ? score : 0
+  }
+
+  private currentIntervalStart(): number {
+    const now = this.now()
+    return now - (now % FIVE_MINUTES_MS)
   }
 
   // ---------------------------------------------------------------------------
