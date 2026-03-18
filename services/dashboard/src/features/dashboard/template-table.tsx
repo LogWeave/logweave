@@ -9,7 +9,7 @@ import {
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Search } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useSparklines, useTemplates } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
@@ -31,11 +31,22 @@ export function TemplateTable({ className }: { className?: string }) {
   const { data: sparklineResponse } = useSparklines(templateIds.slice(0, 20))
   const sparklineData = sparklineResponse?.data ?? {}
 
+  // Stable ref for sparkline data — columns read from this at render time
+  // without needing to be in the columns useMemo dependency array
+  const sparklineRef = useRef(sparklineData)
+  sparklineRef.current = sparklineData
+
   const { selectedTemplateId, setSelectedTemplateId } = useDashboardStore(
     useShallow((s) => ({
       selectedTemplateId: s.selectedTemplateId,
       setSelectedTemplateId: s.setSelectedTemplateId,
     })),
+  )
+
+  const getSparklinePoints = useCallback(
+    (templateId: string): number[] =>
+      sparklineRef.current[templateId]?.map((p) => p.count) ?? [],
+    [],
   )
 
   const columns = useMemo(
@@ -86,12 +97,12 @@ export function TemplateTable({ className }: { className?: string }) {
         header: 'Trend',
         size: 100,
         cell: (info) => {
-          const points = sparklineData[info.row.original.templateId]?.map((p) => p.count) ?? []
+          const points = getSparklinePoints(info.row.original.templateId)
           return <MiniSparkline points={points} />
         },
       }),
     ],
-    [sparklineData],
+    [getSparklinePoints],
   )
   const [sorting, setSorting] = useState<SortingState>([{ id: 'occurrenceCount', desc: true }])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -121,7 +132,7 @@ export function TemplateTable({ className }: { className?: string }) {
     count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 44,
-    overscan: 10,
+    overscan: 3,
   })
 
   if (isLoading) {

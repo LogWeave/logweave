@@ -13,9 +13,13 @@ import type {
   VolumeData,
 } from './types'
 
-/** Pause polling when the query is in error state to prevent hammering a down API. */
+/**
+ * Pause polling when the query is in error state to prevent hammering a down API.
+ * Adds a small jitter (0-5s) so all 7 queries don't refetch in the same frame.
+ */
 function pollUnlessError(query: { state: { status: string } }): number | false {
-  return query.state.status === 'error' ? false : config.pollIntervalMs
+  if (query.state.status === 'error') return false
+  return config.pollIntervalMs + Math.floor(Math.random() * 5000)
 }
 
 export function useOverview() {
