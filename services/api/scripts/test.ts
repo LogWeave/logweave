@@ -8,11 +8,17 @@ let files: string[]
 if (mode === '--unit') {
   // Unit tests: everything except db/ and e2e/ (no ClickHouse needed)
   files = globSync('tests/**/*.test.ts').filter(
-    (f) => !f.startsWith('tests/db/') && !f.startsWith('tests\\db\\') && !f.startsWith('tests/e2e/') && !f.startsWith('tests\\e2e\\'),
+    (f) =>
+      !f.startsWith('tests/db/') &&
+      !f.startsWith('tests\\db\\') &&
+      !f.startsWith('tests/e2e/') &&
+      !f.startsWith('tests\\e2e\\') &&
+      !f.startsWith('tests/integration/') &&
+      !f.startsWith('tests\\integration\\'),
   )
 } else if (mode === '--integration') {
-  // Integration tests: only db/ (needs ClickHouse)
-  files = globSync('tests/db/**/*.test.ts')
+  // Integration tests: db/ + integration/ (needs ClickHouse)
+  files = [...globSync('tests/db/**/*.test.ts'), ...globSync('tests/integration/**/*.test.ts')]
 } else {
   // Default: all tests
   files = globSync('tests/**/*.test.ts')
