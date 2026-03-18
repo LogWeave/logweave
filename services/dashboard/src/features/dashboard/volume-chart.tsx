@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { EChartsOption } from 'echarts'
 import { useMemo, useState } from 'react'
-import { useVolume } from '../../api/queries'
+import { pollUnlessError, useVolume } from '../../api/queries'
 import type { ApiResponse, VolumeData, VolumePoint } from '../../api/types'
 import { Chart } from '../../components/chart'
 import { Button } from '../../components/ui/button'
@@ -48,7 +48,7 @@ export function VolumeChart({ className }: { className?: string }) {
         service: serviceFilter ?? undefined,
       }),
     enabled: compareEnabled,
-    refetchInterval: config.pollIntervalMs,
+    refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })
 

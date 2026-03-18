@@ -17,7 +17,7 @@ import type {
  * Pause polling when the query is in error state to prevent hammering a down API.
  * Adds a small jitter (0-5s) so all 7 queries don't refetch in the same frame.
  */
-function pollUnlessError(query: { state: { status: string } }): number | false {
+export function pollUnlessError(query: { state: { status: string } }): number | false {
   if (query.state.status === 'error') return false
   return config.pollIntervalMs + Math.floor(Math.random() * 5000)
 }

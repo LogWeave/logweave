@@ -38,20 +38,26 @@ export function useChart(
     const chart = echarts.init(el, theme)
     chartRef.current = chart
 
-    const observer = new ResizeObserver(() => chart.resize())
+    // Debounce resize to prevent layout thrash cascades
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null
+    const observer = new ResizeObserver(() => {
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => chart.resize(), 100)
+    })
     observer.observe(el)
 
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
       observer.disconnect()
       chart.dispose()
       chartRef.current = null
     }
   }, [containerRef, theme])
 
-  // Update option
+  // Update option — use replaceMerge for series to avoid accumulation
   useEffect(() => {
     if (chartRef.current && option) {
-      chartRef.current.setOption(option, { notMerge: true })
+      chartRef.current.setOption(option, { notMerge: true, lazyUpdate: true })
     }
   }, [option])
 
