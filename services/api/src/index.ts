@@ -8,6 +8,9 @@ import { createLogger } from './logger.js'
 import { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import { ClusterClient } from './pipeline/cluster-client.js'
 import { RecoverySweep } from './recovery/reconcile.js'
+import { AlertDispatcher, ConsoleObserver } from './watches/alert-observer.js'
+import { AlertEvaluator } from './watches/alert-evaluator.js'
+import { WatchStore } from './watches/watch-store.js'
 
 const config = loadConfig()
 const logger = createLogger(config.logLevel)
@@ -16,6 +19,10 @@ const db = new DbClient(clickhouse)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)
 const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTimeoutMs, logger)
 const anomalyScorer = new AnomalyScorer({ db, logger })
+const watchStore = new WatchStore()
+const alertDispatcher = new AlertDispatcher(logger)
+alertDispatcher.register(new ConsoleObserver(logger))
+const alertEvaluator = new AlertEvaluator({ watchStore, anomalyScorer, dispatcher: alertDispatcher, logger })
 
 try {
   await initSchema(clickhouse, logger)
@@ -24,7 +31,7 @@ try {
   process.exit(1)
 }
 
-const app = createApp({ config, logger, db, clustererHealth, clusterClient, anomalyScorer })
+const app = createApp({ config, logger, db, clustererHealth, clusterClient, anomalyScorer, watchStore })
 
 const recovery = new RecoverySweep(
   { db, clusterClient, clustererHealth, logger },
@@ -42,6 +49,7 @@ const server = app.listen(config.port, () => {
 
   recovery.start()
   anomalyScorer.start()
+  alertEvaluator.start()
 })
 
 let shuttingDown = false
@@ -59,7 +67,8 @@ async function shutdown(signal: string): Promise<void> {
   }, config.shutdownTimeoutMs)
   forceTimer.unref()
 
-  // Stop anomaly scorer and recovery sweep before closing connections
+  // Stop evaluator, scorer, and recovery sweep before closing connections
+  alertEvaluator.stop()
   anomalyScorer.stop()
   await recovery.stop()
   logger.info('Recovery sweep stopped')

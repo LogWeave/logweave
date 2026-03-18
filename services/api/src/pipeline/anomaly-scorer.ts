@@ -12,6 +12,18 @@ const DEFAULT_WARMUP_THRESHOLD = 10
 const DEFAULT_STEADY_THRESHOLD = 3
 const DEFAULT_NEW_TEMPLATE_THRESHOLD = 20
 
+// Null byte delimiter — cannot appear in user-supplied strings (tenantId, service, templateId).
+// Prevents key collision when identifiers contain colons or other common delimiters.
+const D = '\0'
+
+export interface WatchedScore {
+  templateId: string
+  service: string
+  score: number
+  currentCount: number
+  baselineCount: number
+}
+
 export interface AnomalyScorerOptions {
   db: DbClient
   logger: pino.Logger
@@ -109,7 +121,7 @@ export class AnomalyScorer {
     const currentTime = this.now()
 
     // Track warmup
-    const warmupKey = `${tenantId}:${service}`
+    const warmupKey = `${tenantId}${D}${service}`
     const entry = this.warmupTracker.get(warmupKey)
     if (entry === undefined) {
       this.warmupTracker.set(warmupKey, { firstSeen: currentTime, lastSeen: currentTime })
@@ -122,13 +134,67 @@ export class AnomalyScorer {
     if (age < this.coldStartMs) return 0
 
     // Increment interval counter
-    const intervalStart = currentTime - (currentTime % FIVE_MINUTES_MS)
-    const counterKey = `${tenantId}:${service}:${templateId}:${intervalStart}`
+    const intervalStart = this.currentIntervalStart()
+    const counterKey = `${tenantId}${D}${service}${D}${templateId}${D}${intervalStart}`
     const count = (this.intervalCounters.get(counterKey) ?? 0) + 1
     this.intervalCounters.set(counterKey, count)
 
-    // Get baseline
-    const baselineKey = `${tenantId}:${service}:${templateId}`
+    return this.computeScore(tenantId, service, templateId, count, age)
+  }
+
+  /**
+   * Read-only scoring for watched templates. Does NOT increment counters.
+   * Returns entries only for templates with active counters in the current interval.
+   * Used by AlertEvaluator to check anomaly status of watched templates.
+   */
+  getWatchedScores(tenantId: string, templateIds: Set<string>): WatchedScore[] {
+    if (templateIds.size === 0) return []
+
+    const results: WatchedScore[] = []
+    const currentInterval = this.currentIntervalStart()
+    const prefix = `${tenantId}${D}`
+
+    for (const [key, count] of this.intervalCounters) {
+      if (!key.startsWith(prefix)) continue
+      // Parse: {tenant}\0{service}\0{templateId}\0{intervalStart}
+      const parts = key.split(D)
+      const intervalStart = Number(parts[parts.length - 1])
+      if (intervalStart !== currentInterval) continue
+      const templateId = parts[parts.length - 2]
+      const service = parts[parts.length - 3]
+      if (!templateId || !service || !templateIds.has(templateId)) continue
+
+      // Look up warmup age for this tenant+service
+      const warmupEntry = this.warmupTracker.get(`${tenantId}${D}${service}`)
+      if (!warmupEntry) continue
+      const age = this.now() - warmupEntry.firstSeen
+      if (age < this.coldStartMs) continue
+
+      const score = this.computeScore(tenantId, service, templateId, count, age)
+      if (score > 0) {
+        const baselineKey = `${tenantId}${D}${service}${D}${templateId}`
+        results.push({
+          templateId,
+          service,
+          score,
+          currentCount: count,
+          baselineCount: this.baselineCache.get(baselineKey) ?? 0,
+        })
+      }
+    }
+    return results
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scoring internals (pure arithmetic)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Pure scoring arithmetic — no side effects, no counter mutation.
+   * Shared by recordAndScore (hot path) and getWatchedScores (evaluator).
+   */
+  private computeScore(tenantId: string, service: string, templateId: string, count: number, age: number): number {
+    const baselineKey = `${tenantId}${D}${service}${D}${templateId}`
     const baseline = this.baselineCache.get(baselineKey)
 
     // No baseline or baseline=0 → use absolute threshold for new templates
@@ -149,6 +215,11 @@ export class AnomalyScorer {
     return score >= 1.0 ? score : 0
   }
 
+  private currentIntervalStart(): number {
+    const now = this.now()
+    return now - (now % FIVE_MINUTES_MS)
+  }
+
   // ---------------------------------------------------------------------------
   // Baseline refresh (background — async I/O)
   // ---------------------------------------------------------------------------
@@ -162,7 +233,7 @@ export class AnomalyScorer {
       // Derive active tenants from warmup tracker
       const tenants = new Set<string>()
       for (const key of this.warmupTracker.keys()) {
-        const tenantId = key.split(':')[0]
+        const tenantId = key.split(D)[0]
         if (tenantId) tenants.add(tenantId)
       }
 
@@ -170,7 +241,7 @@ export class AnomalyScorer {
         try {
           const rows = await queryAnomalyBaselines(this.db, tenantId)
           // Clear-and-replace: remove stale entries for this tenant, then add fresh ones
-          const prefix = `${tenantId}:`
+          const prefix = `${tenantId}${D}`
           for (const key of this.baselineCache.keys()) {
             if (key.startsWith(prefix)) this.baselineCache.delete(key)
           }
@@ -198,7 +269,7 @@ export class AnomalyScorer {
     const currentTime = this.now()
     const counterCutoff = currentTime - TEN_MINUTES_MS
     for (const key of this.intervalCounters.keys()) {
-      const parts = key.split(':')
+      const parts = key.split(D)
       const intervalStart = Number(parts[parts.length - 1])
       if (intervalStart < counterCutoff) {
         this.intervalCounters.delete(key)
@@ -220,11 +291,11 @@ export class AnomalyScorer {
 
   /** @internal Set baseline for a specific template (testing only). */
   setBaseline(tenantId: string, service: string, templateId: string, avgCount: number): void {
-    this.baselineCache.set(`${tenantId}:${service}:${templateId}`, avgCount)
+    this.baselineCache.set(`${tenantId}${D}${service}${D}${templateId}`, avgCount)
   }
 
   /** @internal Set warmup first-seen time for a tenant+service (testing only). */
   setWarmup(tenantId: string, service: string, firstSeenMs: number): void {
-    this.warmupTracker.set(`${tenantId}:${service}`, { firstSeen: firstSeenMs, lastSeen: firstSeenMs })
+    this.warmupTracker.set(`${tenantId}${D}${service}`, { firstSeen: firstSeenMs, lastSeen: firstSeenMs })
   }
 }

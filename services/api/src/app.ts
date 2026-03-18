@@ -17,6 +17,8 @@ import type { ClusterClient } from './pipeline/cluster-client.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { healthRoutes } from './routes/health.js'
 import { ingestRoutes } from './routes/ingest.js'
+import { watchRoutes } from './routes/watches.js'
+import type { WatchStore } from './watches/watch-store.js'
 
 export interface AppDependencies {
   config: Config
@@ -25,6 +27,7 @@ export interface AppDependencies {
   clustererHealth: ClustererHealthChecker
   clusterClient: ClusterClient
   anomalyScorer: AnomalyScorer
+  watchStore: WatchStore
 }
 
 export function createApp(deps: AppDependencies): express.Express {
@@ -98,6 +101,14 @@ export function createApp(deps: AppDependencies): express.Express {
     auth,
     dashboardRoutes({
       db: deps.db,
+      logger: deps.logger,
+    }),
+  )
+  app.use(
+    '/v1',
+    auth,
+    watchRoutes({
+      watchStore: deps.watchStore,
       logger: deps.logger,
     }),
   )
