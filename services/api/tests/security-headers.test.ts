@@ -2,10 +2,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
 import request from 'supertest'
-import type { DbClient } from '../src/db/client.js'
-import { ClusterClient } from '../src/pipeline/cluster-client.js'
 import { createApp } from '../src/app.js'
 import type { ClustererHealthChecker } from '../src/clients/clusterer.js'
+import type { DbClient } from '../src/db/client.js'
+import { AnomalyScorer } from '../src/pipeline/anomaly-scorer.js'
+import { ClusterClient } from '../src/pipeline/cluster-client.js'
 
 function createTestApp() {
   const logger = pino({ level: 'silent' })
@@ -23,6 +24,8 @@ function createTestApp() {
   } as unknown as ClustererHealthChecker
   const clusterClient = new ClusterClient('http://localhost:8000', 500, logger)
 
+  const anomalyScorer = new AnomalyScorer({ db: mockDb, logger, coldStartMs: Infinity })
+
   return createApp({
     config: {
       port: 3000,
@@ -32,12 +35,14 @@ function createTestApp() {
       logLevel: 'silent',
       shutdownTimeoutMs: 10_000,
       recoveryIntervalMs: 60_000,
+      recoveryLookbackHours: 24,
       apiKeys: new Map([['test-key', 'tenant-test']]),
     },
     logger,
     db: mockDb,
     clustererHealth: mockHealth,
     clusterClient,
+    anomalyScorer,
   })
 }
 
