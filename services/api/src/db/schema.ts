@@ -99,6 +99,12 @@ const DDL_STATEMENTS = [
   GROUP BY tenant_id, service, interval_start`,
 ]
 
+// Migrations — add columns that may be missing from older schema versions.
+// ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent.
+const MIGRATIONS = [
+  `ALTER TABLE logweave.log_metadata ADD COLUMN IF NOT EXISTS preprocessing_version UInt8 DEFAULT 1`,
+]
+
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS
     max_execution_time = 30,
     max_memory_usage = 1073741824,
@@ -118,6 +124,11 @@ export async function initSchema(client: ClickHouseClient, logger: pino.Logger):
     try {
       for (const ddl of DDL_STATEMENTS) {
         await client.command({ query: ddl })
+      }
+
+      // Run idempotent migrations for existing tables
+      for (const migration of MIGRATIONS) {
+        await client.command({ query: migration })
       }
 
       // Resource guardrails are best-effort — ALTER USER may require admin privileges
