@@ -97,6 +97,8 @@ function mapTemplateRows(rows: RawRow[], newTodayIds: Set<string>): TemplateRow[
     avgDurationMs: Number(r.avg_duration_ms),
     maxAnomalyScore: Number(r.max_anomaly_score),
     isNewToday: newTodayIds.has(r.template_id as string),
+    firstSeen: r.first_seen as string,
+    lastSeen: r.last_seen as string,
   }))
 }
 

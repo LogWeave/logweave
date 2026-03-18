@@ -19,6 +19,8 @@ interface DashboardTemplateRow {
   error_count: number
   avg_duration_ms: number
   max_anomaly_score: number
+  first_seen: string
+  last_seen: string
 }
 
 interface NewTemplateIdRow {
@@ -109,7 +111,9 @@ SELECT
     countMerge(occurrence_count)      AS occurrence_count,
     countIfMerge(error_count)         AS error_count,
     avgMerge(avg_duration_ms)         AS avg_duration_ms,
-    maxMerge(max_anomaly_score)       AS max_anomaly_score
+    maxMerge(max_anomaly_score)       AS max_anomaly_score,
+    min(interval_start)               AS first_seen,
+    max(interval_start)               AS last_seen
 FROM logweave.template_stats
 WHERE tenant_id = {tenant_id:String}
   AND interval_start > now64(3) - toIntervalHour({hours:UInt32})

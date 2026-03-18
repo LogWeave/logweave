@@ -88,6 +88,8 @@ export interface TemplateRow {
   avgDurationMs: number
   maxAnomalyScore: number
   isNewToday: boolean
+  firstSeen: string
+  lastSeen: string
 }
 
 export interface ServiceRow {

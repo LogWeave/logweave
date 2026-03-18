@@ -99,12 +99,21 @@ function DetailContent({ template }: { template: TemplateRow }) {
           <span className="text-text-muted">Template ID</span>
           <span className="font-mono text-text-primary">{template.templateId.slice(0, 16)}...</span>
         </div>
-        {template.isNewToday && (
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-text-muted">Status</span>
-            <Badge variant="new">New Today</Badge>
-          </div>
-        )}
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-text-muted">First seen</span>
+          <span className="font-mono text-text-primary">
+            {new Date(template.firstSeen).toLocaleString()}
+            {template.isNewToday && (
+              <Badge variant="new" className="ml-2">new</Badge>
+            )}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-text-muted">Last seen</span>
+          <span className="font-mono text-text-primary">
+            {new Date(template.lastSeen).toLocaleString()}
+          </span>
+        </div>
       </div>
 
       {/* Sparkline history */}
