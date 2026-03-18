@@ -72,6 +72,7 @@ export class TenantSettingsStore {
   /** Merge partial updates into a tenant's settings. */
   async set(tenantId: string, updates: Partial<TenantSettings>): Promise<void> {
     const existing = this.settings.get(tenantId) ?? {}
+    const previous = { ...existing }
     this.settings.set(tenantId, { ...existing, ...updates })
 
     if (this.db) {
@@ -92,11 +93,16 @@ export class TenantSettingsStore {
         }
       }
       if (rows.length > 0) {
-        await this.db.insert({
-          table: 'logweave.tenant_settings',
-          values: rows,
-          format: 'JSONEachRow',
-        })
+        try {
+          await this.db.insert({
+            table: 'logweave.tenant_settings',
+            values: rows,
+            format: 'JSONEachRow',
+          })
+        } catch (err) {
+          this.settings.set(tenantId, previous)
+          throw err
+        }
       }
     }
   }
@@ -108,6 +114,7 @@ export class TenantSettingsStore {
 
   /** Remove Slack configuration and test status for a tenant. */
   async clearSlack(tenantId: string): Promise<void> {
+    const previous = this.settings.get(tenantId)
     this.settings.delete(tenantId)
 
     if (this.db) {
@@ -117,11 +124,18 @@ export class TenantSettingsStore {
         setting_value: '',
         is_deleted: 1,
       }))
-      await this.db.insert({
-        table: 'logweave.tenant_settings',
-        values: rows,
-        format: 'JSONEachRow',
-      })
+      try {
+        await this.db.insert({
+          table: 'logweave.tenant_settings',
+          values: rows,
+          format: 'JSONEachRow',
+        })
+      } catch (err) {
+        if (previous) {
+          this.settings.set(tenantId, previous)
+        }
+        throw err
+      }
     }
   }
 }

@@ -77,18 +77,24 @@ export class WatchStore {
     tenantMap.set(templateId, templateText)
 
     if (this.db) {
-      await this.db.insert({
-        table: 'logweave.watches',
-        values: [
-          {
-            tenant_id: tenantId,
-            template_id: templateId,
-            template_text: templateText,
-            is_deleted: 0,
-          },
-        ],
-        format: 'JSONEachRow',
-      })
+      try {
+        await this.db.insert({
+          table: 'logweave.watches',
+          values: [
+            {
+              tenant_id: tenantId,
+              template_id: templateId,
+              template_text: templateText,
+              is_deleted: 0,
+            },
+          ],
+          format: 'JSONEachRow',
+        })
+      } catch (err) {
+        tenantMap.delete(templateId)
+        if (tenantMap.size === 0) this.watches.delete(tenantId)
+        throw err
+      }
     }
 
     return true
@@ -98,20 +104,33 @@ export class WatchStore {
   async remove(tenantId: string, templateId: string): Promise<boolean> {
     const tenantMap = this.watches.get(tenantId)
     if (!tenantMap) return false
-    const deleted = tenantMap.delete(templateId)
+    const templateText = tenantMap.get(templateId)
+    if (templateText === undefined) return false
+
+    tenantMap.delete(templateId)
     if (tenantMap.size === 0) this.watches.delete(tenantId)
 
-    if (deleted && this.db) {
-      await this.db.insert({
-        table: 'logweave.watches',
-        values: [
-          { tenant_id: tenantId, template_id: templateId, template_text: '', is_deleted: 1 },
-        ],
-        format: 'JSONEachRow',
-      })
+    if (this.db) {
+      try {
+        await this.db.insert({
+          table: 'logweave.watches',
+          values: [
+            { tenant_id: tenantId, template_id: templateId, template_text: '', is_deleted: 1 },
+          ],
+          format: 'JSONEachRow',
+        })
+      } catch (err) {
+        let restored = this.watches.get(tenantId)
+        if (!restored) {
+          restored = new Map()
+          this.watches.set(tenantId, restored)
+        }
+        restored.set(templateId, templateText)
+        throw err
+      }
     }
 
-    return deleted
+    return true
   }
 
   /** Check if a template is watched. */
