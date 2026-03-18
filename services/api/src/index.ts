@@ -8,8 +8,8 @@ import { createLogger } from './logger.js'
 import { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import { ClusterClient } from './pipeline/cluster-client.js'
 import { RecoverySweep } from './recovery/reconcile.js'
-import { AlertDispatcher, ConsoleObserver } from './watches/alert-observer.js'
 import { AlertEvaluator } from './watches/alert-evaluator.js'
+import { AlertDispatcher, ConsoleObserver } from './watches/alert-observer.js'
 import { SlackObserver } from './watches/slack-observer.js'
 import { TenantSettingsStore } from './watches/tenant-settings.js'
 import { WatchStore } from './watches/watch-store.js'
@@ -21,35 +21,62 @@ const db = new DbClient(clickhouse)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)
 const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTimeoutMs, logger)
 const anomalyScorer = new AnomalyScorer({ db, logger })
-const watchStore = new WatchStore()
-const settingsStore = new TenantSettingsStore()
+const watchStore = new WatchStore({ db, logger })
+const settingsStore = new TenantSettingsStore({ db, logger })
 const alertDispatcher = new AlertDispatcher(logger)
 alertDispatcher.register(new ConsoleObserver(logger))
-alertDispatcher.register(new SlackObserver({ settingsStore, dashboardBaseUrl: config.dashboardBaseUrl, logger }))
-const alertEvaluator = new AlertEvaluator({ watchStore, anomalyScorer, dispatcher: alertDispatcher, logger })
+alertDispatcher.register(
+  new SlackObserver({ settingsStore, dashboardBaseUrl: config.dashboardBaseUrl, logger }),
+)
+const alertEvaluator = new AlertEvaluator({
+  watchStore,
+  anomalyScorer,
+  dispatcher: alertDispatcher,
+  logger,
+})
 
 try {
   await initSchema(clickhouse, logger)
+  await watchStore.loadFromDb()
+  await settingsStore.loadFromDb()
 } catch (err) {
   logger.fatal({ err }, 'Failed to initialize ClickHouse schema after retries')
   process.exit(1)
 }
 
-const app = createApp({ config, logger, db, clustererHealth, clusterClient, anomalyScorer, watchStore, settingsStore })
+const app = createApp({
+  config,
+  logger,
+  db,
+  clustererHealth,
+  clusterClient,
+  anomalyScorer,
+  watchStore,
+  settingsStore,
+})
 
 const recovery = new RecoverySweep(
   { db, clusterClient, clustererHealth, logger },
-  { sweepIntervalMs: config.recoveryIntervalMs, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300, lookbackHours: config.recoveryLookbackHours },
+  {
+    sweepIntervalMs: config.recoveryIntervalMs,
+    sweepMaxRows: 1000,
+    batchSize: 500,
+    backpressureThresholdMs: 300,
+    lookbackHours: config.recoveryLookbackHours,
+  },
 )
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'API server started')
 
-  recovery.runStartupReconciliation().then((count) => {
-    if (count > 0) logger.info({ count }, 'Startup reconciliation completed')
-  }).catch((err) => {
-    logger.error({ err }, 'Startup reconciliation failed')
-  })
+  recovery
+    .runStartupReconciliation()
+    .then((count) => {
+      if (count > 0) logger.info({ count }, 'Startup reconciliation completed')
+    })
+    .catch((err) => {
+      logger.error({ err }, 'Startup reconciliation failed')
+    })
 
   recovery.start()
   anomalyScorer.start()

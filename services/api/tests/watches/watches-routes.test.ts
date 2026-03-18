@@ -18,7 +18,7 @@ const keyMap = new Map([
 
 function createTestApp(maxWatches = 100) {
   const logger = pino({ level: 'silent' })
-  const watchStore = new WatchStore(maxWatches)
+  const watchStore = new WatchStore({ maxPerTenant: maxWatches })
   const app = express()
   app.use(express.json())
   const auth = createAuthMiddleware(keyMap)
@@ -126,7 +126,7 @@ describe('DELETE /v1/watches/:templateId', () => {
     const res = await request(app)
       .get('/v1/watches')
       .set('Authorization', `Bearer ${TEST_KEY}`)
-    assert.deepEqual(res.body.data, ['tmpl-1'])
+    assert.deepEqual(res.body.data, [{ templateId: 'tmpl-1' }])
   })
 
   it('returns 204 for nonexistent watch (idempotent)', async () => {
@@ -156,7 +156,7 @@ describe('GET /v1/watches', () => {
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
-    assert.deepEqual(res.body.data, ['tmpl-1', 'tmpl-2']) // sorted
+    assert.deepEqual(res.body.data, [{ templateId: 'tmpl-1' }, { templateId: 'tmpl-2' }])
     assert.equal(res.body.meta.count, 2)
   })
 
@@ -189,7 +189,7 @@ describe('GET /v1/watches', () => {
       .get('/v1/watches')
       .set('Authorization', 'Bearer key-b')
 
-    assert.deepEqual(resA.body.data, ['tmpl-a'])
-    assert.deepEqual(resB.body.data, ['tmpl-b'])
+    assert.deepEqual(resA.body.data, [{ templateId: 'tmpl-a' }])
+    assert.deepEqual(resB.body.data, [{ templateId: 'tmpl-b' }])
   })
 })

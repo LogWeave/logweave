@@ -52,7 +52,7 @@ describe('AlertEvaluator', () => {
 
     scorer.setWarmup('t1', 'api', now - 2 * 3_600_000)
     scorer.setBaseline('t1', 'api', 'tmpl-1', 10)
-    watchStore.add('t1', 'tmpl-1', 'Error in {service}')
+    await watchStore.add('t1', 'tmpl-1', 'Error in {service}')
 
     // Record enough events to trigger anomaly (50/10/3 = 1.67)
     for (let i = 0; i < 50; i++) {
@@ -78,7 +78,7 @@ describe('AlertEvaluator', () => {
 
     scorer.setWarmup('t1', 'api', now - 2 * 3_600_000)
     scorer.setBaseline('t1', 'api', 'tmpl-1', 10)
-    watchStore.add('t1', 'tmpl-1')
+    await watchStore.add('t1', 'tmpl-1')
 
     for (let i = 0; i < 50; i++) {
       scorer.recordAndScore('t1', 'api', 'tmpl-1')
@@ -118,7 +118,7 @@ describe('AlertEvaluator', () => {
 
     scorer.setWarmup('t1', 'api', clockTime - 2 * 3_600_000)
     scorer.setBaseline('t1', 'api', 'tmpl-1', 10)
-    watchStore.add('t1', 'tmpl-1')
+    await watchStore.add('t1', 'tmpl-1')
 
     for (let i = 0; i < 50; i++) {
       scorer.recordAndScore('t1', 'api', 'tmpl-1')
@@ -140,7 +140,7 @@ describe('AlertEvaluator', () => {
 
     scorer.setWarmup('t1', 'api', now - 2 * 3_600_000)
     scorer.setBaseline('t1', 'api', 'tmpl-1', 100)
-    watchStore.add('t1', 'tmpl-1')
+    await watchStore.add('t1', 'tmpl-1')
 
     // 5 events: 5/100/3 = 0.017 — well below threshold
     for (let i = 0; i < 5; i++) {
@@ -176,7 +176,7 @@ describe('AlertEvaluator', () => {
 
     scorer.setWarmup('t1', 'api', now - 2 * 3_600_000)
     scorer.setBaseline('t1', 'api', 'tmpl-1', 10)
-    watchStore.add('t1', 'tmpl-1')
+    await watchStore.add('t1', 'tmpl-1')
 
     for (let i = 0; i < 50; i++) {
       scorer.recordAndScore('t1', 'api', 'tmpl-1')
@@ -212,7 +212,7 @@ describe('AlertEvaluator', () => {
       now: () => now,
     })
 
-    watchStore.add('t1', 'tmpl-1')
+    await watchStore.add('t1', 'tmpl-1')
 
     // Should not throw
     const count = await evaluator.evaluate()
@@ -226,7 +226,7 @@ describe('AlertEvaluator', () => {
 
     scorer.setWarmup('t1', 'api', now - 2 * 3_600_000)
     // No baseline set — template is new
-    watchStore.add('t1', 'tmpl-new')
+    await watchStore.add('t1', 'tmpl-new')
 
     // Record 25 events — exceeds absolute threshold of 20
     for (let i = 0; i < 25; i++) {

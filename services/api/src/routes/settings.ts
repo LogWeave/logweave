@@ -49,7 +49,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const tenantId = getTenantId(res)
       const body = req.body as z.infer<typeof slackWebhookSchema>
 
-      deps.settingsStore.set(tenantId, { slackWebhookUrl: body.webhookUrl })
+      await deps.settingsStore.set(tenantId, { slackWebhookUrl: body.webhookUrl })
       deps.logger.info({ tenantId }, 'Slack webhook configured')
 
       res.status(HttpStatus.OK).json({
@@ -65,7 +65,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
   router.delete('/settings/slack', async (_req, res, next) => {
     try {
       const tenantId = getTenantId(res)
-      deps.settingsStore.clearSlack(tenantId)
+      await deps.settingsStore.clearSlack(tenantId)
       deps.logger.info({ tenantId }, 'Slack webhook removed')
 
       res.status(HttpStatus.NO_CONTENT).end()
@@ -92,7 +92,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
       const result = await sendSlackTestMessage(webhookUrl)
 
-      deps.settingsStore.set(tenantId, {
+      await deps.settingsStore.set(tenantId, {
         lastTestStatus: result.success ? 'success' : 'failed',
         lastTestAt: new Date().toISOString(),
       })

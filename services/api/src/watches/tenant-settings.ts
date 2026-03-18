@@ -1,17 +1,68 @@
+import type pino from 'pino'
+import type { DbClient } from '../db/client.js'
+
 export interface TenantSettings {
   slackWebhookUrl?: string
   lastTestStatus?: 'success' | 'failed'
   lastTestAt?: string
 }
 
+interface SettingsRow {
+  tenant_id: string
+  setting_key: string
+  setting_value: string
+}
+
+const SETTING_KEYS: (keyof TenantSettings)[] = ['slackWebhookUrl', 'lastTestStatus', 'lastTestAt']
+
+export interface TenantSettingsStoreOpts {
+  db?: DbClient
+  logger?: pino.Logger
+}
+
 /**
- * In-memory per-tenant settings store.
+ * Write-through cached per-tenant settings store.
  *
- * Maps tenantId to settings. Resets on server restart.
- * Persistence is a fast-follow, same as WatchStore.
+ * Reads from in-memory Map. Mutations persist to ClickHouse
+ * so settings survive server restarts.
  */
 export class TenantSettingsStore {
   private readonly settings = new Map<string, TenantSettings>()
+  private readonly db?: DbClient
+  private readonly logger?: pino.Logger
+
+  constructor(opts: TenantSettingsStoreOpts = {}) {
+    this.db = opts.db
+    this.logger = opts.logger
+  }
+
+  /** Load all settings from ClickHouse into memory. Call once at startup. */
+  async loadFromDb(): Promise<{ settingCount: number; tenantCount: number }> {
+    if (!this.db) return { settingCount: 0, tenantCount: 0 }
+
+    const rows = await this.db.query<SettingsRow>({
+      query: `SELECT tenant_id, setting_key, setting_value
+              FROM logweave.tenant_settings FINAL
+              WHERE is_deleted = 0`,
+    })
+
+    for (const row of rows) {
+      const existing = this.settings.get(row.tenant_id) ?? {}
+      if (row.setting_key === 'slackWebhookUrl') {
+        existing.slackWebhookUrl = row.setting_value
+      } else if (row.setting_key === 'lastTestStatus') {
+        existing.lastTestStatus = row.setting_value as 'success' | 'failed'
+      } else if (row.setting_key === 'lastTestAt') {
+        existing.lastTestAt = row.setting_value
+      }
+      this.settings.set(row.tenant_id, existing)
+    }
+
+    const settingCount = rows.length
+    const tenantCount = this.settings.size
+    this.logger?.info({ settingCount, tenantCount }, 'Loaded tenant settings from ClickHouse')
+    return { settingCount, tenantCount }
+  }
 
   /** Get settings for a tenant. Returns empty object if none exist. */
   get(tenantId: string): TenantSettings {
@@ -19,9 +70,35 @@ export class TenantSettingsStore {
   }
 
   /** Merge partial updates into a tenant's settings. */
-  set(tenantId: string, updates: Partial<TenantSettings>): void {
+  async set(tenantId: string, updates: Partial<TenantSettings>): Promise<void> {
     const existing = this.settings.get(tenantId) ?? {}
     this.settings.set(tenantId, { ...existing, ...updates })
+
+    if (this.db) {
+      const rows: {
+        tenant_id: string
+        setting_key: string
+        setting_value: string
+        is_deleted: number
+      }[] = []
+      for (const key of SETTING_KEYS) {
+        if (key in updates && updates[key] !== undefined) {
+          rows.push({
+            tenant_id: tenantId,
+            setting_key: key,
+            setting_value: String(updates[key]),
+            is_deleted: 0,
+          })
+        }
+      }
+      if (rows.length > 0) {
+        await this.db.insert({
+          table: 'logweave.tenant_settings',
+          values: rows,
+          format: 'JSONEachRow',
+        })
+      }
+    }
   }
 
   /** Get the Slack webhook URL for a tenant, or undefined if not configured. */
@@ -30,7 +107,21 @@ export class TenantSettingsStore {
   }
 
   /** Remove Slack configuration and test status for a tenant. */
-  clearSlack(tenantId: string): void {
+  async clearSlack(tenantId: string): Promise<void> {
     this.settings.delete(tenantId)
+
+    if (this.db) {
+      const rows = SETTING_KEYS.map((key) => ({
+        tenant_id: tenantId,
+        setting_key: key,
+        setting_value: '',
+        is_deleted: 1,
+      }))
+      await this.db.insert({
+        table: 'logweave.tenant_settings',
+        values: rows,
+        format: 'JSONEachRow',
+      })
+    }
   }
 }

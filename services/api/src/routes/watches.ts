@@ -25,7 +25,7 @@ export function watchRoutes(deps: WatchDeps): Router {
       const tenantId = getTenantId(res)
       const body = req.body as z.infer<typeof createWatchSchema>
 
-      const result = deps.watchStore.add(tenantId, body.templateId, body.templateText)
+      const result = await deps.watchStore.add(tenantId, body.templateId, body.templateText)
       if (result === 'limit_exceeded') {
         res.status(HttpStatus.BAD_REQUEST).json({
           error: { code: 'WATCH_LIMIT_EXCEEDED', message: 'Maximum 100 watches per tenant' },
@@ -48,7 +48,7 @@ export function watchRoutes(deps: WatchDeps): Router {
       const tenantId = getTenantId(res)
       const { templateId } = req.params
       if (templateId) {
-        deps.watchStore.remove(tenantId, templateId)
+        await deps.watchStore.remove(tenantId, templateId)
       }
       res.status(HttpStatus.NO_CONTENT).end()
     } catch (err) {

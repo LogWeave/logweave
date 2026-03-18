@@ -405,7 +405,7 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
     const { templateId, templateText } = deriveTemplate('Critical error in payment processor')
 
     // Add a watch for this template
-    watchStore.add(tenantA, templateId, templateText)
+    await watchStore.add(tenantA, templateId, templateText)
 
     // Scorer already has events recorded from the burst ingest in test 7.
     // Manually trigger evaluation.
