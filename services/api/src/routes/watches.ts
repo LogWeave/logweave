@@ -60,11 +60,12 @@ export function watchRoutes(deps: WatchDeps): Router {
   router.get('/watches', async (_req, res, next) => {
     try {
       const tenantId = getTenantId(res)
-      const watched = deps.watchStore.list(tenantId)
+      const watchedIds = deps.watchStore.list(tenantId)
+      const data = watchedIds.map((templateId) => ({ templateId }))
 
       res.status(HttpStatus.OK).json({
-        data: watched,
-        meta: { count: watched.length, fetchedAt: new Date().toISOString() },
+        data,
+        meta: { count: data.length, fetchedAt: new Date().toISOString() },
       })
     } catch (err) {
       next(err)

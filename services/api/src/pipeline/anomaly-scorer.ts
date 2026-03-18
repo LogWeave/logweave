@@ -246,7 +246,7 @@ export class AnomalyScorer {
             if (key.startsWith(prefix)) this.baselineCache.delete(key)
           }
           for (const row of rows) {
-            const key = `${tenantId}:${row.service}:${row.template_id}`
+            const key = `${tenantId}${D}${row.service}${D}${row.template_id}`
             this.baselineCache.set(key, Number(row.avg_count_per_interval))
           }
         } catch (err) {

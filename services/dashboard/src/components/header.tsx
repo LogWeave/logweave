@@ -1,4 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { Moon, RefreshCw, Sun } from 'lucide-react'
+import { useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useLevels } from '../api/queries'
 import { cn } from '../lib/cn'
@@ -47,8 +49,15 @@ export function Header() {
       clearLevelFilters: s.clearLevelFilters,
     })),
   )
+  const queryClient = useQueryClient()
+  const [refreshing, setRefreshing] = useState(false)
   const { data: levelsResponse } = useLevels()
   const levelsData = levelsResponse?.data
+
+  const handleRefresh = () => {
+    setRefreshing(true)
+    queryClient.invalidateQueries().then(() => setRefreshing(false))
+  }
 
   return (
     <header className="h-14 flex items-center justify-between px-4 md:px-6 border-b border-border-subtle bg-surface-raised">
@@ -122,8 +131,8 @@ export function Header() {
           value={timeRange}
           onChange={(v) => setTimeRange(v as TimeRange)}
         />
-        <Button variant="ghost" size="sm" title="Refresh">
-          <RefreshCw size={14} />
+        <Button variant="ghost" size="sm" title="Refresh" onClick={handleRefresh}>
+          <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
         </Button>
         <Button variant="ghost" size="sm" onClick={toggleColorMode} title="Toggle theme">
           {colorMode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
