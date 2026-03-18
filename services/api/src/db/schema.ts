@@ -105,9 +105,9 @@ const DDL_STATEMENTS = [
     tenant_id      LowCardinality(String),
     template_id    String,
     template_text  String DEFAULT '',
-    created_at     DateTime64(3) DEFAULT now64(3),
+    version        UInt64,
     is_deleted     UInt8 DEFAULT 0
-  ) ENGINE = ReplacingMergeTree(created_at)
+  ) ENGINE = ReplacingMergeTree(version, is_deleted)
   ORDER BY (tenant_id, template_id)`,
 
   // 8. Tenant settings — key-value config per tenant (Slack webhook, etc.)
@@ -115,9 +115,9 @@ const DDL_STATEMENTS = [
     tenant_id      LowCardinality(String),
     setting_key    LowCardinality(String),
     setting_value  String DEFAULT '',
-    updated_at     DateTime64(3) DEFAULT now64(3),
+    version        UInt64,
     is_deleted     UInt8 DEFAULT 0
-  ) ENGINE = ReplacingMergeTree(updated_at)
+  ) ENGINE = ReplacingMergeTree(version, is_deleted)
   ORDER BY (tenant_id, setting_key)`,
 ]
 

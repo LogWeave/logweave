@@ -76,10 +76,12 @@ export class TenantSettingsStore {
     this.settings.set(tenantId, { ...existing, ...updates })
 
     if (this.db) {
+      const now = Date.now()
       const rows: {
         tenant_id: string
         setting_key: string
         setting_value: string
+        version: number
         is_deleted: number
       }[] = []
       for (const key of SETTING_KEYS) {
@@ -88,6 +90,7 @@ export class TenantSettingsStore {
             tenant_id: tenantId,
             setting_key: key,
             setting_value: String(updates[key]),
+            version: now,
             is_deleted: 0,
           })
         }
@@ -114,14 +117,24 @@ export class TenantSettingsStore {
 
   /** Remove Slack configuration and test status for a tenant. */
   async clearSlack(tenantId: string): Promise<void> {
-    const previous = this.settings.get(tenantId)
-    this.settings.delete(tenantId)
+    const existing = this.settings.get(tenantId)
+    const previous = existing ? { ...existing } : undefined
+    if (existing) {
+      delete existing.slackWebhookUrl
+      delete existing.lastTestStatus
+      delete existing.lastTestAt
+      if (Object.keys(existing).length === 0) {
+        this.settings.delete(tenantId)
+      }
+    }
 
     if (this.db) {
+      const now = Date.now()
       const rows = SETTING_KEYS.map((key) => ({
         tenant_id: tenantId,
         setting_key: key,
         setting_value: '',
+        version: now,
         is_deleted: 1,
       }))
       try {

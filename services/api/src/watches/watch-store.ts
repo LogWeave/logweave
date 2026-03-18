@@ -49,6 +49,13 @@ export class WatchStore {
         tenantMap = new Map()
         this.watches.set(row.tenant_id, tenantMap)
       }
+      if (tenantMap.size >= this.maxPerTenant) {
+        this.logger?.warn(
+          { tenantId: row.tenant_id, maxPerTenant: this.maxPerTenant },
+          'Tenant exceeds watch limit in ClickHouse — skipping excess watches',
+        )
+        continue
+      }
       tenantMap.set(row.template_id, row.template_text)
     }
 
@@ -85,6 +92,7 @@ export class WatchStore {
               tenant_id: tenantId,
               template_id: templateId,
               template_text: templateText,
+              version: Date.now(),
               is_deleted: 0,
             },
           ],
@@ -115,7 +123,13 @@ export class WatchStore {
         await this.db.insert({
           table: 'logweave.watches',
           values: [
-            { tenant_id: tenantId, template_id: templateId, template_text: '', is_deleted: 1 },
+            {
+              tenant_id: tenantId,
+              template_id: templateId,
+              template_text: '',
+              version: Date.now(),
+              is_deleted: 1,
+            },
           ],
           format: 'JSONEachRow',
         })
