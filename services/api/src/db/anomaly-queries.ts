@@ -21,6 +21,10 @@ GROUP BY template_id, service`
  * Fetch rolling 1-hour baseline averages for all templates belonging to a tenant.
  * Returns avg 5-minute occurrence count per (template_id, service).
  * Uses uniq(interval_start) instead of count() to handle unmerged AggregatingMergeTree rows.
+ *
+ * No FINAL needed: -Merge combinators re-aggregate partial states from unmerged parts,
+ * and GROUP BY template_id,service collapses them correctly. Adding FINAL would hurt
+ * performance with no correctness benefit on AggregatingMergeTree.
  */
 export async function queryAnomalyBaselines(
   db: DbClient,

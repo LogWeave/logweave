@@ -4,6 +4,7 @@ import { queryAnomalyBaselines } from '../db/anomaly-queries.js'
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000
 const TEN_MINUTES_MS = 10 * 60 * 1000
+const TWO_HOURS_MS = 2 * 60 * 60 * 1000
 const DEFAULT_COLD_START_MS = 10 * 60 * 1000
 const DEFAULT_WARMUP_MS = 60 * 60 * 1000
 const DEFAULT_BASELINE_REFRESH_MS = 60 * 1000
@@ -51,8 +52,8 @@ export class AnomalyScorer {
   private readonly intervalCounters = new Map<string, number>()
   /** Baseline avg count per 5-min interval: `{tenant}:{service}:{templateId}` → avgCount */
   private readonly baselineCache = new Map<string, number>()
-  /** First-seen time per tenant+service: `{tenant}:{service}` → epoch ms */
-  private readonly warmupTracker = new Map<string, number>()
+  /** First-seen time per tenant+service: `{tenant}:{service}` → { firstSeen, lastSeen } */
+  private readonly warmupTracker = new Map<string, { firstSeen: number; lastSeen: number }>()
 
   private intervalHandle: ReturnType<typeof setInterval> | null = null
   private refreshRunning = false
@@ -75,6 +76,7 @@ export class AnomalyScorer {
 
   /** Start periodic baseline refresh + counter pruning. */
   start(): void {
+    if (this.intervalHandle) return // already started
     this.intervalHandle = setInterval(async () => {
       await this.refreshBaselines()
       this.pruneOldCounters()
@@ -108,14 +110,15 @@ export class AnomalyScorer {
 
     // Track warmup
     const warmupKey = `${tenantId}:${service}`
-    const firstSeen = this.warmupTracker.get(warmupKey)
-    if (firstSeen === undefined) {
-      this.warmupTracker.set(warmupKey, currentTime)
+    const entry = this.warmupTracker.get(warmupKey)
+    if (entry === undefined) {
+      this.warmupTracker.set(warmupKey, { firstSeen: currentTime, lastSeen: currentTime })
       return 0 // First event for this tenant+service — cold start
     }
+    entry.lastSeen = currentTime
 
     // Cold start check
-    const age = currentTime - firstSeen
+    const age = currentTime - entry.firstSeen
     if (age < this.coldStartMs) return 0
 
     // Increment interval counter
@@ -166,6 +169,11 @@ export class AnomalyScorer {
       for (const tenantId of tenants) {
         try {
           const rows = await queryAnomalyBaselines(this.db, tenantId)
+          // Clear-and-replace: remove stale entries for this tenant, then add fresh ones
+          const prefix = `${tenantId}:`
+          for (const key of this.baselineCache.keys()) {
+            if (key.startsWith(prefix)) this.baselineCache.delete(key)
+          }
           for (const row of rows) {
             const key = `${tenantId}:${row.service}:${row.template_id}`
             this.baselineCache.set(key, Number(row.avg_count_per_interval))
@@ -185,14 +193,23 @@ export class AnomalyScorer {
   // Counter pruning
   // ---------------------------------------------------------------------------
 
-  /** Remove interval counters older than 10 minutes. */
+  /** Remove stale interval counters and warmup entries for inactive tenants. */
   private pruneOldCounters(): void {
-    const cutoff = this.now() - TEN_MINUTES_MS
+    const currentTime = this.now()
+    const counterCutoff = currentTime - TEN_MINUTES_MS
     for (const key of this.intervalCounters.keys()) {
       const parts = key.split(':')
       const intervalStart = Number(parts[parts.length - 1])
-      if (intervalStart < cutoff) {
+      if (intervalStart < counterCutoff) {
         this.intervalCounters.delete(key)
+      }
+    }
+
+    // Prune warmup entries for tenant+service pairs inactive for 2+ hours
+    const warmupCutoff = currentTime - TWO_HOURS_MS
+    for (const [key, entry] of this.warmupTracker) {
+      if (entry.lastSeen < warmupCutoff) {
+        this.warmupTracker.delete(key)
       }
     }
   }
@@ -201,13 +218,13 @@ export class AnomalyScorer {
   // Test helpers — allow tests to pre-populate state without exposing internals
   // ---------------------------------------------------------------------------
 
-  /** Set baseline for a specific template (for testing). */
+  /** @internal Set baseline for a specific template (testing only). */
   setBaseline(tenantId: string, service: string, templateId: string, avgCount: number): void {
     this.baselineCache.set(`${tenantId}:${service}:${templateId}`, avgCount)
   }
 
-  /** Set warmup first-seen time for a tenant+service (for testing). */
+  /** @internal Set warmup first-seen time for a tenant+service (testing only). */
   setWarmup(tenantId: string, service: string, firstSeenMs: number): void {
-    this.warmupTracker.set(`${tenantId}:${service}`, firstSeenMs)
+    this.warmupTracker.set(`${tenantId}:${service}`, { firstSeen: firstSeenMs, lastSeen: firstSeenMs })
   }
 }

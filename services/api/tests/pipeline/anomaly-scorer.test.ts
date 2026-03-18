@@ -188,6 +188,37 @@ describe('AnomalyScorer', () => {
     assert.ok(Math.abs(lastScore - 50 / 10 / 3) < 0.01, `expected ~1.67, got ${lastScore}`)
   })
 
+  it('refreshBaselines populates cache from DB rows', async () => {
+    const now = Date.now()
+    const mockDb = createMockDb([
+      { template_id: 'tmpl-1', service: 'api', avg_count_per_interval: '42' },
+    ])
+    const scorer = new AnomalyScorer({
+      db: mockDb,
+      logger: silentLogger,
+      coldStartMs: 0,
+      steadyThreshold: 3,
+      now: () => now,
+    })
+    scorer.setWarmup('t1', 'api', now - 2 * 3_600_000)
+
+    // Before refresh — no baseline, low count → score=0
+    const scoreBefore = scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    assert.equal(scoreBefore, 0, 'should be 0 before baseline loaded')
+
+    // Refresh baselines from DB
+    await scorer.refreshBaselines()
+
+    // After refresh — baseline=42, send enough events to exceed 3x threshold
+    // Need count > 42 * 3 = 126 events for score > 1.0
+    let lastScore = 0
+    for (let i = 0; i < 130; i++) {
+      lastScore = scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    }
+    // count is 131 (1 from before + 130), score = 131/42/3 = 1.04
+    assert.ok(lastScore > 1.0, `should score > 1.0 after baseline refresh, got ${lastScore}`)
+  })
+
   it('baseline refresh failure: score=0, no throw', async () => {
     const failingDb = {
       query: async () => {
