@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { EChartsOption } from 'echarts'
 import { useMemo, useState } from 'react'
 import { pollUnlessError, useVolume } from '../../api/queries'
@@ -48,6 +48,7 @@ export function VolumeChart({ className }: { className?: string }) {
         service: serviceFilter ?? undefined,
       }),
     enabled: compareEnabled,
+    placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })

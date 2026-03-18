@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { config } from '../config'
 import { api } from '../lib/api-client'
 import { timeRangeToHours, useDashboardStore } from '../stores/dashboard-store'
@@ -44,6 +44,7 @@ export function useVolume() {
         hours,
         service: serviceFilter ?? undefined,
       }),
+    placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })
@@ -72,6 +73,7 @@ export function useTemplates() {
         limit: 200,
         service: serviceFilter ?? undefined,
       }),
+    placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })
@@ -118,6 +120,7 @@ export function useChanges() {
         hours,
         service: serviceFilter ?? undefined,
       }),
+    placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })
