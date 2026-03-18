@@ -129,7 +129,7 @@
     {
       "message": "{{route}} -> {{upstream}} {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
       "level": "info",
-      "weight": 40,
+      "weight": 80,
       "fields": {
         "event": "gateway.request.routed",
         "request_id": { "$gen": "request_id" },
@@ -143,7 +143,7 @@
     {
       "message": "Rate limit triggered: {{rate_limit_key}} exceeded quota — {{route}} from {{client_ip}}, remaining={{rate_limit_remaining}}",
       "level": "warn",
-      "weight": 6,
+      "weight": 4,
       "fields": {
         "event": "gateway.rate_limit.triggered",
         "request_id": { "$gen": "request_id" },
@@ -155,7 +155,7 @@
     {
       "message": "Circuit breaker OPEN for {{upstream}} — failure rate exceeded threshold, rejecting {{route}}",
       "level": "error",
-      "weight": 3,
+      "weight": 1,
       "fields": {
         "event": "gateway.circuit_breaker.open",
         "request_id": { "$gen": "request_id" },
@@ -167,7 +167,7 @@
     {
       "message": "Upstream timeout: {{upstream}} did not respond within {{upstream_latency_ms}}ms for {{route}} from {{client_ip}}",
       "level": "error",
-      "weight": 4,
+      "weight": 2,
       "fields": {
         "event": "gateway.upstream.timeout",
         "request_id": { "$gen": "request_id" },
@@ -179,7 +179,7 @@
     {
       "message": "TLS handshake: {{client_ip}} negotiated {{tls_version}} {{cipher_suite}} in {{duration_ms}}ms",
       "level": "debug",
-      "weight": 15,
+      "weight": 3,
       "fields": {
         "event": "gateway.tls.handshake",
         "request_id": { "$gen": "request_id" },
@@ -189,7 +189,7 @@
     {
       "message": "Health check passed: {{upstream}} responded 200 in {{duration_ms}}ms — pool healthy",
       "level": "debug",
-      "weight": 18,
+      "weight": 5,
       "fields": {
         "event": "gateway.health.check",
         "duration_ms": { "$gen": "duration_ms" }
@@ -198,7 +198,7 @@
     {
       "message": "Request blocked by WAF: rule={{waf_rule}} client={{client_ip}} path={{route}} — user_agent={{user_agent}}",
       "level": "warn",
-      "weight": 5,
+      "weight": 3,
       "fields": {
         "event": "gateway.waf.blocked",
         "request_id": { "$gen": "request_id" },
@@ -210,7 +210,7 @@
     {
       "message": "Retry attempt: {{route}} -> {{upstream}} failed with {{status_code}}, retrying (attempt 2/3)",
       "level": "warn",
-      "weight": 4,
+      "weight": 2,
       "fields": {
         "event": "gateway.request.retry",
         "request_id": { "$gen": "request_id" },
@@ -220,7 +220,7 @@
     }
   ],
   "spike": {
-    "error_weight_multiplier": 5,
+    "error_weight_multiplier": 8,
     "extra_templates": [
       {
         "message": "Upstream {{upstream}} restarting — 502 Bad Gateway for {{route}}, request_id={{request_id}} routing to standby",

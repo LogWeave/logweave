@@ -107,7 +107,7 @@
     {
       "message": "Email sent: {{template_name}} to {{recipient_email}} via {{provider}} in {{delivery_ms}}ms",
       "level": "info",
-      "weight": 30,
+      "weight": 40,
       "fields": {
         "event": "notification.email.sent",
         "notification_id": { "$gen": "notification_id" },
@@ -119,7 +119,7 @@
     {
       "message": "SMS delivered: {{phone_prefix}}-{{phone_suffix}} via {{sms_provider}} in {{delivery_ms}}ms",
       "level": "info",
-      "weight": 12,
+      "weight": 15,
       "fields": {
         "event": "notification.sms.delivered",
         "notification_id": { "$gen": "notification_id" },
@@ -130,7 +130,7 @@
     {
       "message": "Push notification sent via {{push_provider}}: {{template_name}} — {{delivery_ms}}ms",
       "level": "info",
-      "weight": 15,
+      "weight": 18,
       "fields": {
         "event": "notification.push.sent",
         "notification_id": { "$gen": "notification_id" },
@@ -141,7 +141,7 @@
     {
       "message": "Delivery failed: {{recipient_email}} via {{provider}} — {{bounce_reason}}",
       "level": "error",
-      "weight": 5,
+      "weight": 2,
       "fields": {
         "event": "notification.delivery.failed",
         "notification_id": { "$gen": "notification_id" },
@@ -162,7 +162,7 @@
     {
       "message": "Template rendered: {{template_name}} ({{notification_type}}) in {{render_ms}}ms — {{provider}}",
       "level": "debug",
-      "weight": 25,
+      "weight": 3,
       "fields": {
         "event": "notification.template.rendered",
         "request_id": { "$gen": "request_id" },
@@ -172,7 +172,7 @@
     {
       "message": "Duplicate suppressed: {{recipient_email}} already received {{template_name}} within dedup window",
       "level": "info",
-      "weight": 6,
+      "weight": 7,
       "fields": {
         "event": "notification.dedup.suppressed",
         "notification_id": { "$gen": "notification_id" },
@@ -181,7 +181,7 @@
     }
   ],
   "spike": {
-    "error_weight_multiplier": 6,
+    "error_weight_multiplier": 8,
     "extra_templates": [
       {
         "message": "Provider failover: {{provider}} returning 5xx — switching to fallback provider for {{notification_type}} traffic",

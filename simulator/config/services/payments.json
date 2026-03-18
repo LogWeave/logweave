@@ -117,7 +117,7 @@
     {
       "message": "Payment processed: {{order_id}} {{amount}} {{currency}} via {{gateway}} ({{card_brand}} ****{{card_last_four}}) in {{processing_ms}}ms",
       "level": "info",
-      "weight": 35,
+      "weight": 50,
       "fields": {
         "event": "payment.charge.success",
         "txn_id": { "$gen": "txn_id" },
@@ -129,7 +129,7 @@
     {
       "message": "Refund initiated: {{refund_amount}} {{currency}} for {{order_id}} via {{gateway}} — reason: customer_request",
       "level": "info",
-      "weight": 8,
+      "weight": 12,
       "fields": {
         "event": "payment.refund.initiated",
         "txn_id": { "$gen": "txn_id" },
@@ -140,7 +140,7 @@
     {
       "message": "Gateway timeout: {{gateway}} did not respond within {{gateway_latency_ms}}ms for {{order_id}}",
       "level": "error",
-      "weight": 5,
+      "weight": 2,
       "fields": {
         "event": "payment.gateway.timeout",
         "txn_id": { "$gen": "txn_id" },
@@ -152,7 +152,7 @@
     {
       "message": "Card validation failed for {{order_id}}: {{card_brand}} ****{{card_last_four}} declined by {{gateway}} — insufficient_funds",
       "level": "warn",
-      "weight": 7,
+      "weight": 3,
       "fields": {
         "event": "payment.card.declined",
         "txn_id": { "$gen": "txn_id" },
@@ -164,7 +164,7 @@
     {
       "message": "Fraud check passed: {{order_id}} score={{fraud_score}} via {{gateway}} (threshold=0.85)",
       "level": "debug",
-      "weight": 20,
+      "weight": 3,
       "fields": {
         "event": "payment.fraud.check",
         "txn_id": { "$gen": "txn_id" },
@@ -175,7 +175,7 @@
     {
       "message": "Webhook delivered to {{webhook_endpoint}} — status {{webhook_status}} in {{processing_ms}}ms (attempt {{retry_count}})",
       "level": "info",
-      "weight": 15,
+      "weight": 20,
       "fields": {
         "event": "payment.webhook.delivery",
         "txn_id": { "$gen": "txn_id" },
@@ -185,7 +185,7 @@
     {
       "message": "Insufficient funds: {{order_id}} {{amount}} {{currency}} via {{card_brand}} ****{{card_last_four}} on {{gateway}}",
       "level": "warn",
-      "weight": 6,
+      "weight": 2,
       "fields": {
         "event": "payment.charge.insufficient_funds",
         "txn_id": { "$gen": "txn_id" },
@@ -196,7 +196,7 @@
     {
       "message": "Idempotency key collision detected for {{order_id}} — returning cached response",
       "level": "info",
-      "weight": 4,
+      "weight": 5,
       "fields": {
         "event": "payment.idempotency.hit",
         "request_id": { "$gen": "request_id" },
@@ -205,7 +205,7 @@
     }
   ],
   "spike": {
-    "error_weight_multiplier": 4,
+    "error_weight_multiplier": 8,
     "extra_templates": [
       {
         "message": "Rolling restart: payments-api instance draining — {{retry_count}} in-flight transactions being re-routed",
