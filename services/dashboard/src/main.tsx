@@ -10,8 +10,12 @@ import { useDashboardStore } from './stores/dashboard-store'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
       refetchOnWindowFocus: false,
+      // Don't refetch on interval when the previous fetch errored —
+      // prevents hammering a down API and hanging the browser
+      refetchIntervalInBackground: false,
     },
   },
 })
