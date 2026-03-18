@@ -125,7 +125,7 @@ SELECT
     c.template_id, c.template_text, c.service,
     c.cnt AS current_count,
     coalesce(p.cnt, 0) AS previous_count,
-    if(coalesce(p.cnt, 0) > 0, c.cnt / p.cnt, 999) AS spike_ratio
+    if(coalesce(p.cnt, 0) > 0, CAST(c.cnt AS Float64) / p.cnt, 999) AS spike_ratio
 FROM current c
 LEFT JOIN previous p ON c.template_id = p.template_id
 WHERE spike_ratio > {threshold:Float32}

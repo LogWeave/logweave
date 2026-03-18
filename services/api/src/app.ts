@@ -1,18 +1,20 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import express from 'express'
 import helmet from 'helmet'
 import type pino from 'pino'
 import { type Options as PinoHttpOptions, pinoHttp } from 'pino-http'
 import type { ClustererHealthChecker } from './clients/clusterer.js'
 import type { Config } from './config.js'
+import type { DbClient } from './db/client.js'
 import { notFound } from './errors.js'
 import { requestContext } from './logger.js'
 import { createAuthMiddleware } from './middleware/auth.js'
 import { createErrorHandler } from './middleware/error-handler.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
-import type { DbClient } from './db/client.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
-import { healthRoutes } from './routes/health.js'
 import { dashboardRoutes } from './routes/dashboard.js'
+import { healthRoutes } from './routes/health.js'
 import { ingestRoutes } from './routes/ingest.js'
 
 export interface AppDependencies {
@@ -68,22 +70,55 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use(express.json({ limit: '1mb' }))
 
   // Routes — health (unauthenticated)
-  app.use(healthRoutes({ db: deps.db, clustererHealth: deps.clustererHealth, clusterClient: deps.clusterClient }))
+  app.use(
+    healthRoutes({
+      db: deps.db,
+      clustererHealth: deps.clustererHealth,
+      clusterClient: deps.clusterClient,
+    }),
+  )
 
   // Routes — API (authenticated)
   const auth = createAuthMiddleware(deps.config.apiKeys)
   deps.config.apiKeys.clear() // Plaintext keys no longer needed — hashed copies live in auth closure
-  app.use('/v1', auth, ingestRoutes({
-    clusterClient: deps.clusterClient,
-    db: deps.db,
-    logger: deps.logger,
-  }))
-  app.use('/v1', auth, dashboardRoutes({
-    db: deps.db,
-    logger: deps.logger,
-  }))
+  app.use(
+    '/v1',
+    auth,
+    ingestRoutes({
+      clusterClient: deps.clusterClient,
+      db: deps.db,
+      logger: deps.logger,
+    }),
+  )
+  app.use(
+    '/v1',
+    auth,
+    dashboardRoutes({
+      db: deps.db,
+      logger: deps.logger,
+    }),
+  )
 
-  // 404 catch-all
+  // Dashboard SPA — serve static files if the dist directory exists
+  const dashboardDir =
+    process.env.LOGWEAVE_DASHBOARD_DIR ?? path.resolve(import.meta.dirname, '../../dashboard/dist')
+  if (existsSync(dashboardDir)) {
+    deps.logger.info({ dashboardDir }, 'Serving dashboard SPA')
+    app.use(express.static(dashboardDir))
+
+    // SPA fallback — serve index.html for unmatched GET requests that accept HTML
+    // (API routes and health probes are already handled above)
+    // Express 5 requires named wildcard params: {*path}
+    app.get('{*path}', (req, res, next) => {
+      if (req.accepts('html')) {
+        res.sendFile(path.join(dashboardDir, 'index.html'))
+      } else {
+        next(notFound('Route not found'))
+      }
+    })
+  }
+
+  // 404 catch-all (API routes that didn't match, or no dashboard)
   app.use((_req, _res, next) => {
     next(notFound('Route not found'))
   })
