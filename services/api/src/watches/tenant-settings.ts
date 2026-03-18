@@ -29,16 +29,8 @@ export class TenantSettingsStore {
     return this.settings.get(tenantId)?.slackWebhookUrl
   }
 
-  /** Remove Slack configuration for a tenant. */
+  /** Remove Slack configuration and test status for a tenant. */
   clearSlack(tenantId: string): void {
-    const existing = this.settings.get(tenantId)
-    if (!existing) return
-    const { slackWebhookUrl: _, ...rest } = existing
-    // If nothing else remains, remove the entry entirely
-    if (Object.keys(rest).length === 0) {
-      this.settings.delete(tenantId)
-    } else {
-      this.settings.set(tenantId, rest)
-    }
+    this.settings.delete(tenantId)
   }
 }

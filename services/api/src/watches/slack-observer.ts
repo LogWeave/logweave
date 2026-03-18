@@ -62,10 +62,14 @@ export class SlackObserver implements AlertObserver {
 
     // Chain onto the per-URL queue — non-blocking, fire-and-forget
     const previous = this.deliveryQueues.get(webhookUrl) ?? Promise.resolve()
-    const next = previous.then(async () => {
-      await this.enforceRateLimit(webhookUrl)
-      await this.deliver(webhookUrl, payload, 0, alert)
-    })
+    const next = previous
+      .then(async () => {
+        await this.enforceRateLimit(webhookUrl)
+        await this.deliver(webhookUrl, payload, 0, alert)
+      })
+      .catch((err) => {
+        this.logger.error({ err, tenantId: alert.tenantId }, 'Slack delivery queue error')
+      })
     this.deliveryQueues.set(webhookUrl, next)
   }
 
@@ -124,7 +128,8 @@ export class SlackObserver implements AlertObserver {
 
       // Rate limited — retry with Retry-After
       if (resp.status === 429) {
-        const retryAfter = Number(resp.headers.get('Retry-After') ?? 5)
+        const rawRetryAfter = Number(resp.headers.get('Retry-After') ?? 5)
+        const retryAfter = Number.isFinite(rawRetryAfter) ? Math.min(Math.max(rawRetryAfter, 1), 60) : 5
         if (attempt < MAX_RETRIES) {
           this.logger.debug({ ...ctx, retryAfterSec: retryAfter }, 'Slack: rate limited, retrying')
           await sleep(retryAfter * 1000)

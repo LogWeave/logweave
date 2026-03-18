@@ -65,8 +65,11 @@ class ApiClient {
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, body?.error?.message ?? res.statusText)
+      const errBody = await res.json().catch(() => ({}))
+      throw new ApiError(res.status, errBody?.error?.message ?? res.statusText)
+    }
+    if (res.status === 204 || res.headers.get('content-length') === '0') {
+      return undefined as T
     }
     return res.json() as Promise<T>
   }

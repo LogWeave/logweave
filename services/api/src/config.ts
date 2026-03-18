@@ -54,7 +54,6 @@ const configSchema = z.object({
   recoveryIntervalMs: z.coerce.number().int().min(1000).max(300_000).default(60_000),
   recoveryLookbackHours: z.coerce.number().int().min(1).max(168).default(24),
   apiKeys: apiKeysSchema,
-  slackWebhookUrl: z.string().url().optional(),
   dashboardBaseUrl: z.string().url().optional(),
 })
 
@@ -75,7 +74,6 @@ export function loadConfig(): Config {
     recoveryIntervalMs: process.env.LOGWEAVE_RECOVERY_INTERVAL_MS,
     recoveryLookbackHours: process.env.LOGWEAVE_RECOVERY_LOOKBACK_HOURS,
     apiKeys: process.env.LOGWEAVE_API_KEYS,
-    slackWebhookUrl: process.env.LOGWEAVE_SLACK_WEBHOOK_URL,
     dashboardBaseUrl: process.env.LOGWEAVE_DASHBOARD_BASE_URL,
   })
 }
