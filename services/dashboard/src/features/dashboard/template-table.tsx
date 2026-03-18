@@ -43,6 +43,8 @@ export function TemplateTable({ className }: { className?: string }) {
     setSelectedTemplateId,
     hiddenTemplateIds,
     toggleHideTemplate,
+    hideAllTemplates,
+    unhideAllTemplates,
     showHidden,
     toggleShowHidden,
   } = useDashboardStore(
@@ -51,6 +53,8 @@ export function TemplateTable({ className }: { className?: string }) {
       setSelectedTemplateId: s.setSelectedTemplateId,
       hiddenTemplateIds: s.hiddenTemplateIds,
       toggleHideTemplate: s.toggleHideTemplate,
+      hideAllTemplates: s.hideAllTemplates,
+      unhideAllTemplates: s.unhideAllTemplates,
       showHidden: s.showHidden,
       toggleShowHidden: s.toggleShowHidden,
     })),
@@ -222,18 +226,36 @@ export function TemplateTable({ className }: { className?: string }) {
           <div className="flex items-center gap-2">
             <CardTitle>Patterns ({visibleTemplates.length})</CardTitle>
             {hiddenCount > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleShowHidden}
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full border transition-colors',
+                    showHidden
+                      ? 'bg-brand-500/10 text-brand-400 border-brand-500/20'
+                      : 'bg-surface-elevated text-text-muted border-border-subtle hover:text-text-secondary',
+                  )}
+                >
+                  {showHidden ? <Eye size={11} /> : <EyeOff size={11} />}
+                  {hiddenCount} hidden
+                </button>
+                <button
+                  type="button"
+                  onClick={unhideAllTemplates}
+                  className="px-2 py-0.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  Show all
+                </button>
+              </>
+            )}
+            {templates.length > 0 && hiddenCount < templates.length && (
               <button
                 type="button"
-                onClick={toggleShowHidden}
-                className={cn(
-                  'inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full border transition-colors',
-                  showHidden
-                    ? 'bg-brand-500/10 text-brand-400 border-brand-500/20'
-                    : 'bg-surface-elevated text-text-muted border-border-subtle hover:text-text-secondary',
-                )}
+                onClick={() => hideAllTemplates(templates.map((t) => t.templateId))}
+                className="px-2 py-0.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
               >
-                {showHidden ? <Eye size={11} /> : <EyeOff size={11} />}
-                {hiddenCount} hidden
+                Hide all
               </button>
             )}
           </div>

@@ -17,6 +17,8 @@ interface DashboardState {
   setSelectedTemplateId: (id: string | null) => void
   hiddenTemplateIds: string[]
   toggleHideTemplate: (id: string) => void
+  hideAllTemplates: (ids: string[]) => void
+  unhideAllTemplates: () => void
   showHidden: boolean
   toggleShowHidden: () => void
   levelFilters: string[]
@@ -45,6 +47,11 @@ export const useDashboardStore = create<DashboardState>()(
             ? state.hiddenTemplateIds.filter((h) => h !== id)
             : [...state.hiddenTemplateIds, id],
         })),
+      hideAllTemplates: (ids) =>
+        set((state) => ({
+          hiddenTemplateIds: [...new Set([...state.hiddenTemplateIds, ...ids])],
+        })),
+      unhideAllTemplates: () => set({ hiddenTemplateIds: [] }),
       showHidden: false,
       toggleShowHidden: () => set((state) => ({ showHidden: !state.showHidden })),
       levelFilters: [],
