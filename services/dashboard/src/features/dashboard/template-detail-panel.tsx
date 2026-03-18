@@ -180,7 +180,12 @@ export function TemplateDetailPanel() {
         {/* Header */}
         <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-border-subtle bg-surface-card/95 backdrop-blur-sm">
           <h3 className="text-sm font-semibold text-text-primary truncate pr-4">Pattern Detail</h3>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedTemplateId(null)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedTemplateId(null)}
+            aria-label="Close pattern detail"
+          >
             <X size={16} />
           </Button>
         </div>

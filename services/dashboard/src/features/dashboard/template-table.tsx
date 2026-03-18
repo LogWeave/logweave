@@ -137,11 +137,11 @@ export function TemplateTable({ className }: { className?: string }) {
           return (
             <button
               type="button"
-              title={isHidden ? 'Show pattern' : 'Hide pattern'}
+              title={isHidden ? 'Unhide pattern' : 'Hide pattern'}
               className={cn(
                 'p-1 rounded transition-colors',
                 isHidden
-                  ? 'text-text-muted hover:text-text-primary'
+                  ? 'text-warning hover:text-text-primary'
                   : 'text-transparent group-hover/row:text-text-muted hover:text-text-primary',
               )}
               onClick={(e) => {
@@ -300,8 +300,9 @@ export function TemplateTable({ className }: { className?: string }) {
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
-                  <button
-                    type="button"
+                  {/* biome-ignore lint/a11y/useSemanticElements: can't use <button> — contains nested interactive hide button */}
+                  <div
+                    role="button"
                     className={cn(
                       'group/row flex items-center w-full py-2 border-b border-border-subtle/50 cursor-pointer transition-colors text-left',
                       isSelected
@@ -311,7 +312,14 @@ export function TemplateTable({ className }: { className?: string }) {
                         hiddenTemplateIds.includes(row.original.templateId) &&
                         'opacity-50',
                     )}
+                    tabIndex={0}
                     onClick={() => setSelectedTemplateId(row.original.templateId)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedTemplateId(row.original.templateId)
+                      }
+                    }}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <div
@@ -322,7 +330,7 @@ export function TemplateTable({ className }: { className?: string }) {
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </div>
                     ))}
-                  </button>
+                  </div>
                 </div>
               )
             })}
@@ -331,7 +339,11 @@ export function TemplateTable({ className }: { className?: string }) {
 
         {rows.length === 0 && (
           <div className="py-12 text-center text-text-muted text-sm">
-            {globalFilter ? 'No patterns match your search.' : 'No template data available.'}
+            {globalFilter
+              ? 'No patterns match your search.'
+              : hiddenCount > 0 && hiddenCount >= templates.length
+                ? `All ${hiddenCount} patterns are hidden. Click "hidden" above to reveal them.`
+                : 'No template data available.'}
           </div>
         )}
       </CardContent>

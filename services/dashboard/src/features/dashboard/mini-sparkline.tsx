@@ -44,11 +44,9 @@ export const MiniSparkline = memo(function MiniSparkline({
     const brandColor = styles.getPropertyValue('--color-brand-400').trim() || '#818cf8'
     const strokeColor =
       trending === 'up' ? warningColor : trending === 'down' ? successColor : brandColor
-    const fillColor = `${strokeColor}1a`
-
     const stepX = (width - padding * 2) / (points.length - 1)
 
-    // Draw area fill
+    // Draw area fill (use globalAlpha for color-format-safe transparency)
     ctx.beginPath()
     ctx.moveTo(padding, height - padding)
     for (let i = 0; i < points.length; i++) {
@@ -59,8 +57,10 @@ export const MiniSparkline = memo(function MiniSparkline({
     }
     ctx.lineTo(padding + (points.length - 1) * stepX, height - padding)
     ctx.closePath()
-    ctx.fillStyle = fillColor
+    ctx.globalAlpha = 0.1
+    ctx.fillStyle = strokeColor
     ctx.fill()
+    ctx.globalAlpha = 1.0
 
     // Draw line
     ctx.beginPath()

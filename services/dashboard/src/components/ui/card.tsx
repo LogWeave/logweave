@@ -1,7 +1,7 @@
 import type { HTMLAttributes, KeyboardEvent } from 'react'
 import { cn } from '../../lib/cn'
 
-type CardSize = 'compact' | 'default' | 'flush'
+type CardSize = 'compact' | 'default'
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
   variant?: 'default' | 'interactive'
@@ -11,7 +11,6 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 const sizeStyles: Record<CardSize, string> = {
   compact: 'p-3',
   default: 'p-5',
-  flush: 'p-0',
 }
 
 export function Card({
@@ -27,7 +26,7 @@ export function Card({
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (isInteractive && onClick && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault()
-      onClick(e as unknown as React.MouseEvent<HTMLDivElement>)
+      onClick({} as React.MouseEvent<HTMLDivElement>)
     }
   }
 

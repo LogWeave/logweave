@@ -165,7 +165,7 @@ export function VolumeChart({ className }: { className?: string }) {
           if (Number.isNaN(d.getTime())) return String(t)
           return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
         }),
-        boundaryGap: false,
+        boundaryGap: chartType === 'bar',
       },
       yAxis: {
         type: 'value',
