@@ -203,3 +203,42 @@ due to Docker ClickHouse requiring auth (new container image behavior).
 Fix: When tests fail, investigate the root cause. Don't label failures as
 "pre-existing" — either fix them or create a tracked issue. Tests we wrote are
 our responsibility.
+
+### 2026-03-18 — AnomalyScorer baseline key delimiter mismatch (Week 2 postmortem)
+
+`refreshBaselines()` at line 249 writes cache keys with `:` delimiter but `computeScore()`
+reads with `\0` (the `D` constant). Baselines fetched from ClickHouse are silently never
+found, scoring degrades to new-template-only mode. Found by architecture reviewer during
+Week 2 postmortem.
+
+Fix: Change line 249 to use `D` (null byte) delimiter. **Lesson:** Integration tests that
+exercise the full refresh → score path with real-shaped data would have caught this.
+Mock-only tests missed it because `setBaseline()` uses the correct delimiter.
+
+### 2026-03-18 — Watches API shape mismatch (Week 2 postmortem)
+
+API `GET /v1/watches` returns `string[]` but dashboard expects `{ templateId: string }[]`.
+Result: `w.templateId` is always `undefined`, watch bells never appear, watched-only
+filter returns nothing. The entire watch UI shipped non-functional.
+
+Fix: Align types between API and dashboard. **Lesson:** Duplicated types between services
+drift. Need shared types package or contract tests.
+
+### 2026-03-18 — In-memory stores with no persistence (Week 2 postmortem)
+
+WatchStore and TenantSettingsStore silently reset on restart. All watches and Slack
+webhook configs lost with zero warning. 3 of 5 postmortem agents independently flagged
+this as critical.
+
+Fix: Persist to ClickHouse. **Lesson:** If data is user-configured (not derived/cacheable),
+it must be persisted from day one. "Fast-follow" for user-facing config is a data loss bug.
+
+### 2026-03-18 — BMAD multi-agent postmortem (methodology lesson)
+
+Running 5 specialized persona agents (SRE pre-mortem, new-user UX, product inversion,
+UX red team, architecture review) found issues no single reviewer would have caught. The
+SRE and Product Owner independently flagged persistence as critical. The UX Architect
+and new-user agent both flagged changes panel not being clickable. Cross-referencing
+perspectives produces higher-confidence prioritization.
+
+Fix: Use multi-agent review at every milestone boundary going forward.
