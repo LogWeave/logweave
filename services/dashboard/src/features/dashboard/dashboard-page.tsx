@@ -22,14 +22,14 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      {/* Row 2: Volume chart */}
-      <ErrorBoundary name="Volume Chart" key={`vol-${location.key}`}>
-        <VolumeChart />
-      </ErrorBoundary>
-
-      {/* Row 3: What Changed */}
+      {/* Row 2: What Changed — most actionable, above the fold */}
       <ErrorBoundary name="What Changed" key={`changes-${location.key}`}>
         <ChangesPanel />
+      </ErrorBoundary>
+
+      {/* Row 3: Volume chart */}
+      <ErrorBoundary name="Volume Chart" key={`vol-${location.key}`}>
+        <VolumeChart />
       </ErrorBoundary>
 
       {/* Row 4: Template table + Service cards */}

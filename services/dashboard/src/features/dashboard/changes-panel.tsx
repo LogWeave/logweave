@@ -6,6 +6,7 @@ import { Skeleton } from '../../components/ui/skeleton'
 import { Tooltip } from '../../components/ui/tooltip'
 import { cn } from '../../lib/cn'
 import { TOOLTIPS } from '../../lib/tooltips'
+import { useDashboardStore } from '../../stores/dashboard-store'
 
 const BADGE_TOOLTIPS = {
   spike: TOOLTIPS.spikeEvent,
@@ -13,12 +14,22 @@ const BADGE_TOOLTIPS = {
   resolved: TOOLTIPS.resolvedEvent,
 }
 
-function ChangeEventRow({ event }: { event: ChangeEvent }) {
+function ChangeEventRow({
+  event,
+  onSelect,
+}: {
+  event: ChangeEvent
+  onSelect: (templateId: string) => void
+}) {
   const badgeVariant = event.type === 'new' ? 'new' : event.type === 'spike' ? 'spike' : 'resolved'
   const label = event.type.toUpperCase()
 
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-border-subtle/50 last:border-0">
+    <button
+      type="button"
+      className="flex items-start gap-3 py-2.5 border-b border-border-subtle/50 last:border-0 cursor-pointer hover:bg-surface-elevated/50 transition-colors rounded-[var(--radius-sm)] -mx-1 px-1 w-full text-left"
+      onClick={() => onSelect(event.templateId)}
+    >
       <Tooltip content={BADGE_TOOLTIPS[event.type]} className="mt-0.5 shrink-0">
         <Badge variant={badgeVariant}>{label}</Badge>
       </Tooltip>
@@ -43,13 +54,14 @@ function ChangeEventRow({ event }: { event: ChangeEvent }) {
           )}
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 
 export function ChangesPanel({ className }: { className?: string }) {
   const { data: response, isLoading } = useChanges()
   const events = response?.data ?? []
+  const setSelectedTemplateId = useDashboardStore((s) => s.setSelectedTemplateId)
 
   if (isLoading) {
     return (
@@ -81,7 +93,11 @@ export function ChangesPanel({ className }: { className?: string }) {
         ) : (
           <div className="max-h-[300px] overflow-y-auto">
             {events.map((event) => (
-              <ChangeEventRow key={`${event.type}-${event.templateId}`} event={event} />
+              <ChangeEventRow
+                key={`${event.type}-${event.templateId}`}
+                event={event}
+                onSelect={setSelectedTemplateId}
+              />
             ))}
           </div>
         )}
