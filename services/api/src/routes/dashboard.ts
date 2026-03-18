@@ -17,6 +17,7 @@ import {
   queryLevelDistribution,
   queryNewTodayIds,
   queryTemplateSparklines,
+  queryTemplateStatusCodes,
 } from '../db/dashboard-queries.js'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
@@ -29,6 +30,8 @@ import {
   type ClusteringHealthQuery,
   type LevelCount,
   type LevelsQuery,
+  type StatusCodeCount,
+  type TemplateStatusCodesQuery,
   changesQuerySchema,
   clusteringHealthQuerySchema,
   levelsQuerySchema,
@@ -43,6 +46,7 @@ import {
   sparklineQuerySchema,
   type TemplateRow,
   type TemplatesQuery,
+  templateStatusCodesQuerySchema,
   templatesQuerySchema,
   type VolumeData,
   type VolumePoint,
@@ -426,6 +430,29 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       next(err)
     }
   })
+
+  // 9. GET /dashboard/template-status-codes
+  router.get(
+    '/dashboard/template-status-codes',
+    validateQuery(templateStatusCodesQuerySchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const params = getQuery<TemplateStatusCodesQuery>(req)
+        const rows = await queryTemplateStatusCodes(deps.db, tenantId, {
+          hours: params.hours,
+          templateId: params.template_id,
+        })
+        const data: StatusCodeCount[] = toRawRows(rows).map((r) => ({
+          statusCode: Number(r.status_code),
+          count: Number(r.count),
+        }))
+        respond(res, data, { hours: params.hours, count: data.length })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   return router
 }

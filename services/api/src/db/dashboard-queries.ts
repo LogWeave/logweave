@@ -445,3 +445,36 @@ ORDER BY count DESC`
 
   return db.query<LevelDistributionRow>(tenantQuery(query, tenantId, params))
 }
+
+interface TemplateStatusCodeRow {
+  status_code: number
+  count: number
+}
+
+/**
+ * Status code distribution for a specific template from log_metadata.
+ * Filters out rows where status_code = 0 (no status code present).
+ */
+export async function queryTemplateStatusCodes(
+  db: DbClient,
+  tenantId: string,
+  options: { hours?: number; templateId: string },
+): Promise<TemplateStatusCodeRow[]> {
+  const hours = clamp(options.hours ?? DEFAULT_HOURS, MAX_HOURS)
+
+  const query = `
+SELECT
+    status_code,
+    count() AS count
+FROM logweave.log_metadata
+WHERE tenant_id = {tenant_id:String}
+  AND timestamp > now64(3) - toIntervalHour({hours:UInt32})
+  AND template_id = {template_id:String}
+  AND status_code != 0
+GROUP BY status_code
+ORDER BY count DESC`
+
+  return db.query<TemplateStatusCodeRow>(
+    tenantQuery(query, tenantId, { hours, template_id: options.templateId }),
+  )
+}

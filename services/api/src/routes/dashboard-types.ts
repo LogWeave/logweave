@@ -85,6 +85,10 @@ export const levelsQuerySchema = timeRangeSchema.extend({
   service: z.string().optional(),
 })
 
+export const templateStatusCodesQuerySchema = timeRangeSchema.extend({
+  template_id: z.string().min(1),
+})
+
 // ---------------------------------------------------------------------------
 // Inferred query types
 // ---------------------------------------------------------------------------
@@ -97,6 +101,7 @@ export type SparklineQuery = z.infer<typeof sparklineQuerySchema>
 export type ClusteringHealthQuery = z.infer<typeof clusteringHealthQuerySchema>
 export type ChangesQuery = z.infer<typeof changesQuerySchema>
 export type LevelsQuery = z.infer<typeof levelsQuerySchema>
+export type TemplateStatusCodesQuery = z.infer<typeof templateStatusCodesQuerySchema>
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -179,5 +184,10 @@ export interface ChangeEvent {
 
 export interface LevelCount {
   level: string
+  count: number
+}
+
+export interface StatusCodeCount {
+  statusCode: number
   count: number
 }

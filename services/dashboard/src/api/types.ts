@@ -83,3 +83,8 @@ export interface LevelCount {
   level: string
   count: number
 }
+
+export interface StatusCodeCount {
+  statusCode: number
+  count: number
+}

@@ -10,6 +10,7 @@ import type {
   OverviewData,
   ServiceRow,
   SparklineData,
+  StatusCodeCount,
   TemplateRow,
   VolumeData,
 } from './types'
@@ -161,6 +162,21 @@ export function useLevels() {
         service: serviceFilter ?? undefined,
       }),
     refetchInterval: pollUnlessError,
+    staleTime: config.staleTimeMs,
+  })
+}
+
+export function useTemplateStatusCodes(templateId: string | null) {
+  const timeRange = useDashboardStore((s) => s.timeRange)
+  const hours = timeRangeToHours(timeRange)
+  return useQuery({
+    queryKey: ['dashboard', 'template-status-codes', hours, templateId],
+    queryFn: () =>
+      api.get<ApiResponse<StatusCodeCount[]>>('/v1/dashboard/template-status-codes', {
+        hours,
+        template_id: templateId ?? undefined,
+      }),
+    enabled: templateId !== null,
     staleTime: config.staleTimeMs,
   })
 }

@@ -1,7 +1,7 @@
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
-import { useSparklines, useTemplates } from '../../api/queries'
+import { useSparklines, useTemplateStatusCodes, useTemplates } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
 import { Chart } from '../../components/chart'
 import { Badge } from '../../components/ui/badge'
@@ -37,6 +37,8 @@ function TemplateText({ text }: { text: string }) {
 function DetailContent({ template }: { template: TemplateRow }) {
   const { data: sparklineResponse } = useSparklines([template.templateId])
   const sparklinePoints = sparklineResponse?.data?.[template.templateId] ?? []
+  const { data: statusCodeResponse } = useTemplateStatusCodes(template.templateId)
+  const statusCodes = statusCodeResponse?.data ?? []
 
   return (
     <div className="space-y-5">
@@ -82,6 +84,45 @@ function DetailContent({ template }: { template: TemplateRow }) {
           }
         />
       </div>
+
+      {/* Status code breakdown */}
+      {statusCodes.length > 0 && (
+        <div>
+          <h4 className="text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2">
+            Status Codes
+          </h4>
+          <div className="space-y-1.5">
+            {statusCodes.map((sc) => {
+              const maxCount = statusCodes[0]?.count ?? 1
+              const pct = (sc.count / maxCount) * 100
+              const color =
+                sc.statusCode >= 500
+                  ? 'bg-danger'
+                  : sc.statusCode >= 400
+                    ? 'bg-warning'
+                    : sc.statusCode >= 300
+                      ? 'bg-info'
+                      : 'bg-success'
+              return (
+                <div key={sc.statusCode} className="flex items-center gap-2 text-xs">
+                  <span className="font-mono text-text-primary w-8 text-right tabular-nums">
+                    {sc.statusCode}
+                  </span>
+                  <div className="flex-1 h-4 bg-surface-base rounded-[var(--radius-sm)] overflow-hidden">
+                    <div
+                      className={cn(color, 'h-full rounded-[var(--radius-sm)] transition-all')}
+                      style={{ width: `${Math.max(2, pct)}%` }}
+                    />
+                  </div>
+                  <span className="font-mono text-text-muted tabular-nums w-14 text-right">
+                    {sc.count.toLocaleString()}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Metadata */}
       <div className="space-y-2">
