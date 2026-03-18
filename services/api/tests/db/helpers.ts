@@ -3,7 +3,7 @@ import type { ClickHouseClient, ResultSet } from '@clickhouse/client'
 import { createClient } from '@clickhouse/client'
 import { DbClient } from '../../src/db/client.js'
 
-const CLICKHOUSE_URL = process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://default:logweave@localhost:8123'
+const CLICKHOUSE_URL = process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://localhost:8123'
 
 let sharedClient: ClickHouseClient | undefined
 let sharedDb: DbClient | undefined

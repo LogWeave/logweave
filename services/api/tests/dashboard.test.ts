@@ -33,6 +33,8 @@ const mockTemplateStatsRows = [
     error_count: '5',
     avg_duration_ms: '12.5',
     max_anomaly_score: '0.8',
+    first_seen: '2026-03-17T00:00:00.000Z',
+    last_seen: '2026-03-17T23:00:00.000Z',
   },
   {
     template_id: 'tmpl-2',
@@ -42,6 +44,8 @@ const mockTemplateStatsRows = [
     error_count: '0',
     avg_duration_ms: '8.2',
     max_anomaly_score: '0.1',
+    first_seen: '2026-03-16T12:00:00.000Z',
+    last_seen: '2026-03-17T22:00:00.000Z',
   },
 ]
 
@@ -322,6 +326,10 @@ describe('GET /v1/dashboard/templates', () => {
     assert.equal(row.avgDurationMs, 12.5)
     assert.equal(typeof row.maxAnomalyScore, 'number')
     assert.equal(row.maxAnomalyScore, 0.8)
+    assert.equal(typeof row.firstSeen, 'string')
+    assert.equal(row.firstSeen, '2026-03-17T00:00:00.000Z')
+    assert.equal(typeof row.lastSeen, 'string')
+    assert.equal(row.lastSeen, '2026-03-17T23:00:00.000Z')
   })
 
   it('returns 400 for hours exceeding maximum (hours=999)', async () => {

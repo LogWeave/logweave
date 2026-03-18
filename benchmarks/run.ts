@@ -94,7 +94,7 @@ async function runApiBenchmarks(
     console.log('  Starting API server...')
     serverProcess = startApiServer(
       {
-        LOGWEAVE_CLICKHOUSE_URL: 'http://default:logweave@localhost:8123',
+        LOGWEAVE_CLICKHOUSE_URL: 'http://localhost:8123',
         LOGWEAVE_CLUSTERER_URL: `http://localhost:${MOCK_CLUSTERER_PORT.toString()}`,
         LOGWEAVE_API_KEYS: JSON.stringify(apiKeys),
         LOGWEAVE_LOG_LEVEL: 'warn',
