@@ -9,7 +9,7 @@ import {
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Eye, EyeOff, Search } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useSparklines, useTemplates } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
@@ -60,6 +60,16 @@ export function TemplateTable({ className }: { className?: string }) {
     if (showHidden) return templates
     return templates.filter((t) => !hiddenTemplateIds.includes(t.templateId))
   }, [templates, hiddenTemplateIds, showHidden])
+
+  // Prune stale hidden IDs that no longer exist in current template set
+  useEffect(() => {
+    if (templates.length === 0 || hiddenTemplateIds.length === 0) return
+    const currentIds = new Set(templates.map((t) => t.templateId))
+    const stale = hiddenTemplateIds.filter((id) => !currentIds.has(id))
+    if (stale.length > 0) {
+      for (const id of stale) toggleHideTemplate(id)
+    }
+  }, [templates, hiddenTemplateIds, toggleHideTemplate])
 
   const hiddenCount = useMemo(
     () => templates.filter((t) => hiddenTemplateIds.includes(t.templateId)).length,

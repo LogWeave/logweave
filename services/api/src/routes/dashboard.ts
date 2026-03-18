@@ -15,6 +15,7 @@ import {
   queryDashboardServices,
   queryDashboardTemplates,
   queryDashboardVolume,
+  queryLevelDistribution,
   queryNewTodayIds,
   queryTemplateSparklines,
 } from '../db/dashboard-queries.js'
@@ -27,8 +28,11 @@ import {
   type ChangesQuery,
   type ClusteringHealthData,
   type ClusteringHealthQuery,
+  type LevelCount,
+  type LevelsQuery,
   changesQuerySchema,
   clusteringHealthQuerySchema,
+  levelsQuerySchema,
   type OverviewData,
   type OverviewQuery,
   overviewQuerySchema,
@@ -392,6 +396,28 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       events.sort((a, b) => b.ratio - a.ratio)
 
       respond(res, events, { hours: params.hours, limit: params.limit, count: events.length })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // 8. GET /dashboard/levels
+  router.get('/dashboard/levels', validateQuery(levelsQuerySchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<LevelsQuery>(req)
+
+      const rows = await queryLevelDistribution(deps.db, tenantId, {
+        hours: params.hours,
+        service: params.service,
+      })
+
+      const data: LevelCount[] = toRawRows(rows).map((r) => ({
+        level: r.level as string,
+        count: Number(r.count),
+      }))
+
+      respond(res, data, { hours: params.hours, count: data.length })
     } catch (err) {
       next(err)
     }

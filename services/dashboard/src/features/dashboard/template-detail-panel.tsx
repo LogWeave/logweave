@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useSparklines, useTemplates } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
+import { Chart } from '../../components/chart'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { StatBox } from '../../components/ui/stat-box'
@@ -119,9 +120,30 @@ function DetailContent({ template }: { template: TemplateRow }) {
             <InfoTooltip content={TOOLTIPS.occurrenceHistory} />
           </h4>
           <div className="bg-surface-base rounded-[var(--radius-md)] p-2">
-            <div className="text-xs text-text-muted text-center py-4">
-              {sparklinePoints.map((p) => p.count).join(', ')}
-            </div>
+            <Chart
+              option={{
+                grid: { left: 40, right: 8, top: 8, bottom: 24, containLabel: false },
+                xAxis: {
+                  type: 'category',
+                  data: sparklinePoints.map((p) => {
+                    const d = new Date(p.intervalStart)
+                    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+                  }),
+                  axisLabel: { fontSize: 10 },
+                },
+                yAxis: { type: 'value', splitNumber: 3, axisLabel: { fontSize: 10 } },
+                series: [
+                  {
+                    type: 'bar',
+                    data: sparklinePoints.map((p) => p.count),
+                    itemStyle: { color: 'var(--color-brand-400)', borderRadius: [2, 2, 0, 0] },
+                  },
+                ],
+                tooltip: { trigger: 'axis' },
+                animationDuration: 300,
+              }}
+              height={140}
+            />
           </div>
         </div>
       )}

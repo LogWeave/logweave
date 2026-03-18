@@ -78,3 +78,8 @@ export interface ClusteringHealthData {
   compressionRatio: number
   trend: Array<{ intervalStart: string; total: number; unclustered: number; ratio: number }>
 }
+
+export interface LevelCount {
+  level: string
+  count: number
+}

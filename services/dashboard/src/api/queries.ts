@@ -6,6 +6,7 @@ import type {
   ApiResponse,
   ChangeEvent,
   ClusteringHealthData,
+  LevelCount,
   OverviewData,
   ServiceRow,
   SparklineData,
@@ -121,6 +122,22 @@ export function useChanges() {
         service: serviceFilter ?? undefined,
       }),
     placeholderData: keepPreviousData,
+    refetchInterval: pollUnlessError,
+    staleTime: config.staleTimeMs,
+  })
+}
+
+export function useLevels() {
+  const timeRange = useDashboardStore((s) => s.timeRange)
+  const serviceFilter = useDashboardStore((s) => s.serviceFilter)
+  const hours = timeRangeToHours(timeRange)
+  return useQuery({
+    queryKey: ['dashboard', 'levels', hours, serviceFilter],
+    queryFn: () =>
+      api.get<ApiResponse<LevelCount[]>>('/v1/dashboard/levels', {
+        hours,
+        service: serviceFilter ?? undefined,
+      }),
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })

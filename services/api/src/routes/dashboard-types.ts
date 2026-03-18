@@ -63,6 +63,10 @@ export const changesQuerySchema = timeRangeSchema.extend({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 })
 
+export const levelsQuerySchema = timeRangeSchema.extend({
+  service: z.string().optional(),
+})
+
 // ---------------------------------------------------------------------------
 // Inferred query types
 // ---------------------------------------------------------------------------
@@ -74,6 +78,7 @@ export type OverviewQuery = z.infer<typeof overviewQuerySchema>
 export type SparklineQuery = z.infer<typeof sparklineQuerySchema>
 export type ClusteringHealthQuery = z.infer<typeof clusteringHealthQuerySchema>
 export type ChangesQuery = z.infer<typeof changesQuerySchema>
+export type LevelsQuery = z.infer<typeof levelsQuerySchema>
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -152,4 +157,9 @@ export interface ChangeEvent {
   ratio: number
   firstSeen?: string
   lastSeen?: string
+}
+
+export interface LevelCount {
+  level: string
+  count: number
 }

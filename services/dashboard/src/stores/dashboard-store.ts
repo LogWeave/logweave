@@ -19,6 +19,9 @@ interface DashboardState {
   toggleHideTemplate: (id: string) => void
   showHidden: boolean
   toggleShowHidden: () => void
+  levelFilters: string[]
+  toggleLevelFilter: (level: string) => void
+  clearLevelFilters: () => void
 }
 
 export const useDashboardStore = create<DashboardState>()(
@@ -44,6 +47,14 @@ export const useDashboardStore = create<DashboardState>()(
         })),
       showHidden: false,
       toggleShowHidden: () => set((state) => ({ showHidden: !state.showHidden })),
+      levelFilters: [],
+      toggleLevelFilter: (level) =>
+        set((state) => ({
+          levelFilters: state.levelFilters.includes(level)
+            ? state.levelFilters.filter((l) => l !== level)
+            : [...state.levelFilters, level],
+        })),
+      clearLevelFilters: () => set({ levelFilters: [] }),
     }),
     {
       name: 'logweave-dashboard',

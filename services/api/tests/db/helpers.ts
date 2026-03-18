@@ -3,14 +3,17 @@ import type { ClickHouseClient, ResultSet } from '@clickhouse/client'
 import { createClient } from '@clickhouse/client'
 import { DbClient } from '../../src/db/client.js'
 
-const CLICKHOUSE_URL = process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://localhost:8123'
+/** ClickHouse URL for tests — reads from env at call time, not module load time */
+function getClickHouseUrl(): string {
+  return process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://localhost:8123'
+}
 
 let sharedClient: ClickHouseClient | undefined
 let sharedDb: DbClient | undefined
 
 export function getTestClient(): ClickHouseClient {
   if (!sharedClient) {
-    sharedClient = createClient({ url: CLICKHOUSE_URL })
+    sharedClient = createClient({ url: getClickHouseUrl() })
   }
   return sharedClient
 }
