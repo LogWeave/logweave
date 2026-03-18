@@ -25,10 +25,15 @@ export function pollUnlessError(query: { state: { status: string } }): number | 
 
 export function useOverview() {
   const timeRange = useDashboardStore((s) => s.timeRange)
+  const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: ['dashboard', 'overview', hours],
-    queryFn: () => api.get<ApiResponse<OverviewData>>('/v1/dashboard/overview', { hours }),
+    queryKey: ['dashboard', 'overview', hours, levelFilters.join(',')],
+    queryFn: () =>
+      api.get<ApiResponse<OverviewData>>('/v1/dashboard/overview', {
+        hours,
+        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+      }),
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })
@@ -37,13 +42,15 @@ export function useOverview() {
 export function useVolume() {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
+  const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: ['dashboard', 'volume', hours, serviceFilter],
+    queryKey: ['dashboard', 'volume', hours, serviceFilter, levelFilters.join(',')],
     queryFn: () =>
       api.get<ApiResponse<VolumeData>>('/v1/dashboard/volume', {
         hours,
         service: serviceFilter ?? undefined,
+        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
       }),
     placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
@@ -53,10 +60,15 @@ export function useVolume() {
 
 export function useServices() {
   const timeRange = useDashboardStore((s) => s.timeRange)
+  const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: ['dashboard', 'services', hours],
-    queryFn: () => api.get<ApiResponse<ServiceRow[]>>('/v1/dashboard/services', { hours }),
+    queryKey: ['dashboard', 'services', hours, levelFilters.join(',')],
+    queryFn: () =>
+      api.get<ApiResponse<ServiceRow[]>>('/v1/dashboard/services', {
+        hours,
+        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+      }),
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })
@@ -65,14 +77,16 @@ export function useServices() {
 export function useTemplates() {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
+  const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: ['dashboard', 'templates', hours, serviceFilter],
+    queryKey: ['dashboard', 'templates', hours, serviceFilter, levelFilters.join(',')],
     queryFn: () =>
       api.get<ApiResponse<TemplateRow[]>>('/v1/dashboard/templates', {
         hours,
         limit: 200,
         service: serviceFilter ?? undefined,
+        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
       }),
     placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
@@ -82,15 +96,17 @@ export function useTemplates() {
 
 export function useSparklines(templateIds: string[]) {
   const timeRange = useDashboardStore((s) => s.timeRange)
+  const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
   // Stabilize the key — array reference changes on every render but content may be the same
   const idsKey = templateIds.join(',')
   return useQuery({
-    queryKey: ['dashboard', 'sparklines', hours, idsKey],
+    queryKey: ['dashboard', 'sparklines', hours, idsKey, levelFilters.join(',')],
     queryFn: () =>
       api.get<ApiResponse<SparklineData>>('/v1/dashboard/template-sparklines', {
         hours,
         template_ids: idsKey,
+        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
       }),
     enabled: templateIds.length > 0,
     refetchInterval: pollUnlessError,
@@ -100,11 +116,15 @@ export function useSparklines(templateIds: string[]) {
 
 export function useClusteringHealth() {
   const timeRange = useDashboardStore((s) => s.timeRange)
+  const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: ['dashboard', 'clustering-health', hours],
+    queryKey: ['dashboard', 'clustering-health', hours, levelFilters.join(',')],
     queryFn: () =>
-      api.get<ApiResponse<ClusteringHealthData>>('/v1/dashboard/clustering-health', { hours }),
+      api.get<ApiResponse<ClusteringHealthData>>('/v1/dashboard/clustering-health', {
+        hours,
+        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+      }),
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })
@@ -113,13 +133,15 @@ export function useClusteringHealth() {
 export function useChanges() {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
+  const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: ['dashboard', 'changes', hours, serviceFilter],
+    queryKey: ['dashboard', 'changes', hours, serviceFilter, levelFilters.join(',')],
     queryFn: () =>
       api.get<ApiResponse<ChangeEvent[]>>('/v1/dashboard/changes', {
         hours,
         service: serviceFilter ?? undefined,
+        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
       }),
     placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,

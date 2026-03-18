@@ -47,15 +47,18 @@ export function VolumeChart({ className }: { className?: string }) {
 
   const timeRange = useDashboardStore((s) => s.timeRange)
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
+  const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
+  const levelParam = levelFilters.length > 0 ? levelFilters.join(',') : undefined
 
   const { data: compareResponse } = useQuery({
-    queryKey: ['dashboard', 'volume-compare', hours, serviceFilter],
+    queryKey: ['dashboard', 'volume-compare', hours, serviceFilter, levelParam],
     queryFn: () =>
       api.get<ApiResponse<VolumeData>>('/v1/dashboard/volume', {
         hours,
         offset: hours,
         service: serviceFilter ?? undefined,
+        level: levelParam,
       }),
     enabled: compareEnabled,
     placeholderData: keepPreviousData,
@@ -64,6 +67,21 @@ export function VolumeChart({ className }: { className?: string }) {
   })
 
   const compareData = compareEnabled ? compareResponse?.data : undefined
+
+  const isLevelFiltered = levelFilters.length > 0
+
+  const { data: unfilteredResponse } = useQuery({
+    queryKey: ['dashboard', 'volume-total', hours, serviceFilter],
+    queryFn: () =>
+      api.get<ApiResponse<VolumeData>>('/v1/dashboard/volume', {
+        hours,
+        service: serviceFilter ?? undefined,
+      }),
+    enabled: isLevelFiltered,
+    placeholderData: keepPreviousData,
+    refetchInterval: pollUnlessError,
+    staleTime: config.staleTimeMs,
+  })
 
   const option = useMemo((): EChartsOption | null => {
     if (!volumeData?.current?.length) return null
@@ -134,10 +152,33 @@ export function VolumeChart({ className }: { className?: string }) {
       }
     }
 
-    const allSeries = [...currentSeries, ...compareSeries]
+    const ghostSeries: typeof currentSeries = []
+    if (isLevelFiltered && unfilteredResponse?.data?.current?.length) {
+      const { serviceMap: totalServiceMap } = buildServiceMap(unfilteredResponse.data.current)
+      // Build a single "Total" ghost line by summing all services
+      const totalByTimestamp = new Map<string, number>()
+      for (const [, points] of totalServiceMap) {
+        for (const p of points) {
+          totalByTimestamp.set(p.time, (totalByTimestamp.get(p.time) ?? 0) + p.count)
+        }
+      }
+      ghostSeries.push({
+        name: 'Total (unfiltered)',
+        type: 'line' as const,
+        stack: 'ghost',
+        smooth: true,
+        symbol: 'none' as const,
+        lineStyle: { width: 1, type: 'dashed' } as never,
+        areaStyle: { opacity: 0 },
+        data: sortedTimestamps.map((t) => totalByTimestamp.get(t) ?? 0),
+      })
+    }
+
+    const allSeries = [...currentSeries, ...compareSeries, ...ghostSeries]
     const legendData = [
       ...services,
       ...(compareSeries.length > 0 ? compareSeries.map((s) => s.name) : []),
+      ...(ghostSeries.length > 0 ? ghostSeries.map((s) => s.name) : []),
     ]
 
     return {
@@ -175,7 +216,7 @@ export function VolumeChart({ className }: { className?: string }) {
       animationEasing: 'cubicOut',
       series: allSeries,
     }
-  }, [volumeData, compareData, chartType])
+  }, [volumeData, compareData, chartType, unfilteredResponse, isLevelFiltered])
 
   if (isLoading) {
     return (

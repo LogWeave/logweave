@@ -24,6 +24,7 @@ interface DashboardState {
   levelFilters: string[]
   toggleLevelFilter: (level: string) => void
   clearLevelFilters: () => void
+  setLevelFilters: (levels: string[]) => void
 }
 
 export const useDashboardStore = create<DashboardState>()(
@@ -62,6 +63,7 @@ export const useDashboardStore = create<DashboardState>()(
             : [...state.levelFilters, level],
         })),
       clearLevelFilters: () => set({ levelFilters: [] }),
+      setLevelFilters: (levelFilters) => set({ levelFilters }),
     }),
     {
       name: 'logweave-dashboard',
