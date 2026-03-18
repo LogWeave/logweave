@@ -28,7 +28,11 @@ class ApiClient {
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, body?.error?.message ?? res.statusText)
+      const message =
+        res.status === 401
+          ? 'Authentication failed — check your API key in the dashboard configuration.'
+          : (body?.error?.message ?? res.statusText)
+      throw new ApiError(res.status, message)
     }
     return res.json() as Promise<T>
   }

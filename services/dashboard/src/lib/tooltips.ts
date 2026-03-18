@@ -6,9 +6,9 @@
 export const TOOLTIPS = {
   // --- KPI Strip ---
   newToday:
-    'Distinct log templates seen for the first time today. A sudden spike often means a new deployment introduced new message patterns.',
+    'Distinct log patterns seen for the first time today. A sudden spike often means a new deployment introduced new message patterns.',
   unclustered:
-    'Log lines the clusterer could not match to any known template. High values may indicate a new message format or a clusterer configuration issue. These events are not analysed for anomalies.',
+    'Log lines the clusterer could not match to any known pattern. High values may indicate a new message format or a clusterer configuration issue. These events are not analysed for anomalies.',
   errorRate:
     'Percentage of ingested events classified as errors (ERROR / FATAL severity) in the current time window. Turns red above 5%.',
   totalTemplates:
@@ -18,7 +18,7 @@ export const TOOLTIPS = {
   trendColumn:
     'Occurrence rate over the selected time window, oldest → newest. Amber = rising, green = falling, indigo = stable.',
   newBadge:
-    'This log template was seen for the first time today. It did not appear in any earlier time window.',
+    'This log pattern was seen for the first time today. It did not appear in any earlier time window.',
 
   // --- Template detail panel ---
   anomalyScore:
@@ -28,21 +28,21 @@ export const TOOLTIPS = {
   occurrenceHistory:
     'Occurrence counts per time bucket, oldest to newest, over the selected window. Each number is how many times this pattern matched in one interval. Use this to spot gradual growth or a sudden burst.',
   templatePlaceholder:
-    'Variable extracted by the Drain3 clustering algorithm. This token matches any value in that position across different log lines.',
+    'Variable extracted by the log clustering engine. This token matches any value in that position across different log lines.',
 
   // --- Compression funnel ---
   compressionRatio:
-    'Total log events ÷ unique templates. A ratio of 500:1 means 500 raw lines were reduced to 1 stored pattern. Higher is better.',
+    'Total log events ÷ unique patterns. A ratio of 500:1 means 500 raw lines were reduced to 1 stored pattern. Higher is better.',
   unclusteredFunnel:
-    'Events that fell back to template_id=0 and are not analysed for anomalies. If this is persistently high, check the clusterer service logs.',
+    'Events that could not be matched to any known pattern and are not analysed for anomalies. If this is persistently high, check the clusterer service logs.',
 
   // --- Changes panel ---
   spikeEvent:
-    "This template's occurrence count is significantly higher than its recent rolling average. The multiplier shows how many times above baseline it is.",
+    "This pattern's occurrence count is significantly higher than its recent rolling average. The multiplier shows how many times above baseline it is.",
   newEvent:
-    'This log template appeared for the first time in the current time window. A high count on a brand-new template warrants investigation.',
+    'This log pattern appeared for the first time in the current time window. A high count on a brand-new pattern warrants investigation.',
   resolvedEvent:
-    'This template previously had an anomalous spike. Its occurrence count has returned to within the normal baseline range.',
+    'This pattern previously had an anomalous spike. Its occurrence count has returned to within the normal baseline range.',
 
   // --- Volume chart ---
   compareToggle:

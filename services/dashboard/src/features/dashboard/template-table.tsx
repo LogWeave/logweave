@@ -102,7 +102,7 @@ export function TemplateTable({ className }: { className?: string }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor('templateText', {
-        header: 'Template',
+        header: 'Pattern',
         size: 400,
         cell: (info) => (
           <div className="flex items-center gap-2 min-w-0">
@@ -297,11 +297,11 @@ export function TemplateTable({ className }: { className?: string }) {
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
             />
             <Input
-              placeholder="Search templates..."
+              placeholder="Search patterns..."
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
               className="pl-8"
-              aria-label="Search templates"
+              aria-label="Search patterns"
             />
           </div>
         </div>
@@ -407,7 +407,7 @@ export function TemplateTable({ className }: { className?: string }) {
               ? 'No patterns match your search.'
               : hiddenCount > 0 && hiddenCount >= templates.length
                 ? `All ${hiddenCount} patterns are hidden. Click "hidden" above to reveal them.`
-                : 'No template data available.'}
+                : 'No pattern data yet. Install the @logweave/transport SDK and send some logs to get started.'}
           </div>
         )}
       </CardContent>

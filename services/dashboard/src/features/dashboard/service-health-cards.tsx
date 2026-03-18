@@ -33,7 +33,7 @@ export function ServiceHealthCards({ className }: { className?: string }) {
         <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">
           Services
         </h3>
-        <p className="text-xs text-text-muted">No services reporting.</p>
+        <p className="text-xs text-text-muted">No services reporting yet. Install the @logweave/transport SDK to start sending logs.</p>
       </div>
     )
   }

@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/shallow'
 import {
+  useSlackSettings,
   useSparklines,
   useTemplateStatusCodes,
   useTemplates,
@@ -52,6 +53,8 @@ function DetailContent({ template }: { template: TemplateRow }) {
   const isWatched = watchedIds.some((w) => w.templateId === template.templateId)
   const watchMutation = useWatchTemplate()
   const unwatchMutation = useUnwatchTemplate()
+  const { data: slackResponse } = useSlackSettings()
+  const slackConfigured = slackResponse?.data?.configured ?? false
 
   return (
     <div className="space-y-5">
@@ -87,7 +90,18 @@ function DetailContent({ template }: { template: TemplateRow }) {
               Anomaly Score <InfoTooltip content={TOOLTIPS.anomalyScore} />
             </span>
           }
-          value={template.maxAnomalyScore.toFixed(2)}
+          value={
+            <span>
+              {template.maxAnomalyScore.toFixed(2)}{' '}
+              <span className="text-[10px] font-normal uppercase tracking-wide">
+                {template.maxAnomalyScore > 1
+                  ? 'Anomalous'
+                  : template.maxAnomalyScore > 0.5
+                    ? 'Elevated'
+                    : 'Normal'}
+              </span>
+            </span>
+          }
           valueClassName={
             template.maxAnomalyScore > 1
               ? 'text-danger'
@@ -230,7 +244,12 @@ function DetailContent({ template }: { template: TemplateRow }) {
             watchMutation.mutate(
               { templateId: template.templateId, templateText: template.templateText },
               {
-                onSuccess: () => toast.success("Pattern watched — you'll be notified on spikes"),
+                onSuccess: () =>
+                  toast.success(
+                    slackConfigured
+                      ? "Pattern watched — you'll be notified on spikes"
+                      : 'Pattern watched — configure Slack in Settings to receive notifications',
+                  ),
                 onError: () => toast.error('Failed to watch pattern'),
               },
             )

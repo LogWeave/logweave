@@ -73,7 +73,7 @@ export function KpiStrip({ className }: { className?: string }) {
         label="Spikes Active"
         value={spikeCount}
         icon={Zap}
-        tooltip="Templates with anomaly score above 1.0 (spiking above baseline)"
+        tooltip="Patterns with anomaly score above 1.0 (spiking above baseline)"
         variant={spikeCount > 3 ? 'danger' : spikeCount > 0 ? 'warning' : 'default'}
         loading={isLoading}
       />
