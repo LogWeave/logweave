@@ -8,10 +8,10 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Eye, EyeOff, Search } from 'lucide-react'
+import { BellRing, Eye, EyeOff, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
-import { useSparklines, useTemplates } from '../../api/queries'
+import { useSparklines, useTemplates, useWatches } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
@@ -38,6 +38,11 @@ export function TemplateTable({ className }: { className?: string }) {
   const sparklineRef = useRef(sparklineData)
   sparklineRef.current = sparklineData
 
+  const { data: watchesResponse } = useWatches()
+  const watchedIds = new Set((watchesResponse?.data ?? []).map((w) => w.templateId))
+  const watchedIdsRef = useRef(watchedIds)
+  watchedIdsRef.current = watchedIds
+
   const {
     selectedTemplateId,
     setSelectedTemplateId,
@@ -47,6 +52,8 @@ export function TemplateTable({ className }: { className?: string }) {
     unhideAllTemplates,
     showHidden,
     toggleShowHidden,
+    watchedOnly,
+    toggleWatchedOnly,
   } = useDashboardStore(
     useShallow((s) => ({
       selectedTemplateId: s.selectedTemplateId,
@@ -57,13 +64,20 @@ export function TemplateTable({ className }: { className?: string }) {
       unhideAllTemplates: s.unhideAllTemplates,
       showHidden: s.showHidden,
       toggleShowHidden: s.toggleShowHidden,
+      watchedOnly: s.watchedOnly,
+      toggleWatchedOnly: s.toggleWatchedOnly,
     })),
   )
 
   const visibleTemplates = useMemo(() => {
-    if (showHidden) return templates
-    return templates.filter((t) => !hiddenTemplateIds.includes(t.templateId))
-  }, [templates, hiddenTemplateIds, showHidden])
+    let filtered = showHidden
+      ? templates
+      : templates.filter((t) => !hiddenTemplateIds.includes(t.templateId))
+    if (watchedOnly) {
+      filtered = filtered.filter((t) => watchedIds.has(t.templateId))
+    }
+    return filtered
+  }, [templates, hiddenTemplateIds, showHidden, watchedOnly, watchedIds])
 
   // Prune stale hidden IDs that no longer exist in current template set
   useEffect(() => {
@@ -92,6 +106,9 @@ export function TemplateTable({ className }: { className?: string }) {
         size: 400,
         cell: (info) => (
           <div className="flex items-center gap-2 min-w-0">
+            {watchedIdsRef.current.has(info.row.original.templateId) && (
+              <BellRing size={12} className="text-brand-400 shrink-0" />
+            )}
             <span className="font-mono text-xs text-text-primary truncate">{info.getValue()}</span>
             {info.row.original.isNewToday && <Badge variant="new">new</Badge>}
           </div>
@@ -256,6 +273,21 @@ export function TemplateTable({ className }: { className?: string }) {
                 className="px-2 py-0.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
               >
                 Hide all
+              </button>
+            )}
+            {watchedIds.size > 0 && (
+              <button
+                type="button"
+                onClick={toggleWatchedOnly}
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full border transition-colors',
+                  watchedOnly
+                    ? 'bg-brand-500/10 text-brand-400 border-brand-500/20'
+                    : 'bg-surface-elevated text-text-muted border-border-subtle hover:text-text-secondary',
+                )}
+              >
+                <BellRing size={11} />
+                {watchedIds.size} watched
               </button>
             )}
           </div>

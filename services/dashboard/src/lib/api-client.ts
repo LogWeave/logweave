@@ -32,6 +32,44 @@ class ApiClient {
     }
     return res.json() as Promise<T>
   }
+
+  async post<T>(path: string, body?: unknown): Promise<T> {
+    const base = config.apiUrl || window.location.origin
+    const url = new URL(path, base)
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+        Accept: 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(config.fetchTimeoutMs),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new ApiError(res.status, body?.error?.message ?? res.statusText)
+    }
+    return res.json() as Promise<T>
+  }
+
+  async del<T>(path: string): Promise<T> {
+    const base = config.apiUrl || window.location.origin
+    const url = new URL(path, base)
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(config.fetchTimeoutMs),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new ApiError(res.status, body?.error?.message ?? res.statusText)
+    }
+    return res.json() as Promise<T>
+  }
 }
 
 export const api = new ApiClient()

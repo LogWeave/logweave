@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { config } from '../config'
 import { api } from '../lib/api-client'
 import { timeRangeToHours, useDashboardStore } from '../stores/dashboard-store'
@@ -9,10 +9,13 @@ import type {
   LevelCount,
   OverviewData,
   ServiceRow,
+  SlackSettings,
+  SlackTestResult,
   SparklineData,
   StatusCodeCount,
   TemplateRow,
   VolumeData,
+  WatchEntry,
 } from './types'
 
 /**
@@ -178,5 +181,72 @@ export function useTemplateStatusCodes(templateId: string | null) {
       }),
     enabled: templateId !== null,
     staleTime: config.staleTimeMs,
+  })
+}
+
+export function useWatches() {
+  return useQuery({
+    queryKey: ['watches'],
+    queryFn: () => api.get<ApiResponse<WatchEntry[]>>('/v1/watches'),
+    staleTime: config.staleTimeMs,
+  })
+}
+
+export function useWatchTemplate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ templateId, templateText }: { templateId: string; templateText?: string }) =>
+      api.post('/v1/watches', { templateId, templateText }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watches'] })
+    },
+  })
+}
+
+export function useUnwatchTemplate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (templateId: string) => api.del(`/v1/watches/${templateId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watches'] })
+    },
+  })
+}
+
+export function useSlackSettings() {
+  return useQuery({
+    queryKey: ['settings', 'slack'],
+    queryFn: () => api.get<ApiResponse<SlackSettings>>('/v1/settings/slack'),
+    staleTime: 30_000,
+  })
+}
+
+export function useSaveSlackSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (webhookUrl: string) => api.post('/v1/settings/slack', { webhookUrl }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'slack'] })
+    },
+  })
+}
+
+export function useDeleteSlackSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.del('/v1/settings/slack'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'slack'] })
+    },
+  })
+}
+
+export function useTestSlackConnection() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<ApiResponse<SlackTestResult>>('/v1/settings/slack/test'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'slack'] })
+    },
   })
 }

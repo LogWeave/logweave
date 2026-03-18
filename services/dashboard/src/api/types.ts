@@ -88,3 +88,18 @@ export interface StatusCodeCount {
   statusCode: number
   count: number
 }
+
+export interface WatchEntry {
+  templateId: string
+}
+
+export interface SlackSettings {
+  configured: boolean
+  lastTestStatus: 'success' | 'failed' | null
+  lastTestAt: string | null
+}
+
+export interface SlackTestResult {
+  success: boolean
+  error?: string
+}

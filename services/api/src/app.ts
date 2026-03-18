@@ -17,7 +17,9 @@ import type { ClusterClient } from './pipeline/cluster-client.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { healthRoutes } from './routes/health.js'
 import { ingestRoutes } from './routes/ingest.js'
+import { settingsRoutes } from './routes/settings.js'
 import { watchRoutes } from './routes/watches.js'
+import type { TenantSettingsStore } from './watches/tenant-settings.js'
 import type { WatchStore } from './watches/watch-store.js'
 
 export interface AppDependencies {
@@ -28,6 +30,7 @@ export interface AppDependencies {
   clusterClient: ClusterClient
   anomalyScorer: AnomalyScorer
   watchStore: WatchStore
+  settingsStore: TenantSettingsStore
 }
 
 export function createApp(deps: AppDependencies): express.Express {
@@ -109,6 +112,14 @@ export function createApp(deps: AppDependencies): express.Express {
     auth,
     watchRoutes({
       watchStore: deps.watchStore,
+      logger: deps.logger,
+    }),
+  )
+  app.use(
+    '/v1',
+    auth,
+    settingsRoutes({
+      settingsStore: deps.settingsStore,
       logger: deps.logger,
     }),
   )

@@ -25,6 +25,8 @@ interface DashboardState {
   toggleLevelFilter: (level: string) => void
   clearLevelFilters: () => void
   setLevelFilters: (levels: string[]) => void
+  watchedOnly: boolean
+  toggleWatchedOnly: () => void
 }
 
 export const useDashboardStore = create<DashboardState>()(
@@ -64,6 +66,8 @@ export const useDashboardStore = create<DashboardState>()(
         })),
       clearLevelFilters: () => set({ levelFilters: [] }),
       setLevelFilters: (levelFilters) => set({ levelFilters }),
+      watchedOnly: false,
+      toggleWatchedOnly: () => set((state) => ({ watchedOnly: !state.watchedOnly })),
     }),
     {
       name: 'logweave-dashboard',

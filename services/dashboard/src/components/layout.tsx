@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { TemplateDetailPanel } from '../features/dashboard/template-detail-panel'
 import { Header } from './header'
 import { Sidebar } from './sidebar'
@@ -16,6 +17,7 @@ export function Layout() {
           <TemplateDetailPanel />
         </div>
       </div>
+      <Toaster position="top-right" richColors />
     </div>
   )
 }

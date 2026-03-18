@@ -7,6 +7,7 @@ import type { ClustererHealthChecker } from '../src/clients/clusterer.js'
 import type { DbClient } from '../src/db/client.js'
 import { AnomalyScorer } from '../src/pipeline/anomaly-scorer.js'
 import { ClusterClient } from '../src/pipeline/cluster-client.js'
+import { TenantSettingsStore } from '../src/watches/tenant-settings.js'
 import { WatchStore } from '../src/watches/watch-store.js'
 
 function createTestApp() {
@@ -45,6 +46,7 @@ function createTestApp() {
     clusterClient,
     anomalyScorer,
     watchStore: new WatchStore(),
+    settingsStore: new TenantSettingsStore(),
   })
 }
 

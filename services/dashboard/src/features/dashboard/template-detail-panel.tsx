@@ -1,7 +1,15 @@
-import { X } from 'lucide-react'
+import { Bell, BellRing, X } from 'lucide-react'
 import { useEffect } from 'react'
+import { toast } from 'sonner'
 import { useShallow } from 'zustand/shallow'
-import { useSparklines, useTemplateStatusCodes, useTemplates } from '../../api/queries'
+import {
+  useSparklines,
+  useTemplateStatusCodes,
+  useTemplates,
+  useUnwatchTemplate,
+  useWatches,
+  useWatchTemplate,
+} from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
 import { Chart } from '../../components/chart'
 import { Badge } from '../../components/ui/badge'
@@ -39,6 +47,11 @@ function DetailContent({ template }: { template: TemplateRow }) {
   const sparklinePoints = sparklineResponse?.data?.[template.templateId] ?? []
   const { data: statusCodeResponse } = useTemplateStatusCodes(template.templateId)
   const statusCodes = statusCodeResponse?.data ?? []
+  const { data: watchesResponse } = useWatches()
+  const watchedIds = watchesResponse?.data ?? []
+  const isWatched = watchedIds.some((w) => w.templateId === template.templateId)
+  const watchMutation = useWatchTemplate()
+  const unwatchMutation = useUnwatchTemplate()
 
   return (
     <div className="space-y-5">
@@ -189,10 +202,45 @@ function DetailContent({ template }: { template: TemplateRow }) {
         </div>
       )}
 
-      {/* Alert stub */}
-      <Button variant="primary" className="w-full" disabled>
-        Create Alert (coming soon)
-      </Button>
+      {/* Watch / Unwatch */}
+      {isWatched ? (
+        <div className="flex gap-2">
+          <Button variant="secondary" className="flex-1" disabled>
+            <BellRing size={16} className="mr-1.5" />
+            Watching
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              unwatchMutation.mutate(template.templateId, {
+                onSuccess: () => toast.success('Pattern unwatched'),
+                onError: () => toast.error('Failed to unwatch pattern'),
+              })
+            }}
+            disabled={unwatchMutation.isPending}
+          >
+            Unwatch
+          </Button>
+        </div>
+      ) : (
+        <Button
+          variant="primary"
+          className="w-full"
+          onClick={() => {
+            watchMutation.mutate(
+              { templateId: template.templateId, templateText: template.templateText },
+              {
+                onSuccess: () => toast.success("Pattern watched — you'll be notified on spikes"),
+                onError: () => toast.error('Failed to watch pattern'),
+              },
+            )
+          }}
+          disabled={watchMutation.isPending}
+        >
+          <Bell size={16} className="mr-1.5" />
+          Watch Pattern
+        </Button>
+      )}
     </div>
   )
 }

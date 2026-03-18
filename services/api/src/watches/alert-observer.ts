@@ -34,12 +34,14 @@ export class AlertDispatcher {
   }
 
   async dispatch(alert: AlertEvent): Promise<void> {
+    // Fire-and-forget: observers run in parallel, never block the evaluator
     for (const observer of this.observers) {
-      try {
-        await observer.notify(alert)
-      } catch (err) {
-        this.logger.error({ err, alertType: alert.type, templateId: alert.templateId }, 'Observer failed to process alert')
-      }
+      observer.notify(alert).catch((err) => {
+        this.logger.error(
+          { err, alertType: alert.type, templateId: alert.templateId },
+          'Observer failed to process alert',
+        )
+      })
     }
   }
 }

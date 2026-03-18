@@ -10,6 +10,8 @@ import { ClusterClient } from './pipeline/cluster-client.js'
 import { RecoverySweep } from './recovery/reconcile.js'
 import { AlertDispatcher, ConsoleObserver } from './watches/alert-observer.js'
 import { AlertEvaluator } from './watches/alert-evaluator.js'
+import { SlackObserver } from './watches/slack-observer.js'
+import { TenantSettingsStore } from './watches/tenant-settings.js'
 import { WatchStore } from './watches/watch-store.js'
 
 const config = loadConfig()
@@ -20,8 +22,10 @@ const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.c
 const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTimeoutMs, logger)
 const anomalyScorer = new AnomalyScorer({ db, logger })
 const watchStore = new WatchStore()
+const settingsStore = new TenantSettingsStore()
 const alertDispatcher = new AlertDispatcher(logger)
 alertDispatcher.register(new ConsoleObserver(logger))
+alertDispatcher.register(new SlackObserver({ settingsStore, dashboardBaseUrl: config.dashboardBaseUrl, logger }))
 const alertEvaluator = new AlertEvaluator({ watchStore, anomalyScorer, dispatcher: alertDispatcher, logger })
 
 try {
@@ -31,7 +35,7 @@ try {
   process.exit(1)
 }
 
-const app = createApp({ config, logger, db, clustererHealth, clusterClient, anomalyScorer, watchStore })
+const app = createApp({ config, logger, db, clustererHealth, clusterClient, anomalyScorer, watchStore, settingsStore })
 
 const recovery = new RecoverySweep(
   { db, clusterClient, clustererHealth, logger },
