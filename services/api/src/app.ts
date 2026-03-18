@@ -110,8 +110,7 @@ export function createApp(deps: AppDependencies): express.Express {
     // (API routes and health probes are already handled above)
     // Express 5 requires named wildcard params: {*path}
     app.get('{*path}', (req, res, next) => {
-      const accepts = req.headers.accept ?? ''
-      if (accepts.includes('text/html')) {
+      if (req.accepts('html')) {
         res.sendFile(path.join(dashboardDir, 'index.html'))
       } else {
         next(notFound('Route not found'))
