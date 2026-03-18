@@ -9,11 +9,11 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 
 const variantStyles: Record<BadgeVariant, string> = {
   default: 'bg-brand-500/10 text-brand-400 border-brand-500/20',
-  new: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
-  spike: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  error: 'bg-red-500/10 text-red-400 border-red-500/20',
-  resolved: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  muted: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+  new: 'bg-badge-new/10 text-badge-new border-badge-new/20',
+  spike: 'bg-badge-spike/10 text-badge-spike border-badge-spike/20',
+  error: 'bg-badge-error/10 text-badge-error border-badge-error/20',
+  resolved: 'bg-badge-resolved/10 text-badge-resolved border-badge-resolved/20',
+  muted: 'bg-badge-muted/10 text-badge-muted border-badge-muted/20',
 }
 
 export function Badge({ variant = 'default', className, children, ...props }: BadgeProps) {

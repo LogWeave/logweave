@@ -66,7 +66,7 @@
   --color-text-primary: #e8eaef;
   --color-text-secondary: #9aa1b0;
   --color-text-muted: #686e7a;
-  --color-text-disabled: #464a52;
+  --color-text-disabled: #5a6270;
 
   --color-border: #1e2740;
   --color-border-subtle: #151c2e;
@@ -75,6 +75,12 @@
   --color-warning: #fbbf24;
   --color-danger: #f87171;
   --color-info: #38bdf8;
+
+  --color-badge-new: #8b5cf6;
+  --color-badge-spike: #f59e0b;
+  --color-badge-error: #ef4444;
+  --color-badge-resolved: #10b981;
+  --color-badge-muted: #6b7280;
 
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -96,7 +102,7 @@
   --color-text-primary: #1a1a2e;
   --color-text-secondary: #4a5568;
   --color-text-muted: #718096;
-  --color-text-disabled: #a0aec0;
+  --color-text-disabled: #7a8699;
   --color-border: #e2e8f0;
   --color-border-subtle: #edf2f7;
 }
@@ -132,4 +138,29 @@ body {
 ::selection {
   background-color: var(--color-brand-500);
   color: white;
+}
+
+/* -- Reduced motion -- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* -- Screen-reader only utility -- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }

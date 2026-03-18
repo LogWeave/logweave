@@ -5,9 +5,10 @@ import { useSparklines, useTemplates } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
+import { StatBox } from '../../components/ui/stat-box'
 import { InfoTooltip, Tooltip } from '../../components/ui/tooltip'
-import { TOOLTIPS } from '../../lib/tooltips'
 import { cn } from '../../lib/cn'
+import { TOOLTIPS } from '../../lib/tooltips'
 import { useDashboardStore } from '../../stores/dashboard-store'
 
 function TemplateText({ text }: { text: string }) {
@@ -50,48 +51,35 @@ function DetailContent({ template }: { template: TemplateRow }) {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-surface-base rounded-[var(--radius-md)] p-3">
-          <p className="text-[11px] text-text-muted mb-1">Occurrences</p>
-          <p className="text-lg font-bold font-mono tabular-nums text-text-primary">
-            {template.occurrenceCount.toLocaleString()}
-          </p>
-        </div>
-        <div className="bg-surface-base rounded-[var(--radius-md)] p-3">
-          <p className="text-[11px] text-text-muted mb-1">Errors</p>
-          <p
-            className={cn(
-              'text-lg font-bold font-mono tabular-nums',
-              template.errorCount > 0 ? 'text-danger' : 'text-text-primary',
-            )}
-          >
-            {template.errorCount.toLocaleString()}
-          </p>
-        </div>
-        <div className="bg-surface-base rounded-[var(--radius-md)] p-3">
-          <p className="text-[11px] text-text-muted mb-1 flex items-center gap-1">
-            Avg Duration <InfoTooltip content={TOOLTIPS.avgDuration} />
-          </p>
-          <p className="text-lg font-bold font-mono tabular-nums text-text-primary">
-            {template.avgDurationMs.toFixed(1)}ms
-          </p>
-        </div>
-        <div className="bg-surface-base rounded-[var(--radius-md)] p-3">
-          <p className="text-[11px] text-text-muted mb-1 flex items-center gap-1">
-            Anomaly Score <InfoTooltip content={TOOLTIPS.anomalyScore} />
-          </p>
-          <p
-            className={cn(
-              'text-lg font-bold font-mono tabular-nums',
-              template.maxAnomalyScore > 1
-                ? 'text-danger'
-                : template.maxAnomalyScore > 0.5
-                  ? 'text-warning'
-                  : 'text-text-primary',
-            )}
-          >
-            {template.maxAnomalyScore.toFixed(2)}
-          </p>
-        </div>
+        <StatBox label="Occurrences" value={template.occurrenceCount.toLocaleString()} />
+        <StatBox
+          label="Errors"
+          value={template.errorCount.toLocaleString()}
+          valueClassName={template.errorCount > 0 ? 'text-danger' : undefined}
+        />
+        <StatBox
+          label={
+            <span className="flex items-center gap-1">
+              Avg Duration <InfoTooltip content={TOOLTIPS.avgDuration} />
+            </span>
+          }
+          value={`${template.avgDurationMs.toFixed(1)}ms`}
+        />
+        <StatBox
+          label={
+            <span className="flex items-center gap-1">
+              Anomaly Score <InfoTooltip content={TOOLTIPS.anomalyScore} />
+            </span>
+          }
+          value={template.maxAnomalyScore.toFixed(2)}
+          valueClassName={
+            template.maxAnomalyScore > 1
+              ? 'text-danger'
+              : template.maxAnomalyScore > 0.5
+                ? 'text-warning'
+                : undefined
+          }
+        />
       </div>
 
       {/* Metadata */}
@@ -109,7 +97,9 @@ function DetailContent({ template }: { template: TemplateRow }) {
           <span className="font-mono text-text-primary">
             {new Date(template.firstSeen).toLocaleString()}
             {template.isNewToday && (
-              <Badge variant="new" className="ml-2">new</Badge>
+              <Badge variant="new" className="ml-2">
+                new
+              </Badge>
             )}
           </span>
         </div>

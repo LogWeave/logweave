@@ -8,10 +8,8 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Search } from 'lucide-react'
+import { Eye, EyeOff, Search } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { InfoTooltip } from '../../components/ui/tooltip'
-import { TOOLTIPS } from '../../lib/tooltips'
 import { useShallow } from 'zustand/shallow'
 import { useSparklines, useTemplates } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
@@ -19,7 +17,9 @@ import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { Skeleton } from '../../components/ui/skeleton'
+import { InfoTooltip } from '../../components/ui/tooltip'
 import { cn } from '../../lib/cn'
+import { TOOLTIPS } from '../../lib/tooltips'
 import { useDashboardStore } from '../../stores/dashboard-store'
 import { MiniSparkline } from './mini-sparkline'
 
@@ -38,16 +38,36 @@ export function TemplateTable({ className }: { className?: string }) {
   const sparklineRef = useRef(sparklineData)
   sparklineRef.current = sparklineData
 
-  const { selectedTemplateId, setSelectedTemplateId } = useDashboardStore(
+  const {
+    selectedTemplateId,
+    setSelectedTemplateId,
+    hiddenTemplateIds,
+    toggleHideTemplate,
+    showHidden,
+    toggleShowHidden,
+  } = useDashboardStore(
     useShallow((s) => ({
       selectedTemplateId: s.selectedTemplateId,
       setSelectedTemplateId: s.setSelectedTemplateId,
+      hiddenTemplateIds: s.hiddenTemplateIds,
+      toggleHideTemplate: s.toggleHideTemplate,
+      showHidden: s.showHidden,
+      toggleShowHidden: s.toggleShowHidden,
     })),
   )
 
+  const visibleTemplates = useMemo(() => {
+    if (showHidden) return templates
+    return templates.filter((t) => !hiddenTemplateIds.includes(t.templateId))
+  }, [templates, hiddenTemplateIds, showHidden])
+
+  const hiddenCount = useMemo(
+    () => templates.filter((t) => hiddenTemplateIds.includes(t.templateId)).length,
+    [templates, hiddenTemplateIds],
+  )
+
   const getSparklinePoints = useCallback(
-    (templateId: string): number[] =>
-      sparklineRef.current[templateId]?.map((p) => p.count) ?? [],
+    (templateId: string): number[] => sparklineRef.current[templateId]?.map((p) => p.count) ?? [],
     [],
   )
 
@@ -107,15 +127,42 @@ export function TemplateTable({ className }: { className?: string }) {
           return <MiniSparkline points={points} />
         },
       }),
+      columnHelper.display({
+        id: 'actions',
+        header: '',
+        size: 36,
+        cell: (info) => {
+          const id = info.row.original.templateId
+          const isHidden = hiddenTemplateIds.includes(id)
+          return (
+            <button
+              type="button"
+              title={isHidden ? 'Show pattern' : 'Hide pattern'}
+              className={cn(
+                'p-1 rounded transition-colors',
+                isHidden
+                  ? 'text-text-muted hover:text-text-primary'
+                  : 'text-transparent group-hover/row:text-text-muted hover:text-text-primary',
+              )}
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleHideTemplate(id)
+              }}
+            >
+              {isHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+          )
+        },
+      }),
     ],
-    [getSparklinePoints],
+    [getSparklinePoints, hiddenTemplateIds, toggleHideTemplate],
   )
   const [sorting, setSorting] = useState<SortingState>([{ id: 'occurrenceCount', desc: true }])
   const [globalFilter, setGlobalFilter] = useState('')
   const parentRef = useRef<HTMLDivElement>(null)
 
   const table = useReactTable({
-    data: templates,
+    data: visibleTemplates,
     columns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
@@ -162,7 +209,24 @@ export function TemplateTable({ className }: { className?: string }) {
     <Card className={cn(className)}>
       <CardHeader>
         <div className="flex items-center justify-between gap-4">
-          <CardTitle>Patterns ({templates.length})</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle>Patterns ({visibleTemplates.length})</CardTitle>
+            {hiddenCount > 0 && (
+              <button
+                type="button"
+                onClick={toggleShowHidden}
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full border transition-colors',
+                  showHidden
+                    ? 'bg-brand-500/10 text-brand-400 border-brand-500/20'
+                    : 'bg-surface-elevated text-text-muted border-border-subtle hover:text-text-secondary',
+                )}
+              >
+                {showHidden ? <Eye size={11} /> : <EyeOff size={11} />}
+                {hiddenCount} hidden
+              </button>
+            )}
+          </div>
           <div className="relative w-64">
             <Search
               size={14}
@@ -173,6 +237,7 @@ export function TemplateTable({ className }: { className?: string }) {
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
               className="pl-8"
+              aria-label="Search templates"
             />
           </div>
         </div>
@@ -181,33 +246,39 @@ export function TemplateTable({ className }: { className?: string }) {
         {/* Table header */}
         <div className="flex items-center border-b border-border-subtle pb-2 mb-1">
           {table.getHeaderGroups().map((headerGroup) =>
-            headerGroup.headers.map((header) => (
-              <div
-                key={header.id}
-                style={{ width: header.getSize() }}
-                className={cn(
-                  'shrink-0 text-[11px] font-medium text-text-muted uppercase tracking-wider',
-                  header.column.getCanSort() &&
-                    'cursor-pointer select-none hover:text-text-secondary',
-                )}
-              >
-                {header.column.getCanSort() ? (
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 uppercase tracking-wider"
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                    {header.column.getIsSorted() === 'asc' && '\u2191'}
-                    {header.column.getIsSorted() === 'desc' && '\u2193'}
-                  </button>
-                ) : (
-                  <span className="flex items-center gap-1">
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                  </span>
-                )}
-              </div>
-            )),
+            headerGroup.headers.map((header) => {
+              const sorted = header.column.getIsSorted()
+              const ariaSortValue =
+                sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'
+              return (
+                <div
+                  key={header.id}
+                  style={{ width: header.getSize() }}
+                  className={cn(
+                    'shrink-0 text-[11px] font-medium text-text-muted uppercase tracking-wider',
+                    header.column.getCanSort() &&
+                      'cursor-pointer select-none hover:text-text-secondary',
+                  )}
+                >
+                  {header.column.getCanSort() ? (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 uppercase tracking-wider"
+                      aria-label={`Sort by ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.id}, currently ${ariaSortValue}`}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {sorted === 'asc' && '\u2191'}
+                      {sorted === 'desc' && '\u2193'}
+                    </button>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                    </span>
+                  )}
+                </div>
+              )
+            }),
           )}
         </div>
 
@@ -232,10 +303,13 @@ export function TemplateTable({ className }: { className?: string }) {
                   <button
                     type="button"
                     className={cn(
-                      'flex items-center w-full py-2 border-b border-border-subtle/50 cursor-pointer transition-colors text-left',
+                      'group/row flex items-center w-full py-2 border-b border-border-subtle/50 cursor-pointer transition-colors text-left',
                       isSelected
                         ? 'bg-brand-500/10 border-l-2 border-l-brand-500'
                         : 'hover:bg-surface-elevated/50',
+                      showHidden &&
+                        hiddenTemplateIds.includes(row.original.templateId) &&
+                        'opacity-50',
                     )}
                     onClick={() => setSelectedTemplateId(row.original.templateId)}
                   >

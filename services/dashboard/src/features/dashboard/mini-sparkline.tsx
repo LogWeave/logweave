@@ -8,7 +8,12 @@ interface MiniSparklineProps {
   className?: string
 }
 
-export const MiniSparkline = memo(function MiniSparkline({ points, width = 80, height = 28, className }: MiniSparklineProps) {
+export const MiniSparkline = memo(function MiniSparkline({
+  points,
+  width = 80,
+  height = 28,
+  className,
+}: MiniSparklineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -29,17 +34,17 @@ export const MiniSparkline = memo(function MiniSparkline({ points, width = 80, h
     const range = max - min || 1
     const padding = 2
 
-    // Determine trend color
+    // Determine trend color — read from CSS variables for theme support
     const last = points[points.length - 1] ?? 0
     const first = points[0] ?? 0
     const trending = last > first * 1.2 ? 'up' : last < first * 0.8 ? 'down' : 'flat'
-    const strokeColor = trending === 'up' ? '#fbbf24' : trending === 'down' ? '#34d399' : '#818cf8'
-    const fillColor =
-      trending === 'up'
-        ? 'rgba(251, 191, 36, 0.1)'
-        : trending === 'down'
-          ? 'rgba(52, 211, 153, 0.1)'
-          : 'rgba(129, 140, 248, 0.1)'
+    const styles = getComputedStyle(document.documentElement)
+    const warningColor = styles.getPropertyValue('--color-warning').trim() || '#fbbf24'
+    const successColor = styles.getPropertyValue('--color-success').trim() || '#34d399'
+    const brandColor = styles.getPropertyValue('--color-brand-400').trim() || '#818cf8'
+    const strokeColor =
+      trending === 'up' ? warningColor : trending === 'down' ? successColor : brandColor
+    const fillColor = `${strokeColor}1a`
 
     const stepX = (width - padding * 2) / (points.length - 1)
 

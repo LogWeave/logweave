@@ -7,10 +7,19 @@ import { Chart } from '../../components/chart'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Skeleton } from '../../components/ui/skeleton'
+import { ToggleGroup } from '../../components/ui/toggle'
 import { config } from '../../config'
 import { api } from '../../lib/api-client'
 import { cn } from '../../lib/cn'
 import { timeRangeToHours, useDashboardStore } from '../../stores/dashboard-store'
+
+type ChartType = 'area' | 'bar' | 'line'
+
+const chartTypeOptions = [
+  { value: 'area', label: 'Area' },
+  { value: 'bar', label: 'Bar' },
+  { value: 'line', label: 'Line' },
+]
 
 function buildServiceMap(points: VolumePoint[]) {
   const serviceMap = new Map<string, Array<{ time: string; count: number }>>()
@@ -31,6 +40,7 @@ function buildServiceMap(points: VolumePoint[]) {
 }
 
 export function VolumeChart({ className }: { className?: string }) {
+  const [chartType, setChartType] = useState<ChartType>('area')
   const [compareEnabled, setCompareEnabled] = useState(false)
   const { data: response, isLoading } = useVolume()
   const volumeData = response?.data
@@ -62,19 +72,32 @@ export function VolumeChart({ className }: { className?: string }) {
     const sortedTimestamps = [...timestamps].sort()
     const services = [...serviceMap.keys()]
 
-    // Current period series
+    // Current period series — config varies by chart type
+    const seriesConfig =
+      chartType === 'bar'
+        ? { type: 'bar' as const, stack: 'total', barMaxWidth: 20 }
+        : chartType === 'line'
+          ? {
+              type: 'line' as const,
+              smooth: true,
+              symbol: 'circle' as const,
+              symbolSize: 4,
+              lineStyle: { width: 1.5 },
+            }
+          : {
+              type: 'line' as const,
+              stack: 'total',
+              smooth: true,
+              symbol: 'none' as const,
+              lineStyle: { width: 1.5 },
+              areaStyle: { opacity: 0.15 },
+            }
+
     const currentSeries = services.map((service) => {
       const dataMap = new Map((serviceMap.get(service) ?? []).map((d) => [d.time, d.count]))
       return {
         name: service,
-        type: 'line' as const,
-        stack: 'total',
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { width: 1.5 },
-        areaStyle: {
-          opacity: 0.15,
-        },
+        ...seriesConfig,
         data: sortedTimestamps.map((t) => dataMap.get(t) ?? 0),
       }
     })
@@ -152,7 +175,7 @@ export function VolumeChart({ className }: { className?: string }) {
       animationEasing: 'cubicOut',
       series: allSeries,
     }
-  }, [volumeData, compareData])
+  }, [volumeData, compareData, chartType])
 
   if (isLoading) {
     return (
@@ -172,13 +195,20 @@ export function VolumeChart({ className }: { className?: string }) {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>Log Volume</CardTitle>
-          <Button
-            variant={compareEnabled ? 'primary' : 'ghost'}
-            size="sm"
-            onClick={() => setCompareEnabled((prev) => !prev)}
-          >
-            Compare
-          </Button>
+          <div className="flex items-center gap-2">
+            <ToggleGroup
+              options={chartTypeOptions}
+              value={chartType}
+              onChange={(v) => setChartType(v as ChartType)}
+            />
+            <Button
+              variant={compareEnabled ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setCompareEnabled((prev) => !prev)}
+            >
+              Compare
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>

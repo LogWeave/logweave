@@ -1,9 +1,9 @@
 import { useClusteringHealth } from '../../api/queries'
 import { Card } from '../../components/ui/card'
-import { InfoTooltip } from '../../components/ui/tooltip'
 import { Skeleton } from '../../components/ui/skeleton'
-import { TOOLTIPS } from '../../lib/tooltips'
+import { InfoTooltip } from '../../components/ui/tooltip'
 import { cn } from '../../lib/cn'
+import { TOOLTIPS } from '../../lib/tooltips'
 
 export function CompressionFunnel({ className }: { className?: string }) {
   const { data: response, isLoading } = useClusteringHealth()

@@ -10,7 +10,7 @@ export function Select({ options, className, ...props }: SelectProps) {
     <select
       className={cn(
         'h-8 rounded-[var(--radius-md)] bg-surface-elevated border border-border px-2.5 text-xs text-text-primary',
-        'focus:outline-2 focus:outline-offset-2 focus:outline-brand-500',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
         'appearance-none cursor-pointer',
         className,
       )}

@@ -9,7 +9,9 @@ interface ToggleGroupProps {
 
 export function ToggleGroup({ options, value, onChange, className }: ToggleGroupProps) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: fieldset adds unwanted default styling
     <div
+      role="group"
       className={cn(
         'inline-flex rounded-[var(--radius-md)] bg-surface-elevated border border-border-subtle p-0.5',
         className,
@@ -19,6 +21,7 @@ export function ToggleGroup({ options, value, onChange, className }: ToggleGroup
         <button
           key={opt.value}
           type="button"
+          aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
           className={cn(
             'px-2.5 py-1 text-xs font-medium rounded-[calc(var(--radius-md)-2px)] transition-colors',

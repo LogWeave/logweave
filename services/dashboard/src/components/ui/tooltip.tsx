@@ -1,5 +1,5 @@
 import { Info } from 'lucide-react'
-import { type ReactNode, useCallback, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '../../lib/cn'
 
@@ -12,9 +12,10 @@ interface Pos {
   left: number
 }
 
-function TooltipPortal({ content, pos }: { content: string; pos: Pos }) {
+function TooltipPortal({ id, content, pos }: { id: string; content: string; pos: Pos }) {
   return createPortal(
     <div
+      id={id}
       role="tooltip"
       style={{
         position: 'fixed',
@@ -55,17 +56,22 @@ function useTooltip() {
 
 export function InfoTooltip({ content, className }: { content: string; className?: string }) {
   const { ref, pos, show, hide } = useTooltip()
+  const tooltipId = useId()
 
   return (
-    <span
-      ref={ref as React.RefObject<HTMLSpanElement>}
-      className={cn('inline-flex items-center cursor-help', className)}
+    <button
+      type="button"
+      ref={ref as React.RefObject<HTMLButtonElement>}
+      className={cn('inline-flex items-center cursor-help bg-transparent border-0 p-0', className)}
       onMouseEnter={show}
       onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      aria-describedby={pos ? tooltipId : undefined}
     >
       <Info size={11} className="text-text-muted" aria-hidden="true" />
-      {pos && <TooltipPortal content={content} pos={pos} />}
-    </span>
+      {pos && <TooltipPortal id={tooltipId} content={content} pos={pos} />}
+    </button>
   )
 }
 
@@ -83,16 +89,21 @@ export function Tooltip({
   className?: string
 }) {
   const { ref, pos, show, hide } = useTooltip()
+  const tooltipId = useId()
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: tooltip trigger needs hover+focus events
     <span
       ref={ref as React.RefObject<HTMLSpanElement>}
       className={cn('inline-flex items-center', className)}
       onMouseEnter={show}
       onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      aria-describedby={pos ? tooltipId : undefined}
     >
       {children}
-      {pos && <TooltipPortal content={content} pos={pos} />}
+      {pos && <TooltipPortal id={tooltipId} content={content} pos={pos} />}
     </span>
   )
 }

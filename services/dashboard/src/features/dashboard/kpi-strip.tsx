@@ -1,7 +1,7 @@
 import { Activity, AlertTriangle, Layers, Sparkles, Unplug } from 'lucide-react'
 import { useOverview } from '../../api/queries'
-import { TOOLTIPS } from '../../lib/tooltips'
 import { cn } from '../../lib/cn'
+import { TOOLTIPS } from '../../lib/tooltips'
 import { KpiCard } from './kpi-card'
 
 export function KpiStrip({ className }: { className?: string }) {

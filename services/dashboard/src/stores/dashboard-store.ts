@@ -15,6 +15,10 @@ interface DashboardState {
   toggleSidebar: () => void
   selectedTemplateId: string | null
   setSelectedTemplateId: (id: string | null) => void
+  hiddenTemplateIds: string[]
+  toggleHideTemplate: (id: string) => void
+  showHidden: boolean
+  toggleShowHidden: () => void
 }
 
 export const useDashboardStore = create<DashboardState>()(
@@ -31,6 +35,15 @@ export const useDashboardStore = create<DashboardState>()(
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       selectedTemplateId: null,
       setSelectedTemplateId: (selectedTemplateId) => set({ selectedTemplateId }),
+      hiddenTemplateIds: [],
+      toggleHideTemplate: (id) =>
+        set((state) => ({
+          hiddenTemplateIds: state.hiddenTemplateIds.includes(id)
+            ? state.hiddenTemplateIds.filter((h) => h !== id)
+            : [...state.hiddenTemplateIds, id],
+        })),
+      showHidden: false,
+      toggleShowHidden: () => set((state) => ({ showHidden: !state.showHidden })),
     }),
     {
       name: 'logweave-dashboard',
@@ -38,6 +51,7 @@ export const useDashboardStore = create<DashboardState>()(
         colorMode: state.colorMode,
         sidebarCollapsed: state.sidebarCollapsed,
         timeRange: state.timeRange,
+        hiddenTemplateIds: state.hiddenTemplateIds,
       }),
     },
   ),

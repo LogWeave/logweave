@@ -2,10 +2,10 @@ import { useChanges } from '../../api/queries'
 import type { ChangeEvent } from '../../api/types'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
-import { Tooltip } from '../../components/ui/tooltip'
 import { Skeleton } from '../../components/ui/skeleton'
-import { TOOLTIPS } from '../../lib/tooltips'
+import { Tooltip } from '../../components/ui/tooltip'
 import { cn } from '../../lib/cn'
+import { TOOLTIPS } from '../../lib/tooltips'
 
 const BADGE_TOOLTIPS = {
   spike: TOOLTIPS.spikeEvent,

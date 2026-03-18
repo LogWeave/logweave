@@ -22,7 +22,7 @@ export const TOOLTIPS = {
 
   // --- Template detail panel ---
   anomalyScore:
-    'How far this pattern\'s recent occurrence rate deviates from its rolling baseline. 0 = normal; >0.5 = elevated (amber); >1.0 = anomalous (red).',
+    "How far this pattern's recent occurrence rate deviates from its rolling baseline. 0 = normal; >0.5 = elevated (amber); >1.0 = anomalous (red).",
   avgDuration:
     'Average duration of the operation that produced this log pattern, extracted from the duration field in the log payload. Only populated if your logs include a numeric duration value.',
   occurrenceHistory:
@@ -38,7 +38,7 @@ export const TOOLTIPS = {
 
   // --- Changes panel ---
   spikeEvent:
-    'This template\'s occurrence count is significantly higher than its recent rolling average. The multiplier shows how many times above baseline it is.',
+    "This template's occurrence count is significantly higher than its recent rolling average. The multiplier shows how many times above baseline it is.",
   newEvent:
     'This log template appeared for the first time in the current time window. A high count on a brand-new template warrants investigation.',
   resolvedEvent:

@@ -17,7 +17,7 @@ export function ServiceHealthCards({ className }: { className?: string }) {
   if (isLoading) {
     return (
       <div className={cn('space-y-3', className)}>
-        <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">
+        <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">
           Services
         </h3>
         {[1, 2, 3].map((i) => (
@@ -30,7 +30,7 @@ export function ServiceHealthCards({ className }: { className?: string }) {
   if (services.length === 0) {
     return (
       <div className={cn('space-y-3', className)}>
-        <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">
+        <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">
           Services
         </h3>
         <p className="text-xs text-text-muted">No services reporting.</p>
@@ -40,7 +40,7 @@ export function ServiceHealthCards({ className }: { className?: string }) {
 
   return (
     <div className={cn('space-y-3', className)}>
-      <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Services</h3>
+      <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">Services</h3>
       {services.map((svc) => {
         const isActive = serviceFilter === svc.service
         return (

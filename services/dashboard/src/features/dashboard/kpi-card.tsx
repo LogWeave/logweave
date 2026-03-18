@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { Card } from '../../components/ui/card'
-import { InfoTooltip } from '../../components/ui/tooltip'
 import { Skeleton } from '../../components/ui/skeleton'
+import { InfoTooltip } from '../../components/ui/tooltip'
 import { cn } from '../../lib/cn'
 
 interface KpiCardProps {
@@ -29,7 +29,7 @@ export function KpiCard({
 }: KpiCardProps) {
   if (loading) {
     return (
-      <Card className={cn('p-3', className)}>
+      <Card size="compact" className={className}>
         <div className="flex items-start justify-between">
           <div className="space-y-1.5">
             <Skeleton className="h-3 w-20" />
@@ -42,7 +42,7 @@ export function KpiCard({
   }
 
   return (
-    <Card className={cn('p-3', className)}>
+    <Card size="compact" className={className}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1 mb-1">
