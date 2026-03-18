@@ -13,6 +13,14 @@ const timeRangeOptions = [
   { value: '7d', label: '7D' },
 ]
 
+const levelPillColors: Record<string, string> = {
+  ERROR: 'bg-red-500/15 text-red-400 border-red-500/30',
+  WARN: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  INFO: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  DEBUG: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
+  TRACE: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
+}
+
 export function Header() {
   const {
     timeRange,
@@ -23,6 +31,8 @@ export function Header() {
     setServiceFilter,
     levelFilters,
     toggleLevelFilter,
+    setLevelFilters,
+    clearLevelFilters,
   } = useDashboardStore(
     useShallow((s) => ({
       timeRange: s.timeRange,
@@ -33,6 +43,8 @@ export function Header() {
       setServiceFilter: s.setServiceFilter,
       levelFilters: s.levelFilters,
       toggleLevelFilter: s.toggleLevelFilter,
+      setLevelFilters: s.setLevelFilters,
+      clearLevelFilters: s.clearLevelFilters,
     })),
   )
   const { data: levelsResponse } = useLevels()
@@ -52,6 +64,24 @@ export function Header() {
             <span className="text-brand-400/60">&times;</span>
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => {
+            if (levelFilters.length === 1 && levelFilters[0] === 'ERROR') {
+              clearLevelFilters()
+            } else {
+              setLevelFilters(['ERROR'])
+            }
+          }}
+          className={cn(
+            'hidden sm:inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-[var(--radius-md)] border transition-colors',
+            levelFilters.length === 1 && levelFilters[0] === 'ERROR'
+              ? 'bg-red-500/15 text-red-400 border-red-500/30'
+              : 'text-text-muted border-border-subtle hover:text-text-secondary hover:border-border',
+          )}
+        >
+          Errors Only
+        </button>
         {levelsData && levelsData.length > 0 && (
           <div className="hidden md:flex items-center gap-1">
             {levelsData.map((l) => (
@@ -62,7 +92,8 @@ export function Header() {
                 className={cn(
                   'px-2 py-0.5 text-[11px] font-medium rounded-full border transition-colors',
                   levelFilters.includes(l.level)
-                    ? 'bg-brand-500/10 text-brand-400 border-brand-500/20'
+                    ? (levelPillColors[l.level] ??
+                        'bg-brand-500/10 text-brand-400 border-brand-500/20')
                     : 'text-text-muted border-border-subtle hover:text-text-secondary hover:border-border',
                 )}
               >
@@ -70,6 +101,18 @@ export function Header() {
               </button>
             ))}
           </div>
+        )}
+        {(levelFilters.length > 0 || serviceFilter) && (
+          <button
+            type="button"
+            onClick={() => {
+              clearLevelFilters()
+              setServiceFilter(null)
+            }}
+            className="text-[11px] text-text-muted hover:text-text-secondary transition-colors"
+          >
+            Clear filters
+          </button>
         )}
       </div>
 
