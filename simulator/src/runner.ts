@@ -15,6 +15,9 @@ export class Runner {
   private readonly scheduler: Scheduler
   private readonly modeController: ModeController
   private readonly options: CliOptions
+  /** Cumulative weight array for weighted service selection */
+  private readonly serviceWeights: number[]
+  private readonly totalServiceWeight: number
   private eventCount = 0
   private startTime = 0
 
@@ -43,8 +46,16 @@ export class Runner {
       }
     }
 
-    this.scheduler = new Scheduler(options.rate, (serviceIndex) => {
-      this.emitEvent(serviceIndex)
+    // Build cumulative weight array for weighted service selection
+    let cumWeight = 0
+    this.serviceWeights = services.map((svc) => {
+      cumWeight += svc.rate_weight ?? 1
+      return cumWeight
+    })
+    this.totalServiceWeight = cumWeight
+
+    this.scheduler = new Scheduler(options.rate, () => {
+      this.emitEvent()
     })
 
     this.modeController = new ModeController(
@@ -59,8 +70,17 @@ export class Runner {
   private stopped = false
   private durationTimer: ReturnType<typeof setTimeout> | null = null
 
-  private emitEvent(serviceIndex: number): void {
-    const idx = serviceIndex % this.engines.length
+  /** Pick a service index using weighted random selection */
+  private pickService(): number {
+    const roll = Math.random() * this.totalServiceWeight
+    for (let i = 0; i < this.serviceWeights.length; i++) {
+      if ((this.serviceWeights[i] ?? 0) > roll) return i
+    }
+    return this.serviceWeights.length - 1
+  }
+
+  private emitEvent(): void {
+    const idx = this.pickService()
     const engine = this.engines[idx]
     if (!engine) return
 

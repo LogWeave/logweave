@@ -36,6 +36,8 @@ export interface SpikeConfig {
 export interface ServiceConfig {
   service: string
   environment?: string
+  /** Relative traffic weight vs other services (default 1). A gateway at 4 produces 4x the events of a service at 1. */
+  rate_weight?: number
   metadata?: Record<string, unknown>
   generators?: Record<string, GeneratorConfig>
   templates: TemplateConfig[]

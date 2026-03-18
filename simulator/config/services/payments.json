@@ -1,6 +1,7 @@
 {
   "service": "payments-api",
   "environment": "production",
+  "rate_weight": 2,
   "metadata": {
     "team": "fintech",
     "region": "us-east-1",

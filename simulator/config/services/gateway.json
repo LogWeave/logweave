@@ -1,6 +1,7 @@
 {
   "service": "api-gateway",
   "environment": "production",
+  "rate_weight": 5,
   "metadata": {
     "team": "platform",
     "region": "us-east-1",
