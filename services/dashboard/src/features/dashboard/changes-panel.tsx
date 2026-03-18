@@ -2,8 +2,16 @@ import { useChanges } from '../../api/queries'
 import type { ChangeEvent } from '../../api/types'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
+import { Tooltip } from '../../components/ui/tooltip'
 import { Skeleton } from '../../components/ui/skeleton'
+import { TOOLTIPS } from '../../lib/tooltips'
 import { cn } from '../../lib/cn'
+
+const BADGE_TOOLTIPS = {
+  spike: TOOLTIPS.spikeEvent,
+  new: TOOLTIPS.newEvent,
+  resolved: TOOLTIPS.resolvedEvent,
+}
 
 function ChangeEventRow({ event }: { event: ChangeEvent }) {
   const badgeVariant = event.type === 'new' ? 'new' : event.type === 'spike' ? 'spike' : 'resolved'
@@ -11,9 +19,9 @@ function ChangeEventRow({ event }: { event: ChangeEvent }) {
 
   return (
     <div className="flex items-start gap-3 py-2.5 border-b border-border-subtle/50 last:border-0">
-      <Badge variant={badgeVariant} className="mt-0.5 shrink-0">
-        {label}
-      </Badge>
+      <Tooltip content={BADGE_TOOLTIPS[event.type]} className="mt-0.5 shrink-0">
+        <Badge variant={badgeVariant}>{label}</Badge>
+      </Tooltip>
       <div className="min-w-0 flex-1">
         <p className="text-xs font-mono text-text-primary truncate">{event.templateText}</p>
         <div className="flex items-center gap-2 mt-0.5">

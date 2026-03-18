@@ -10,6 +10,8 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Search } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { InfoTooltip } from '../../components/ui/tooltip'
+import { TOOLTIPS } from '../../lib/tooltips'
 import { useShallow } from 'zustand/shallow'
 import { useSparklines, useTemplates } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
@@ -94,7 +96,11 @@ export function TemplateTable({ className }: { className?: string }) {
       }),
       columnHelper.display({
         id: 'trend',
-        header: 'Trend',
+        header: () => (
+          <span className="flex items-center gap-1">
+            Trend <InfoTooltip content={TOOLTIPS.trendColumn} />
+          </span>
+        ),
         size: 100,
         cell: (info) => {
           const points = getSparklinePoints(info.row.original.templateId)
@@ -156,7 +162,7 @@ export function TemplateTable({ className }: { className?: string }) {
     <Card className={cn(className)}>
       <CardHeader>
         <div className="flex items-center justify-between gap-4">
-          <CardTitle>Templates ({templates.length})</CardTitle>
+          <CardTitle>Patterns ({templates.length})</CardTitle>
           <div className="relative w-64">
             <Search
               size={14}
@@ -251,7 +257,7 @@ export function TemplateTable({ className }: { className?: string }) {
 
         {rows.length === 0 && (
           <div className="py-12 text-center text-text-muted text-sm">
-            {globalFilter ? 'No templates match your search.' : 'No template data available.'}
+            {globalFilter ? 'No patterns match your search.' : 'No template data available.'}
           </div>
         )}
       </CardContent>

@@ -5,6 +5,8 @@ import { useSparklines, useTemplates } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
+import { InfoTooltip, Tooltip } from '../../components/ui/tooltip'
+import { TOOLTIPS } from '../../lib/tooltips'
 import { cn } from '../../lib/cn'
 import { useDashboardStore } from '../../stores/dashboard-store'
 
@@ -17,12 +19,11 @@ function TemplateText({ text }: { text: string }) {
         const key = `${part}-${i}`
         if (part.startsWith('{') && part.endsWith('}')) {
           return (
-            <span
-              key={key}
-              className="px-1 py-0.5 mx-0.5 rounded bg-brand-500/10 text-brand-400 text-[11px]"
-            >
-              {part}
-            </span>
+            <Tooltip key={key} content={TOOLTIPS.templatePlaceholder}>
+              <span className="px-1 py-0.5 mx-0.5 rounded bg-brand-500/10 text-brand-400 text-[11px] cursor-help">
+                {part}
+              </span>
+            </Tooltip>
           )
         }
         return <span key={key}>{part}</span>
@@ -67,13 +68,17 @@ function DetailContent({ template }: { template: TemplateRow }) {
           </p>
         </div>
         <div className="bg-surface-base rounded-[var(--radius-md)] p-3">
-          <p className="text-[11px] text-text-muted mb-1">Avg Duration</p>
+          <p className="text-[11px] text-text-muted mb-1 flex items-center gap-1">
+            Avg Duration <InfoTooltip content={TOOLTIPS.avgDuration} />
+          </p>
           <p className="text-lg font-bold font-mono tabular-nums text-text-primary">
             {template.avgDurationMs.toFixed(1)}ms
           </p>
         </div>
         <div className="bg-surface-base rounded-[var(--radius-md)] p-3">
-          <p className="text-[11px] text-text-muted mb-1">Anomaly Score</p>
+          <p className="text-[11px] text-text-muted mb-1 flex items-center gap-1">
+            Anomaly Score <InfoTooltip content={TOOLTIPS.anomalyScore} />
+          </p>
           <p
             className={cn(
               'text-lg font-bold font-mono tabular-nums',
@@ -96,7 +101,7 @@ function DetailContent({ template }: { template: TemplateRow }) {
           <span className="text-text-primary">{template.service}</span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span className="text-text-muted">Template ID</span>
+          <span className="text-text-muted">Pattern ID</span>
           <span className="font-mono text-text-primary">{template.templateId.slice(0, 16)}...</span>
         </div>
         <div className="flex items-center justify-between text-xs">
@@ -119,8 +124,9 @@ function DetailContent({ template }: { template: TemplateRow }) {
       {/* Sparkline history */}
       {sparklinePoints.length > 0 && (
         <div>
-          <h4 className="text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2">
+          <h4 className="text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1">
             Occurrence History ({sparklinePoints.length} points)
+            <InfoTooltip content={TOOLTIPS.occurrenceHistory} />
           </h4>
           <div className="bg-surface-base rounded-[var(--radius-md)] p-2">
             <div className="text-xs text-text-muted text-center py-4">
@@ -183,7 +189,7 @@ export function TemplateDetailPanel() {
       >
         {/* Header */}
         <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-border-subtle bg-surface-card/95 backdrop-blur-sm">
-          <h3 className="text-sm font-semibold text-text-primary truncate pr-4">Template Detail</h3>
+          <h3 className="text-sm font-semibold text-text-primary truncate pr-4">Pattern Detail</h3>
           <Button variant="ghost" size="sm" onClick={() => setSelectedTemplateId(null)}>
             <X size={16} />
           </Button>

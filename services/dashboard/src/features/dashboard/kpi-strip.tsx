@@ -1,5 +1,6 @@
 import { Activity, AlertTriangle, Layers, Sparkles, Unplug } from 'lucide-react'
 import { useOverview } from '../../api/queries'
+import { TOOLTIPS } from '../../lib/tooltips'
 import { cn } from '../../lib/cn'
 import { KpiCard } from './kpi-card'
 
@@ -8,7 +9,7 @@ export function KpiStrip({ className }: { className?: string }) {
   const overview = response?.data
 
   return (
-    <div className={cn('grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4', className)}>
+    <div className={cn('grid grid-cols-2 sm:grid-cols-5 gap-3', className)}>
       <KpiCard
         label="Events (24h)"
         value={overview?.totalEvents ?? 0}
@@ -16,15 +17,17 @@ export function KpiStrip({ className }: { className?: string }) {
         loading={isLoading}
       />
       <KpiCard
-        label="Templates"
+        label="Patterns"
         value={overview?.totalTemplates ?? 0}
         icon={Layers}
+        tooltip={TOOLTIPS.totalTemplates}
         loading={isLoading}
       />
       <KpiCard
         label="New Today"
         value={overview?.newTemplatesToday ?? 0}
         icon={Sparkles}
+        tooltip={TOOLTIPS.newToday}
         variant={
           overview?.newTemplatesToday && overview.newTemplatesToday > 0 ? 'warning' : 'default'
         }
@@ -34,6 +37,7 @@ export function KpiStrip({ className }: { className?: string }) {
         label="Unclustered"
         value={overview?.unclusteredCount ?? 0}
         icon={Unplug}
+        tooltip={TOOLTIPS.unclustered}
         variant={
           overview?.unclusteredCount && overview.unclusteredCount > 0 ? 'warning' : 'default'
         }
@@ -43,6 +47,7 @@ export function KpiStrip({ className }: { className?: string }) {
         label="Error Rate"
         value={overview ? `${overview.errorRate.toFixed(1)}%` : '0%'}
         icon={AlertTriangle}
+        tooltip={TOOLTIPS.errorRate}
         variant={overview?.errorRate && overview.errorRate > 5 ? 'danger' : 'default'}
         loading={isLoading}
       />

@@ -1,6 +1,8 @@
 import { useClusteringHealth } from '../../api/queries'
 import { Card } from '../../components/ui/card'
+import { InfoTooltip } from '../../components/ui/tooltip'
 import { Skeleton } from '../../components/ui/skeleton'
+import { TOOLTIPS } from '../../lib/tooltips'
 import { cn } from '../../lib/cn'
 
 export function CompressionFunnel({ className }: { className?: string }) {
@@ -24,8 +26,8 @@ export function CompressionFunnel({ className }: { className?: string }) {
     <Card className={cn('overflow-hidden', className)}>
       <div className="px-5 py-4">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-            Compression
+          <span className="text-xs font-medium text-text-secondary uppercase tracking-wider flex items-center gap-1">
+            Compression <InfoTooltip content={TOOLTIPS.compressionRatio} />
           </span>
           <span className="text-xs font-mono text-brand-400 tabular-nums">{ratio}:1 ratio</span>
         </div>
@@ -71,8 +73,9 @@ export function CompressionFunnel({ className }: { className?: string }) {
         {health.unclusteredEvents > 0 && (
           <div className="mt-2 flex items-center gap-1.5">
             <div className="h-1.5 w-1.5 rounded-full bg-warning" />
-            <span className="text-[10px] text-text-muted">
+            <span className="text-[10px] text-text-muted flex items-center gap-1">
               {health.unclusteredEvents.toLocaleString()} unclustered
+              <InfoTooltip content={TOOLTIPS.unclusteredFunnel} />
             </span>
           </div>
         )}

@@ -5,7 +5,7 @@ import { useDashboardStore } from '../stores/dashboard-store'
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: BarChart3, label: 'Templates', path: '/templates', disabled: true },
+  { icon: BarChart3, label: 'Patterns', path: '/patterns', disabled: true },
   { icon: Bell, label: 'Alerts', path: '/alerts', disabled: true },
   { icon: Settings, label: 'Settings', path: '/settings', disabled: true },
 ]
