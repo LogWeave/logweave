@@ -568,6 +568,35 @@ describe('GET /v1/dashboard/overview', () => {
     assert.equal(res.body.data.errorRate, 0)
     assert.equal(res.body.data.totalEvents, 0)
   })
+
+  it('returns previous data when compare=true', async () => {
+    const app = createTestApp(overviewQueryMap())
+
+    const res = await request(app)
+      .get('/v1/dashboard/overview?compare=true')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    const data = res.body.data
+    assert.ok(data.previous, 'previous field should exist when compare=true')
+    assert.equal(typeof data.previous.totalEvents, 'number')
+    assert.equal(typeof data.previous.totalTemplates, 'number')
+    assert.equal(typeof data.previous.errorRate, 'number')
+    assert.equal(typeof data.previous.newTemplatesToday, 'number')
+    assert.equal(typeof data.previous.unclusteredCount, 'number')
+    assert.equal(typeof data.previous.serviceCount, 'number')
+  })
+
+  it('omits previous data when compare is not set', async () => {
+    const app = createTestApp(overviewQueryMap())
+
+    const res = await request(app)
+      .get('/v1/dashboard/overview')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.previous, undefined)
+  })
 })
 
 // ---------------------------------------------------------------------------

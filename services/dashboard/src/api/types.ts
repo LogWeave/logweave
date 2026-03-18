@@ -52,6 +52,14 @@ export interface OverviewData {
   unclusteredCount: number
   errorRate: number
   serviceCount: number
+  previous?: {
+    totalEvents: number
+    totalTemplates: number
+    newTemplatesToday: number
+    unclusteredCount: number
+    errorRate: number
+    serviceCount: number
+  }
 }
 
 export interface SparklineData {

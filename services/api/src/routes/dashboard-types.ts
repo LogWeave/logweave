@@ -59,6 +59,10 @@ export const volumeQuerySchema = timeRangeSchema.extend({
 
 export const overviewQuerySchema = timeRangeSchema.extend({
   level: levelFilterField,
+  compare: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 })
 
 export const sparklineQuerySchema = timeRangeSchema.extend({
@@ -150,6 +154,14 @@ export interface OverviewData {
   unclusteredCount: number
   errorRate: number
   serviceCount: number
+  previous?: {
+    totalEvents: number
+    totalTemplates: number
+    newTemplatesToday: number
+    unclusteredCount: number
+    errorRate: number
+    serviceCount: number
+  }
 }
 
 export interface SparklineData {

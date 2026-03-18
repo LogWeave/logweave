@@ -289,14 +289,25 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     try {
       const tenantId = getTenantId(res)
       const params = getQuery<OverviewQuery>(req)
+      const queryOpts = { hours: params.hours, level: params.level }
 
-      const [aggRaw, countsRaw] = await Promise.all([
-        queryDashboardOverviewAggregates(deps.db, tenantId, { hours: params.hours, level: params.level }),
-        queryDashboardOverviewCounts(deps.db, tenantId, { hours: params.hours, level: params.level }),
-      ])
+      const queries: Promise<unknown>[] = [
+        queryDashboardOverviewAggregates(deps.db, tenantId, queryOpts),
+        queryDashboardOverviewCounts(deps.db, tenantId, queryOpts),
+      ]
 
-      const agg = aggRaw as unknown as RawRow
-      const counts = countsRaw as unknown as RawRow
+      if (params.compare) {
+        const prevOpts = { ...queryOpts, offsetHours: params.hours }
+        queries.push(
+          queryDashboardOverviewAggregates(deps.db, tenantId, prevOpts),
+          queryDashboardOverviewCounts(deps.db, tenantId, prevOpts),
+        )
+      }
+
+      const results = await Promise.all(queries)
+
+      const agg = results[0] as unknown as RawRow
+      const counts = results[1] as unknown as RawRow
       const totalEvents = Number(agg.total_events)
       const errorCount = Number(agg.error_count)
 
@@ -307,6 +318,22 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         unclusteredCount: Number(counts.unclustered_count),
         errorRate: totalEvents > 0 ? (errorCount / totalEvents) * 100 : 0,
         serviceCount: Number(counts.service_count),
+      }
+
+      if (params.compare && results.length === 4) {
+        const prevAgg = results[2] as unknown as RawRow
+        const prevCounts = results[3] as unknown as RawRow
+        const prevTotalEvents = Number(prevAgg.total_events)
+        const prevErrorCount = Number(prevAgg.error_count)
+
+        data.previous = {
+          totalEvents: prevTotalEvents,
+          totalTemplates: Number(prevCounts.unique_templates),
+          newTemplatesToday: Number(prevAgg.new_template_count),
+          unclusteredCount: Number(prevCounts.unclustered_count),
+          errorRate: prevTotalEvents > 0 ? (prevErrorCount / prevTotalEvents) * 100 : 0,
+          serviceCount: Number(prevCounts.service_count),
+        }
       }
 
       respond(res, data, { hours: params.hours, count: 1 })

@@ -257,12 +257,17 @@ ORDER BY interval_start ASC`
 export async function queryDashboardOverviewAggregates(
   db: DbClient,
   tenantId: string,
-  options?: Pick<PaginationOptions, 'hours'> & { level?: string[] },
+  options?: Pick<PaginationOptions, 'hours'> & { level?: string[]; offsetHours?: number },
 ): Promise<OverviewAggregatesRow> {
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
   const levels = options?.level
+  const offsetHours = options?.offsetHours ?? 0
 
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
+  const startBound =
+    offsetHours > 0
+      ? 'AND interval_start BETWEEN now64(3) - toIntervalHour({end_hours:UInt32}) AND now64(3) - toIntervalHour({offset_hours:UInt32})'
+      : 'AND interval_start > now64(3) - toIntervalHour({hours:UInt32})'
 
   const query = `
 SELECT
@@ -272,10 +277,14 @@ SELECT
     countIfMerge(new_template_count)  AS new_template_count
 FROM logweave.service_stats
 WHERE tenant_id = {tenant_id:String}
-  AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
+  ${startBound}
   ${levelFilter}`
 
   const params: Record<string, unknown> = { hours }
+  if (offsetHours > 0) {
+    params.offset_hours = offsetHours
+    params.end_hours = offsetHours + hours
+  }
   if (levels?.length) params.levels = levels
 
   const rows = await db.query<OverviewAggregatesRow>(tenantQuery(query, tenantId, params))
@@ -289,12 +298,17 @@ WHERE tenant_id = {tenant_id:String}
 export async function queryDashboardOverviewCounts(
   db: DbClient,
   tenantId: string,
-  options?: Pick<PaginationOptions, 'hours'> & { level?: string[] },
+  options?: Pick<PaginationOptions, 'hours'> & { level?: string[]; offsetHours?: number },
 ): Promise<OverviewCountsRow> {
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
   const levels = options?.level
+  const offsetHours = options?.offsetHours ?? 0
 
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
+  const startBound =
+    offsetHours > 0
+      ? 'AND timestamp BETWEEN now64(3) - toIntervalHour({end_hours:UInt32}) AND now64(3) - toIntervalHour({offset_hours:UInt32})'
+      : 'AND timestamp > now64(3) - toIntervalHour({hours:UInt32})'
 
   const query = `
 SELECT
@@ -303,10 +317,14 @@ SELECT
     uniq(service)                           AS service_count
 FROM logweave.log_metadata
 WHERE tenant_id = {tenant_id:String}
-  AND timestamp > now64(3) - toIntervalHour({hours:UInt32})
+  ${startBound}
   ${levelFilter}`
 
   const params: Record<string, unknown> = { hours }
+  if (offsetHours > 0) {
+    params.offset_hours = offsetHours
+    params.end_hours = offsetHours + hours
+  }
   if (levels?.length) params.levels = levels
 
   const rows = await db.query<OverviewCountsRow>(tenantQuery(query, tenantId, params))

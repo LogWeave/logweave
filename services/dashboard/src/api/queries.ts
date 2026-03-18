@@ -36,6 +36,7 @@ export function useOverview() {
     queryFn: () =>
       api.get<ApiResponse<OverviewData>>('/v1/dashboard/overview', {
         hours,
+        compare: 'true',
         level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
       }),
     refetchInterval: pollUnlessError,
