@@ -1,4 +1,5 @@
 import { Activity, AlertTriangle, Layers, Sparkles, Unplug, Zap } from 'lucide-react'
+import { useMemo } from 'react'
 import { useOverview, useTemplates } from '../../api/queries'
 import { QueryError } from '../../components/ui/query-error'
 import { cn } from '../../lib/cn'
@@ -22,8 +23,10 @@ export function KpiStrip({ className }: { className?: string }) {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const trendLabel = { '1h': 'vs prev 1h', '6h': 'vs prev 6h', '24h': 'vs prev 24h', '7d': 'vs prev 7d' }[timeRange]
 
-  const spikeCount =
-    templatesResponse?.data?.filter((t) => t.maxAnomalyScore > 1.0).length ?? 0
+  const spikeCount = useMemo(
+    () => templatesResponse?.data?.filter((t) => t.maxAnomalyScore > 1.0).length ?? 0,
+    [templatesResponse?.data],
+  )
 
   if (isError) {
     return (

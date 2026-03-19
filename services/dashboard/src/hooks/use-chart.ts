@@ -30,31 +30,40 @@ export function useChart(
   const colorMode = useDashboardStore((s) => s.colorMode)
   const theme = colorMode === 'dark' ? 'logweave-dark' : 'logweave-light'
 
-  // Init and dispose
+  // Init and dispose — theme changes require full re-init
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
+    // Dispose any existing instance on this DOM element to prevent orphans
+    const existing = echarts.getInstanceByDom(el)
+    if (existing) existing.dispose()
+
     const chart = echarts.init(el, theme)
     chartRef.current = chart
+    let disposed = false
 
     // Debounce resize to prevent layout thrash cascades
     let resizeTimer: ReturnType<typeof setTimeout> | null = null
     const observer = new ResizeObserver(() => {
       if (resizeTimer) clearTimeout(resizeTimer)
-      resizeTimer = setTimeout(() => chart.resize(), 100)
+      resizeTimer = setTimeout(() => {
+        if (!disposed) chart.resize()
+      }, 100)
     })
     observer.observe(el)
 
     return () => {
+      disposed = true
       if (resizeTimer) clearTimeout(resizeTimer)
       observer.disconnect()
       chart.dispose()
       chartRef.current = null
     }
-  }, [containerRef, theme])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme])
 
-  // Update option — use replaceMerge for series to avoid accumulation
+  // Update option — use notMerge to avoid series accumulation
   useEffect(() => {
     if (chartRef.current && option) {
       chartRef.current.setOption(option, { notMerge: true, lazyUpdate: true })

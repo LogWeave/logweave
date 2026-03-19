@@ -1,4 +1,5 @@
 import { Server } from 'lucide-react'
+import { useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useServices } from '../../api/queries'
 import { QueryError } from '../../components/ui/query-error'
@@ -10,12 +11,15 @@ import { useDashboardStore } from '../../stores/dashboard-store'
 
 export function ServiceHealthCards({ className }: { className?: string }) {
   const { data: response, isLoading, isError, refetch } = useServices()
-  const services = [...(response?.data ?? [])].sort((a, b) => {
-    // Sort by error count (volume-weighted severity) desc, then error rate desc
-    const aErrors = Math.round(a.logCount * a.errorRate / 100)
-    const bErrors = Math.round(b.logCount * b.errorRate / 100)
-    return bErrors - aErrors || b.errorRate - a.errorRate
-  })
+  const services = useMemo(
+    () =>
+      [...(response?.data ?? [])].sort((a, b) => {
+        const aErrors = Math.round((a.logCount * a.errorRate) / 100)
+        const bErrors = Math.round((b.logCount * b.errorRate) / 100)
+        return bErrors - aErrors || b.errorRate - a.errorRate
+      }),
+    [response?.data],
+  )
   const { serviceFilter, setServiceFilter } = useDashboardStore(
     useShallow((s) => ({ serviceFilter: s.serviceFilter, setServiceFilter: s.setServiceFilter })),
   )

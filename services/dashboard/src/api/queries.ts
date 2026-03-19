@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { config } from '../config'
 import { api } from '../lib/api-client'
 import { timeRangeToHours, useDashboardStore } from '../stores/dashboard-store'
+import { levelApiParam, levelParam, queryKeys } from './query-keys'
 import type {
   ApiResponse,
   ChangeEvent,
@@ -32,13 +33,14 @@ export function useOverview() {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
+  const levels = levelParam(levelFilters)
   return useQuery({
-    queryKey: ['dashboard', 'overview', hours, levelFilters.join(',')],
+    queryKey: queryKeys.overview(hours, levels),
     queryFn: () =>
       api.get<ApiResponse<OverviewData>>('/v1/dashboard/overview', {
         hours,
         compare: 'true',
-        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+        level: levelApiParam(levelFilters),
       }),
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
@@ -50,13 +52,14 @@ export function useVolume() {
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
   const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
+  const levels = levelParam(levelFilters)
   return useQuery({
-    queryKey: ['dashboard', 'volume', hours, serviceFilter, levelFilters.join(',')],
+    queryKey: queryKeys.volume(hours, serviceFilter, levels),
     queryFn: () =>
       api.get<ApiResponse<VolumeData>>('/v1/dashboard/volume', {
         hours,
         service: serviceFilter ?? undefined,
-        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+        level: levelApiParam(levelFilters),
       }),
     placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
@@ -68,12 +71,13 @@ export function useServices() {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
+  const levels = levelParam(levelFilters)
   return useQuery({
-    queryKey: ['dashboard', 'services', hours, levelFilters.join(',')],
+    queryKey: queryKeys.services(hours, levels),
     queryFn: () =>
       api.get<ApiResponse<ServiceRow[]>>('/v1/dashboard/services', {
         hours,
-        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+        level: levelApiParam(levelFilters),
       }),
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
@@ -85,14 +89,15 @@ export function useTemplates() {
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
   const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
+  const levels = levelParam(levelFilters)
   return useQuery({
-    queryKey: ['dashboard', 'templates', hours, serviceFilter, levelFilters.join(',')],
+    queryKey: queryKeys.templates(hours, serviceFilter, levels),
     queryFn: () =>
       api.get<ApiResponse<TemplateRow[]>>('/v1/dashboard/templates', {
         hours,
         limit: 200,
         service: serviceFilter ?? undefined,
-        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+        level: levelApiParam(levelFilters),
       }),
     placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
@@ -104,15 +109,15 @@ export function useSparklines(templateIds: string[]) {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
-  // Stabilize the key — array reference changes on every render but content may be the same
   const idsKey = templateIds.join(',')
+  const levels = levelParam(levelFilters)
   return useQuery({
-    queryKey: ['dashboard', 'sparklines', hours, idsKey, levelFilters.join(',')],
+    queryKey: queryKeys.sparklines(hours, idsKey, levels),
     queryFn: () =>
       api.get<ApiResponse<SparklineData>>('/v1/dashboard/template-sparklines', {
         hours,
         template_ids: idsKey,
-        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+        level: levelApiParam(levelFilters),
       }),
     enabled: templateIds.length > 0,
     refetchInterval: pollUnlessError,
@@ -124,12 +129,13 @@ export function useClusteringHealth() {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
+  const levels = levelParam(levelFilters)
   return useQuery({
-    queryKey: ['dashboard', 'clustering-health', hours, levelFilters.join(',')],
+    queryKey: queryKeys.clusteringHealth(hours, levels),
     queryFn: () =>
       api.get<ApiResponse<ClusteringHealthData>>('/v1/dashboard/clustering-health', {
         hours,
-        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+        level: levelApiParam(levelFilters),
       }),
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
@@ -141,13 +147,14 @@ export function useChanges() {
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
   const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
+  const levels = levelParam(levelFilters)
   return useQuery({
-    queryKey: ['dashboard', 'changes', hours, serviceFilter, levelFilters.join(',')],
+    queryKey: queryKeys.changes(hours, serviceFilter, levels),
     queryFn: () =>
       api.get<ApiResponse<ChangeEvent[]>>('/v1/dashboard/changes', {
         hours,
         service: serviceFilter ?? undefined,
-        level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+        level: levelApiParam(levelFilters),
       }),
     placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
@@ -160,7 +167,7 @@ export function useLevels() {
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: ['dashboard', 'levels', hours, serviceFilter],
+    queryKey: queryKeys.levels(hours, serviceFilter),
     queryFn: () =>
       api.get<ApiResponse<LevelCount[]>>('/v1/dashboard/levels', {
         hours,
@@ -175,7 +182,7 @@ export function useTemplateStatusCodes(templateId: string | null) {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: ['dashboard', 'template-status-codes', hours, templateId],
+    queryKey: queryKeys.templateStatusCodes(hours, templateId),
     queryFn: () =>
       api.get<ApiResponse<StatusCodeCount[]>>('/v1/dashboard/template-status-codes', {
         hours,
@@ -188,7 +195,7 @@ export function useTemplateStatusCodes(templateId: string | null) {
 
 export function useWatches() {
   return useQuery({
-    queryKey: ['watches'],
+    queryKey: queryKeys.watches(),
     queryFn: () => api.get<ApiResponse<WatchEntry[]>>('/v1/watches'),
     staleTime: config.staleTimeMs,
   })
@@ -200,7 +207,7 @@ export function useWatchTemplate() {
     mutationFn: ({ templateId, templateText }: { templateId: string; templateText?: string }) =>
       api.post('/v1/watches', { templateId, templateText }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watches'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.watches() })
     },
   })
 }
@@ -210,14 +217,14 @@ export function useUnwatchTemplate() {
   return useMutation({
     mutationFn: (templateId: string) => api.del(`/v1/watches/${templateId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watches'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.watches() })
     },
   })
 }
 
 export function useSlackSettings() {
   return useQuery({
-    queryKey: ['settings', 'slack'],
+    queryKey: queryKeys.slackSettings(),
     queryFn: () => api.get<ApiResponse<SlackSettings>>('/v1/settings/slack'),
     staleTime: 30_000,
   })
@@ -228,7 +235,7 @@ export function useSaveSlackSettings() {
   return useMutation({
     mutationFn: (webhookUrl: string) => api.post('/v1/settings/slack', { webhookUrl }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', 'slack'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.slackSettings() })
     },
   })
 }
@@ -238,7 +245,7 @@ export function useDeleteSlackSettings() {
   return useMutation({
     mutationFn: () => api.del('/v1/settings/slack'),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', 'slack'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.slackSettings() })
     },
   })
 }
@@ -248,7 +255,7 @@ export function useTestSlackConnection() {
   return useMutation({
     mutationFn: () => api.post<ApiResponse<SlackTestResult>>('/v1/settings/slack/test'),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', 'slack'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.slackSettings() })
     },
   })
 }

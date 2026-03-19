@@ -13,9 +13,9 @@ const queryClient = new QueryClient({
       retry: 2,
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
       refetchOnWindowFocus: false,
-      // Don't refetch on interval when the previous fetch errored —
-      // prevents hammering a down API and hanging the browser
       refetchIntervalInBackground: false,
+      gcTime: 3 * 60 * 1000, // 3 minutes — cap stale cache growth
+      staleTime: 30_000,
     },
   },
 })
