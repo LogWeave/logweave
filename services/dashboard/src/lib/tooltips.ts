@@ -8,7 +8,7 @@ export const TOOLTIPS = {
   newToday:
     'Distinct log patterns seen for the first time today. A sudden spike often means a new deployment introduced new message patterns.',
   unclustered:
-    'Log lines the clusterer could not match to any known pattern. High values may indicate a new message format or a clusterer configuration issue. These events are not analysed for anomalies.',
+    'Log lines that could not be matched to any known pattern. High values may indicate a new message format or unusual log structure. These events are not analysed for anomalies.',
   errorRate:
     'Percentage of ingested events classified as errors (ERROR / FATAL severity) in the current time window. Turns red above 5%.',
   totalTemplates:
@@ -28,13 +28,13 @@ export const TOOLTIPS = {
   occurrenceHistory:
     'Occurrence counts per time bucket, oldest to newest, over the selected window. Each number is how many times this pattern matched in one interval. Use this to spot gradual growth or a sudden burst.',
   templatePlaceholder:
-    'Variable extracted by the log clustering engine. This token matches any value in that position across different log lines.',
+    'Dynamic value that changes between log lines. LogWeave replaces variable parts (IPs, IDs, timestamps) with placeholders so similar messages group into one pattern.',
 
   // --- Compression funnel ---
   compressionRatio:
     'Total log events ÷ unique patterns. A ratio of 500:1 means 500 raw lines were reduced to 1 stored pattern. Higher is better.',
   unclusteredFunnel:
-    'Events that could not be matched to any known pattern and are not analysed for anomalies. If this is persistently high, check the clusterer service logs.',
+    'Events that could not be matched to any known pattern and are not analysed for anomalies. If this is persistently high, your log format may need adjustment.',
 
   // --- Changes panel ---
   spikeEvent:

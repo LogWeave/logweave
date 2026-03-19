@@ -1,5 +1,6 @@
 import { Activity, AlertTriangle, Layers, Sparkles, Unplug, Zap } from 'lucide-react'
 import { useOverview, useTemplates } from '../../api/queries'
+import { QueryError } from '../../components/ui/query-error'
 import { cn } from '../../lib/cn'
 import { TOOLTIPS } from '../../lib/tooltips'
 import { KpiCard } from './kpi-card'
@@ -12,13 +13,21 @@ function trendPercent(current: number, previous: number | undefined): number | u
 }
 
 export function KpiStrip({ className }: { className?: string }) {
-  const { data: response, isLoading } = useOverview()
+  const { data: response, isLoading, isError, refetch } = useOverview()
   const { data: templatesResponse } = useTemplates()
   const overview = response?.data
   const prev = overview?.previous
 
   const spikeCount =
     templatesResponse?.data?.filter((t) => t.maxAnomalyScore > 1.0).length ?? 0
+
+  if (isError) {
+    return (
+      <div className={cn('col-span-full', className)}>
+        <QueryError message="Failed to load dashboard metrics" onRetry={() => refetch()} />
+      </div>
+    )
+  }
 
   return (
     <div className={cn('grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3', className)}>

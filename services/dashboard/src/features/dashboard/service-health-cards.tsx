@@ -9,7 +9,7 @@ import { useDashboardStore } from '../../stores/dashboard-store'
 
 export function ServiceHealthCards({ className }: { className?: string }) {
   const { data: response, isLoading } = useServices()
-  const services = response?.data ?? []
+  const services = [...(response?.data ?? [])].sort((a, b) => b.errorRate - a.errorRate)
   const { serviceFilter, setServiceFilter } = useDashboardStore(
     useShallow((s) => ({ serviceFilter: s.serviceFilter, setServiceFilter: s.setServiceFilter })),
   )

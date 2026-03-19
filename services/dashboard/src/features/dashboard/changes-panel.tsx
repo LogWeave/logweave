@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { useChanges } from '../../api/queries'
 import type { ChangeEvent } from '../../api/types'
+import { QueryError } from '../../components/ui/query-error'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Skeleton } from '../../components/ui/skeleton'
@@ -38,10 +39,25 @@ const ChangeEventRow = memo(function ChangeEventRow({
         <p className="text-xs font-mono text-text-primary truncate">{event.templateText}</p>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-[11px] text-text-muted">{event.service}</span>
-          {event.type === 'spike' && (
-            <span className="text-[11px] text-warning font-mono tabular-nums">
-              {event.ratio.toFixed(1)}x
+          {event.firstSeen && (
+            <span className="text-[11px] text-text-muted">
+              {new Date(event.firstSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
+          )}
+          {event.type === 'spike' && (
+            <>
+              <span
+                className={cn(
+                  'text-[11px] font-mono tabular-nums font-semibold',
+                  event.ratio >= 50 ? 'text-danger' : event.ratio >= 10 ? 'text-warning' : 'text-text-secondary',
+                )}
+              >
+                {event.ratio.toFixed(1)}x
+              </span>
+              <span className="text-[11px] text-text-muted font-mono tabular-nums">
+                {event.currentCount.toLocaleString()} events
+              </span>
+            </>
           )}
           {event.type === 'new' && (
             <span className="text-[11px] text-text-muted font-mono tabular-nums">
@@ -60,7 +76,7 @@ const ChangeEventRow = memo(function ChangeEventRow({
 })
 
 export function ChangesPanel({ className }: { className?: string }) {
-  const { data: response, isLoading } = useChanges()
+  const { data: response, isLoading, isError, refetch } = useChanges()
   const events = response?.data ?? []
   const setSelectedTemplateId = useDashboardStore((s) => s.setSelectedTemplateId)
 
@@ -87,7 +103,9 @@ export function ChangesPanel({ className }: { className?: string }) {
         <CardTitle>What Changed?</CardTitle>
       </CardHeader>
       <CardContent>
-        {events.length === 0 ? (
+        {isError ? (
+          <QueryError onRetry={() => refetch()} />
+        ) : events.length === 0 ? (
           <p className="text-xs text-text-muted py-4 text-center">
             No changes detected in this time window.
           </p>

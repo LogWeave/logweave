@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Moon, RefreshCw, Sun } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
-import { useLevels } from '../api/queries'
+import { useLevels, useOverview } from '../api/queries'
 import { cn } from '../lib/cn'
 import { type TimeRange, useDashboardStore } from '../stores/dashboard-store'
 import { Button } from './ui/button'
@@ -53,6 +53,16 @@ export function Header() {
   const [refreshing, setRefreshing] = useState(false)
   const { data: levelsResponse } = useLevels()
   const levelsData = levelsResponse?.data
+  const { dataUpdatedAt, isError: overviewError } = useOverview()
+  const [secondsAgo, setSecondsAgo] = useState(0)
+
+  useEffect(() => {
+    if (!dataUpdatedAt) return
+    const update = () => setSecondsAgo(Math.round((Date.now() - dataUpdatedAt) / 1000))
+    update()
+    const id = setInterval(update, 5_000)
+    return () => clearInterval(id)
+  }, [dataUpdatedAt])
 
   const handleRefresh = () => {
     setRefreshing(true)
@@ -131,6 +141,24 @@ export function Header() {
           value={timeRange}
           onChange={(v) => setTimeRange(v as TimeRange)}
         />
+        {dataUpdatedAt > 0 && (
+          <span
+            className={cn(
+              'hidden sm:inline text-[11px] tabular-nums',
+              overviewError
+                ? 'text-danger'
+                : secondsAgo > 120
+                  ? 'text-warning'
+                  : 'text-text-muted',
+            )}
+          >
+            {overviewError
+              ? 'API error'
+              : secondsAgo < 10
+                ? 'Updated just now'
+                : `Updated ${secondsAgo}s ago`}
+          </span>
+        )}
         <Button variant="ghost" size="sm" title="Refresh" onClick={handleRefresh}>
           <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
         </Button>

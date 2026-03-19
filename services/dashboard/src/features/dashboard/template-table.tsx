@@ -223,7 +223,7 @@ export function TemplateTable({ className }: { className?: string }) {
     return (
       <Card className={cn(className)}>
         <CardHeader>
-          <CardTitle>Templates</CardTitle>
+          <CardTitle>Patterns</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">

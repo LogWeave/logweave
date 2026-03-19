@@ -204,7 +204,15 @@ export function VolumeChart({ className }: { className?: string }) {
         data: sortedTimestamps.map((t) => {
           const d = new Date(t)
           if (Number.isNaN(d.getTime())) return String(t)
-          return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+          const hhmm = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+          if (timeRange === '7d') {
+            const day = d.toLocaleDateString('en-US', { weekday: 'short' })
+            return `${day} ${hhmm}`
+          }
+          if (timeRange === '24h') {
+            return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${hhmm}`
+          }
+          return hhmm
         }),
         boundaryGap: chartType === 'bar',
       },
@@ -216,7 +224,7 @@ export function VolumeChart({ className }: { className?: string }) {
       animationEasing: 'cubicOut',
       series: allSeries,
     }
-  }, [volumeData, compareData, chartType, unfilteredResponse, isLevelFiltered])
+  }, [volumeData, compareData, chartType, unfilteredResponse, isLevelFiltered, timeRange])
 
   if (isLoading) {
     return (
