@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { EChartsOption } from 'echarts'
 import { useMemo, useState } from 'react'
 import { pollUnlessError, useVolume } from '../../api/queries'
+import { QueryError } from '../../components/ui/query-error'
 import type { ApiResponse, VolumeData, VolumePoint } from '../../api/types'
 import { Chart } from '../../components/chart'
 import { Button } from '../../components/ui/button'
@@ -42,7 +43,7 @@ function buildServiceMap(points: VolumePoint[]) {
 export function VolumeChart({ className }: { className?: string }) {
   const [chartType, setChartType] = useState<ChartType>('area')
   const [compareEnabled, setCompareEnabled] = useState(false)
-  const { data: response, isLoading } = useVolume()
+  const { data: response, isLoading, isError, refetch } = useVolume()
   const volumeData = response?.data
 
   const timeRange = useDashboardStore((s) => s.timeRange)
@@ -234,6 +235,19 @@ export function VolumeChart({ className }: { className?: string }) {
         </CardHeader>
         <CardContent>
           <Skeleton className="h-[300px] w-full" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (isError) {
+    return (
+      <Card className={cn(className)}>
+        <CardHeader>
+          <CardTitle>Log Volume</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <QueryError onRetry={() => refetch()} />
         </CardContent>
       </Card>
     )

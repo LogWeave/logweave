@@ -29,8 +29,15 @@ export function TemplateTable({ className }: { className?: string }) {
   const { data: response, isLoading } = useTemplates()
   const templates = response?.data ?? []
 
-  const templateIds = useMemo(() => templates.map((t) => t.templateId), [templates])
-  const { data: sparklineResponse } = useSparklines(templateIds.slice(0, 20))
+  const sparklineIds = useMemo(
+    () =>
+      [...templates]
+        .sort((a, b) => b.maxAnomalyScore - a.maxAnomalyScore)
+        .slice(0, 20)
+        .map((t) => t.templateId),
+    [templates],
+  )
+  const { data: sparklineResponse } = useSparklines(sparklineIds)
   const sparklineData = sparklineResponse?.data ?? {}
 
   // Stable ref for sparkline data — columns read from this at render time
@@ -39,7 +46,10 @@ export function TemplateTable({ className }: { className?: string }) {
   sparklineRef.current = sparklineData
 
   const { data: watchesResponse } = useWatches()
-  const watchedIds = new Set((watchesResponse?.data ?? []).map((w) => w.templateId))
+  const watchedIds = useMemo(
+    () => new Set((watchesResponse?.data ?? []).map((w) => w.templateId)),
+    [watchesResponse?.data],
+  )
   const watchedIdsRef = useRef(watchedIds)
   watchedIdsRef.current = watchedIds
 

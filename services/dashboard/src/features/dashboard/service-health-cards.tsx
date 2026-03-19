@@ -1,6 +1,7 @@
 import { Server } from 'lucide-react'
 import { useShallow } from 'zustand/shallow'
 import { useServices } from '../../api/queries'
+import { QueryError } from '../../components/ui/query-error'
 import { Badge } from '../../components/ui/badge'
 import { Card } from '../../components/ui/card'
 import { Skeleton } from '../../components/ui/skeleton'
@@ -8,7 +9,7 @@ import { cn } from '../../lib/cn'
 import { useDashboardStore } from '../../stores/dashboard-store'
 
 export function ServiceHealthCards({ className }: { className?: string }) {
-  const { data: response, isLoading } = useServices()
+  const { data: response, isLoading, isError, refetch } = useServices()
   const services = [...(response?.data ?? [])].sort((a, b) => b.errorRate - a.errorRate)
   const { serviceFilter, setServiceFilter } = useDashboardStore(
     useShallow((s) => ({ serviceFilter: s.serviceFilter, setServiceFilter: s.setServiceFilter })),
@@ -23,6 +24,15 @@ export function ServiceHealthCards({ className }: { className?: string }) {
         {[1, 2, 3].map((i) => (
           <Skeleton key={i} className="h-20 w-full" />
         ))}
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className={cn('space-y-3', className)}>
+        <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">Services</h3>
+        <QueryError onRetry={() => refetch()} />
       </div>
     )
   }

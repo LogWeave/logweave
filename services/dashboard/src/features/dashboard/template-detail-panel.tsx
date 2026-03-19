@@ -159,7 +159,17 @@ function DetailContent({ template }: { template: TemplateRow }) {
         </div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-text-muted">Pattern ID</span>
-          <span className="font-mono text-text-primary">{template.templateId.slice(0, 16)}...</span>
+          <button
+            type="button"
+            className="font-mono text-text-primary hover:text-brand-400 transition-colors cursor-pointer"
+            title="Click to copy full ID"
+            onClick={() => {
+              navigator.clipboard.writeText(template.templateId)
+              toast.success('Pattern ID copied')
+            }}
+          >
+            {template.templateId.slice(0, 16)}...
+          </button>
         </div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-text-muted">First seen</span>
