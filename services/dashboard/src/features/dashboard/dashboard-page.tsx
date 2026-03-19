@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom'
 import { ErrorBoundary } from '../../components/error-boundary'
+import { useUrlSync } from '../../hooks/use-url-sync'
 import { ChangesPanel } from './changes-panel'
 import { CompressionFunnel } from './compression-funnel'
 import { KpiStrip } from './kpi-strip'
@@ -9,6 +10,7 @@ import { VolumeChart } from './volume-chart'
 
 export function DashboardPage() {
   const location = useLocation()
+  useUrlSync()
 
   return (
     <div className="space-y-6">

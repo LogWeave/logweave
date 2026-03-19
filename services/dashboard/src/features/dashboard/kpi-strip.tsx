@@ -29,6 +29,19 @@ export function KpiStrip({ className }: { className?: string }) {
     )
   }
 
+  const hasNoData = !isLoading && overview && overview.totalEvents === 0 && overview.totalTemplates === 0
+
+  if (hasNoData) {
+    return (
+      <div className={cn('rounded-[var(--radius-lg)] border border-border-subtle bg-surface-raised p-6 text-center', className)}>
+        <p className="text-sm font-medium text-text-primary mb-1">Waiting for data...</p>
+        <p className="text-xs text-text-muted">
+          Install the <code className="text-brand-400">@logweave/transport</code> SDK and send your first logs to see metrics here.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className={cn('grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3', className)}>
       <KpiCard
