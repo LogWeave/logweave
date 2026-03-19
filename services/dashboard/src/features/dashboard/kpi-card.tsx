@@ -12,6 +12,8 @@ interface KpiCardProps {
   tooltip?: string
   trend?: number
   trendSuffix?: string
+  /** Short label shown after the trend value, e.g., "vs prev 24h" */
+  trendLabel?: string
   /** Controls trend arrow color semantics. 'negative' = up is bad (default). 'positive' = up is good. 'neutral' = always muted. */
   trendPolarity?: 'negative' | 'positive' | 'neutral'
   variant?: 'default' | 'warning' | 'danger'
@@ -26,6 +28,7 @@ export const KpiCard = memo(function KpiCard({
   tooltip,
   trend,
   trendSuffix = '%',
+  trendLabel,
   trendPolarity = 'negative',
   variant = 'default',
   loading,
@@ -81,6 +84,9 @@ export const KpiCard = memo(function KpiCard({
                 {trend > 0 ? '\u2191' : trend < 0 ? '\u2193' : '\u2192'}
                 {trend !== 0 && ` ${Math.abs(trend).toFixed(1)}${trendSuffix}`}
                 {trend === 0 && ' stable'}
+                {trendLabel && (
+                  <span className="text-text-muted font-normal ml-0.5">{trendLabel}</span>
+                )}
               </span>
             </div>
           )}

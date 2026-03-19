@@ -3,6 +3,7 @@ import { useOverview, useTemplates } from '../../api/queries'
 import { QueryError } from '../../components/ui/query-error'
 import { cn } from '../../lib/cn'
 import { TOOLTIPS } from '../../lib/tooltips'
+import { useDashboardStore } from '../../stores/dashboard-store'
 import { KpiCard } from './kpi-card'
 
 /** Compute percentage change: ((current - previous) / previous) * 100. Returns undefined when no comparison data. */
@@ -17,6 +18,9 @@ export function KpiStrip({ className }: { className?: string }) {
   const { data: templatesResponse } = useTemplates()
   const overview = response?.data
   const prev = overview?.previous
+
+  const timeRange = useDashboardStore((s) => s.timeRange)
+  const trendLabel = { '1h': 'vs prev 1h', '6h': 'vs prev 6h', '24h': 'vs prev 24h', '7d': 'vs prev 7d' }[timeRange]
 
   const spikeCount =
     templatesResponse?.data?.filter((t) => t.maxAnomalyScore > 1.0).length ?? 0
@@ -49,6 +53,7 @@ export function KpiStrip({ className }: { className?: string }) {
         value={overview?.totalEvents ?? 0}
         icon={Activity}
         trend={trendPercent(overview?.totalEvents ?? 0, prev?.totalEvents)}
+        trendLabel={trendLabel}
         trendPolarity="positive"
         loading={isLoading}
       />
@@ -58,6 +63,7 @@ export function KpiStrip({ className }: { className?: string }) {
         icon={Layers}
         tooltip={TOOLTIPS.totalTemplates}
         trend={trendPercent(overview?.totalTemplates ?? 0, prev?.totalTemplates)}
+        trendLabel={trendLabel}
         trendPolarity="neutral"
         loading={isLoading}
       />
@@ -67,6 +73,7 @@ export function KpiStrip({ className }: { className?: string }) {
         icon={Sparkles}
         tooltip={TOOLTIPS.newToday}
         trend={trendPercent(overview?.newTemplatesToday ?? 0, prev?.newTemplatesToday)}
+        trendLabel={trendLabel}
         trendPolarity="neutral"
         variant={
           overview?.newTemplatesToday && overview.newTemplatesToday > 0 ? 'warning' : 'default'
@@ -79,6 +86,7 @@ export function KpiStrip({ className }: { className?: string }) {
         icon={Unplug}
         tooltip={TOOLTIPS.unclustered}
         trend={trendPercent(overview?.unclusteredCount ?? 0, prev?.unclusteredCount)}
+        trendLabel={trendLabel}
         variant={
           overview?.unclusteredCount && overview.unclusteredCount > 0 ? 'warning' : 'default'
         }
@@ -91,6 +99,7 @@ export function KpiStrip({ className }: { className?: string }) {
         tooltip={TOOLTIPS.errorRate}
         trend={trendPercent(overview?.errorRate ?? 0, prev?.errorRate)}
         trendSuffix="pp"
+        trendLabel={trendLabel}
         variant={overview?.errorRate && overview.errorRate > 5 ? 'danger' : 'default'}
         loading={isLoading}
       />

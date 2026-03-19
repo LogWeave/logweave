@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { useChanges } from '../../api/queries'
+import { useChanges, useOverview } from '../../api/queries'
 import type { ChangeEvent } from '../../api/types'
 import { QueryError } from '../../components/ui/query-error'
 import { Badge } from '../../components/ui/badge'
@@ -77,7 +77,9 @@ const ChangeEventRow = memo(function ChangeEventRow({
 
 export function ChangesPanel({ className }: { className?: string }) {
   const { data: response, isLoading, isError, refetch } = useChanges()
+  const { data: overviewResponse } = useOverview()
   const events = response?.data ?? []
+  const hasAnyData = (overviewResponse?.data?.totalEvents ?? 0) > 0
   const setSelectedTemplateId = useDashboardStore((s) => s.setSelectedTemplateId)
 
   if (isLoading) {
@@ -107,7 +109,9 @@ export function ChangesPanel({ className }: { className?: string }) {
           <QueryError onRetry={() => refetch()} />
         ) : events.length === 0 ? (
           <p className="text-xs text-text-muted py-4 text-center">
-            No changes detected in this time window.
+            {hasAnyData
+              ? 'All quiet — no spikes, new patterns, or resolutions in this window.'
+              : 'Waiting for log data to start detecting changes.'}
           </p>
         ) : (
           <div className="max-h-[300px] overflow-y-auto">
