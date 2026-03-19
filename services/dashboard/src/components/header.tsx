@@ -159,10 +159,10 @@ export function Header() {
                 : `Updated ${secondsAgo}s ago`}
           </span>
         )}
-        <Button variant="ghost" size="sm" title="Refresh" onClick={handleRefresh}>
+        <Button variant="ghost" size="sm" title="Refresh" aria-label="Refresh data" onClick={handleRefresh}>
           <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={toggleColorMode} title="Toggle theme">
+        <Button variant="ghost" size="sm" onClick={toggleColorMode} title="Toggle theme" aria-label="Toggle theme">
           {colorMode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
         </Button>
       </div>

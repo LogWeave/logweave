@@ -27,6 +27,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={toggleSidebar}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             className="flex items-center gap-2 text-text-primary hover:text-brand-400 transition-colors"
           >
             <div className="h-8 w-8 rounded-[var(--radius-md)] bg-brand-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
