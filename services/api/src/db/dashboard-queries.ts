@@ -118,7 +118,7 @@ SELECT
     template_text,
     service,
     countMerge(occurrence_count)      AS occurrence_count,
-    countIfMerge(error_count)         AS error_count,
+    countMerge(error_count)         AS error_count,
     avgMerge(avg_duration_ms)         AS avg_duration_ms,
     maxMerge(max_anomaly_score)       AS max_anomaly_score,
     min(interval_start)               AS first_seen,
@@ -187,9 +187,9 @@ export async function queryDashboardServices(
 SELECT
     service,
     countMerge(log_count)             AS log_count,
-    countIfMerge(error_count)         AS error_count,
-    countIfMerge(warn_count)          AS warn_count,
-    countIfMerge(new_template_count)  AS new_template_count,
+    countMerge(error_count)         AS error_count,
+    countMerge(warn_count)          AS warn_count,
+    countMerge(new_template_count)  AS new_template_count,
     avgMerge(avg_anomaly_score)       AS avg_anomaly_score
 FROM logweave.service_stats
 WHERE tenant_id = {tenant_id:String}
@@ -233,7 +233,7 @@ SELECT
     interval_start,
     service,
     countMerge(log_count)     AS log_count,
-    countIfMerge(error_count) AS error_count
+    countMerge(error_count) AS error_count
 FROM logweave.service_stats
 WHERE tenant_id = {tenant_id:String}
   ${timeFilter}
@@ -272,9 +272,9 @@ export async function queryDashboardOverviewAggregates(
   const query = `
 SELECT
     countMerge(log_count)             AS total_events,
-    countIfMerge(error_count)         AS error_count,
-    countIfMerge(warn_count)          AS warn_count,
-    countIfMerge(new_template_count)  AS new_template_count
+    countMerge(error_count)         AS error_count,
+    countMerge(warn_count)          AS warn_count,
+    countMerge(new_template_count)  AS new_template_count
 FROM logweave.service_stats
 WHERE tenant_id = {tenant_id:String}
   ${startBound}

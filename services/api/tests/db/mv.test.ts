@@ -132,7 +132,7 @@ describe('materialized views', () => {
     assert.ok(Math.abs(first.avg_dur - 100) < 0.01, `Expected avg ≈ 100, got ${first.avg_dur}`)
   })
 
-  it('countIfMerge correctly counts ERROR rows in template_stats', async () => {
+  it('countMerge correctly counts ERROR rows in template_stats', async () => {
     const tenant = testTenantId('mv-errors')
 
     await batchInsert(db, [
@@ -144,7 +144,7 @@ describe('materialized views', () => {
     await client.command({ query: 'OPTIMIZE TABLE logweave.template_stats FINAL' })
 
     const result = await client.query({
-      query: `SELECT countIfMerge(error_count) AS errs
+      query: `SELECT countMerge(error_count) AS errs
               FROM logweave.template_stats
               WHERE tenant_id = {tenant_id:String}
               GROUP BY tenant_id`,
@@ -170,9 +170,9 @@ describe('materialized views', () => {
     const result = await client.query({
       query: `SELECT
                 countMerge(log_count)            AS total,
-                countIfMerge(error_count)         AS errs,
-                countIfMerge(warn_count)           AS warns,
-                countIfMerge(new_template_count)   AS new_tmpls
+                countMerge(error_count)         AS errs,
+                countMerge(warn_count)           AS warns,
+                countMerge(new_template_count)   AS new_tmpls
               FROM logweave.service_stats
               WHERE tenant_id = {tenant_id:String}
               GROUP BY tenant_id`,

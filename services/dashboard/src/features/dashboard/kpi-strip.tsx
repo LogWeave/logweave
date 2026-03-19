@@ -27,6 +27,7 @@ export function KpiStrip({ className }: { className?: string }) {
         value={overview?.totalEvents ?? 0}
         icon={Activity}
         trend={trendPercent(overview?.totalEvents ?? 0, prev?.totalEvents)}
+        trendPolarity="positive"
         loading={isLoading}
       />
       <KpiCard
@@ -35,6 +36,7 @@ export function KpiStrip({ className }: { className?: string }) {
         icon={Layers}
         tooltip={TOOLTIPS.totalTemplates}
         trend={trendPercent(overview?.totalTemplates ?? 0, prev?.totalTemplates)}
+        trendPolarity="neutral"
         loading={isLoading}
       />
       <KpiCard
@@ -43,6 +45,7 @@ export function KpiStrip({ className }: { className?: string }) {
         icon={Sparkles}
         tooltip={TOOLTIPS.newToday}
         trend={trendPercent(overview?.newTemplatesToday ?? 0, prev?.newTemplatesToday)}
+        trendPolarity="neutral"
         variant={
           overview?.newTemplatesToday && overview.newTemplatesToday > 0 ? 'warning' : 'default'
         }

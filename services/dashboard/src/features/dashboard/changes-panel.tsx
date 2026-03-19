@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { useChanges } from '../../api/queries'
 import type { ChangeEvent } from '../../api/types'
 import { Badge } from '../../components/ui/badge'
@@ -14,7 +15,7 @@ const BADGE_TOOLTIPS = {
   resolved: TOOLTIPS.resolvedEvent,
 }
 
-function ChangeEventRow({
+const ChangeEventRow = memo(function ChangeEventRow({
   event,
   onSelect,
 }: {
@@ -56,7 +57,7 @@ function ChangeEventRow({
       </div>
     </button>
   )
-}
+})
 
 export function ChangesPanel({ className }: { className?: string }) {
   const { data: response, isLoading } = useChanges()

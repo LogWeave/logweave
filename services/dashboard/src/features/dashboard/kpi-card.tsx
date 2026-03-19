@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import { memo } from 'react'
 import { Card } from '../../components/ui/card'
 import { Skeleton } from '../../components/ui/skeleton'
 import { InfoTooltip } from '../../components/ui/tooltip'
@@ -11,18 +12,21 @@ interface KpiCardProps {
   tooltip?: string
   trend?: number
   trendSuffix?: string
+  /** Controls trend arrow color semantics. 'negative' = up is bad (default). 'positive' = up is good. 'neutral' = always muted. */
+  trendPolarity?: 'negative' | 'positive' | 'neutral'
   variant?: 'default' | 'warning' | 'danger'
   loading?: boolean
   className?: string
 }
 
-export function KpiCard({
+export const KpiCard = memo(function KpiCard({
   label,
   value,
   icon: Icon,
   tooltip,
   trend,
   trendSuffix = '%',
+  trendPolarity = 'negative',
   variant = 'default',
   loading,
   className,
@@ -66,9 +70,12 @@ export function KpiCard({
               <span
                 className={cn(
                   'inline-flex items-center gap-0.5 text-xs font-medium',
-                  trend > 0 && 'text-danger',
-                  trend < 0 && 'text-success',
                   trend === 0 && 'text-text-muted',
+                  trend !== 0 && trendPolarity === 'neutral' && 'text-text-secondary',
+                  trend > 0 && trendPolarity === 'negative' && 'text-danger',
+                  trend < 0 && trendPolarity === 'negative' && 'text-success',
+                  trend > 0 && trendPolarity === 'positive' && 'text-success',
+                  trend < 0 && trendPolarity === 'positive' && 'text-danger',
                 )}
               >
                 {trend > 0 ? '\u2191' : trend < 0 ? '\u2193' : '\u2192'}
@@ -91,4 +98,4 @@ export function KpiCard({
       </div>
     </Card>
   )
-}
+})
