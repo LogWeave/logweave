@@ -27,6 +27,10 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+*.tsbuildinfo
+
+# Screenshots (from browser automation)
+screenshots/
 
 # Docker
 docker-compose.override.yml
