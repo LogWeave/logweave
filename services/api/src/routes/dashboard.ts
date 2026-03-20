@@ -19,6 +19,7 @@ import {
   queryTemplateSearch,
   queryTemplateSparklines,
   queryTemplateStatusCodes,
+  queryTemplatesAcrossServices,
 } from '../db/dashboard-queries.js'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
@@ -45,9 +46,14 @@ import {
   type SparklineQuery,
   servicesQuerySchema,
   sparklineQuerySchema,
+  type CompositeTimeQuery,
+  type OverviewCompositeData,
+  type ServiceHealthData,
+  type TemplateDetailData,
   type TemplateRow,
   type TemplateSearchQuery,
   type TemplatesQuery,
+  compositeTimeSchema,
   templateSearchSchema,
   templateStatusCodesQuerySchema,
   templatesQuerySchema,
@@ -520,6 +526,197 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       }))
 
       respond(res, data, { hours: params.hours, limit: params.limit, count: data.length })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // Composite endpoints — for MCP / external API consumers
+  // ---------------------------------------------------------------------------
+
+  // 11. GET /templates/:id/detail
+  router.get('/templates/:id/detail', validateQuery(compositeTimeSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<CompositeTimeQuery>(req)
+      const templateId = req.params.id as string
+      const levels = params.level as string[] | undefined
+
+      const [templateRows, sparklineRows, statusCodeRows] = await Promise.all([
+        queryTemplatesAcrossServices(deps.db, tenantId, {
+          hours: params.hours,
+          level: levels,
+          limit: 1000,
+        }),
+        queryTemplateSparklines(deps.db, tenantId, {
+          hours: params.hours,
+          templateIds: [templateId],
+          level: levels,
+        }),
+        queryTemplateStatusCodes(deps.db, tenantId, {
+          hours: params.hours,
+          templateId,
+        }),
+      ])
+
+      const rawTemplates = toRawRows(templateRows)
+      const match = rawTemplates.find((r) => r.template_id === templateId)
+
+      if (!match) {
+        res.status(HttpStatus.NOT_FOUND).json({
+          error: { code: 'NOT_FOUND', message: `Template ${templateId} not found in the last ${params.hours} hours` },
+        })
+        return
+      }
+
+      const data: TemplateDetailData = {
+        templateId: match.template_id as string,
+        templateText: match.template_text as string,
+        servicesAffected: match.services_affected as string[],
+        occurrenceCount: Number(match.occurrence_count),
+        errorCount: Number(match.error_count),
+        avgDurationMs: Number(match.avg_duration_ms),
+        maxAnomalyScore: Number(match.max_anomaly_score),
+        firstSeen: match.first_seen as string,
+        lastSeen: match.last_seen as string,
+        sparkline: toRawRows(sparklineRows).map((r) => ({
+          intervalStart: r.interval_start as string,
+          count: Number(r.count),
+        })),
+        statusCodes: toRawRows(statusCodeRows).map((r) => ({
+          statusCode: Number(r.status_code),
+          count: Number(r.count),
+        })),
+      }
+
+      respond(res, data, { hours: params.hours, count: 1 })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // 12. GET /services/:name/health
+  router.get('/services/:name/health', validateQuery(compositeTimeSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<CompositeTimeQuery>(req)
+      const serviceName = req.params.name as string
+      const levels = params.level as string[] | undefined
+
+      const [serviceRows, templateRows, volumeRows] = await Promise.all([
+        queryDashboardServices(deps.db, tenantId, {
+          hours: params.hours,
+          limit: 100,
+          level: levels,
+        }),
+        queryTemplatesAcrossServices(deps.db, tenantId, {
+          hours: params.hours,
+          service: serviceName,
+          level: levels ? [...levels, 'ERROR'] : ['ERROR'],
+          limit: 5,
+        }),
+        queryDashboardVolume(deps.db, tenantId, {
+          hours: params.hours,
+          service: serviceName,
+          level: levels,
+        }),
+      ])
+
+      const rawServices = toRawRows(serviceRows)
+      const match = rawServices.find((r) => r.service === serviceName)
+
+      if (!match) {
+        res.status(HttpStatus.NOT_FOUND).json({
+          error: { code: 'NOT_FOUND', message: `Service ${serviceName} not found in the last ${params.hours} hours` },
+        })
+        return
+      }
+
+      const logCount = Number(match.log_count)
+      const errorCount = Number(match.error_count)
+      const warnCount = Number(match.warn_count)
+
+      const data: ServiceHealthData = {
+        service: serviceName,
+        logCount,
+        errorCount,
+        warnCount,
+        errorRate: logCount > 0 ? errorCount / logCount : 0,
+        warnRate: logCount > 0 ? warnCount / logCount : 0,
+        topErrorPatterns: toRawRows(templateRows).map((r) => ({
+          templateId: r.template_id as string,
+          templateText: r.template_text as string,
+          servicesAffected: r.services_affected as string[],
+          occurrenceCount: Number(r.occurrence_count),
+          errorCount: Number(r.error_count),
+          avgDurationMs: Number(r.avg_duration_ms),
+          maxAnomalyScore: Number(r.max_anomaly_score),
+          firstSeen: r.first_seen as string,
+          lastSeen: r.last_seen as string,
+        })),
+        volumeTrend: toRawRows(volumeRows).map((r) => ({
+          intervalStart: r.interval_start as string,
+          logCount: Number(r.log_count),
+          errorCount: Number(r.error_count),
+        })),
+      }
+
+      respond(res, data, { hours: params.hours, count: 1 })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // 13. GET /overview
+  router.get('/overview', validateQuery(compositeTimeSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<CompositeTimeQuery>(req)
+      const levels = params.level as string[] | undefined
+
+      const [aggregates, counts, topPatterns] = await Promise.all([
+        queryDashboardOverviewAggregates(deps.db, tenantId, {
+          hours: params.hours,
+          level: levels,
+        }),
+        queryDashboardOverviewCounts(deps.db, tenantId, {
+          hours: params.hours,
+          level: levels,
+        }),
+        queryTemplatesAcrossServices(deps.db, tenantId, {
+          hours: params.hours,
+          level: levels ? [...levels, 'ERROR'] : ['ERROR'],
+          limit: 5,
+        }),
+      ])
+
+      const rawAgg = toRawRows([aggregates])[0] ?? {}
+      const rawCounts = toRawRows([counts])[0] ?? {}
+      const totalEvents = Number(rawAgg.total_events ?? 0)
+      const errorCount = Number(rawAgg.error_count ?? 0)
+
+      const data: OverviewCompositeData = {
+        totalEvents,
+        totalTemplates: Number(rawCounts.unique_templates ?? 0),
+        newTemplatesToday: Number(rawAgg.new_template_count ?? 0),
+        unclusteredCount: Number(rawCounts.unclustered_count ?? 0),
+        errorRate: totalEvents > 0 ? errorCount / totalEvents : 0,
+        serviceCount: Number(rawCounts.service_count ?? 0),
+        topErrorPatterns: toRawRows(topPatterns).map((r) => ({
+          templateId: r.template_id as string,
+          templateText: r.template_text as string,
+          servicesAffected: r.services_affected as string[],
+          occurrenceCount: Number(r.occurrence_count),
+          errorCount: Number(r.error_count),
+          avgDurationMs: Number(r.avg_duration_ms),
+          maxAnomalyScore: Number(r.max_anomaly_score),
+          firstSeen: r.first_seen as string,
+          lastSeen: r.last_seen as string,
+        })),
+      }
+
+      respond(res, data, { hours: params.hours, count: 1 })
     } catch (err) {
       next(err)
     }

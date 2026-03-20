@@ -116,6 +116,14 @@ export const templateSearchSchema = paginatedSchema.extend({
 
 export type TemplateSearchQuery = z.infer<typeof templateSearchSchema>
 
+// Composite endpoint schemas — simpler than dashboard schemas, just hours + level
+export const compositeTimeSchema = z.object({
+  hours: z.coerce.number().int().min(1).max(720).default(24),
+  level: levelFilterField,
+})
+
+export type CompositeTimeQuery = z.infer<typeof compositeTimeSchema>
+
 // ---------------------------------------------------------------------------
 // Inferred query types
 // ---------------------------------------------------------------------------
@@ -225,4 +233,55 @@ export interface LevelCount {
 export interface StatusCodeCount {
   statusCode: number
   count: number
+}
+
+// ---------------------------------------------------------------------------
+// Composite endpoint response types
+// ---------------------------------------------------------------------------
+
+export interface CrossServiceTemplate {
+  templateId: string
+  templateText: string
+  servicesAffected: string[]
+  occurrenceCount: number
+  errorCount: number
+  avgDurationMs: number
+  maxAnomalyScore: number
+  firstSeen: string
+  lastSeen: string
+}
+
+export interface TemplateDetailData {
+  templateId: string
+  templateText: string
+  servicesAffected: string[]
+  occurrenceCount: number
+  errorCount: number
+  avgDurationMs: number
+  maxAnomalyScore: number
+  firstSeen: string
+  lastSeen: string
+  sparkline: Array<{ intervalStart: string; count: number }>
+  statusCodes: StatusCodeCount[]
+}
+
+export interface ServiceHealthData {
+  service: string
+  logCount: number
+  errorCount: number
+  warnCount: number
+  errorRate: number
+  warnRate: number
+  topErrorPatterns: CrossServiceTemplate[]
+  volumeTrend: Array<{ intervalStart: string; logCount: number; errorCount: number }>
+}
+
+export interface OverviewCompositeData {
+  totalEvents: number
+  totalTemplates: number
+  newTemplatesToday: number
+  unclusteredCount: number
+  errorRate: number
+  serviceCount: number
+  topErrorPatterns: CrossServiceTemplate[]
 }
