@@ -109,6 +109,13 @@ export const templateStatusCodesQuerySchema = timeRangeSchema.extend({
   template_id: z.string().min(1),
 })
 
+export const templateSearchSchema = paginatedSchema.extend({
+  q: z.string().min(3, 'Search query must be at least 3 characters'),
+  level: levelFilterField,
+})
+
+export type TemplateSearchQuery = z.infer<typeof templateSearchSchema>
+
 // ---------------------------------------------------------------------------
 // Inferred query types
 // ---------------------------------------------------------------------------

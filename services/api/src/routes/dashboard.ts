@@ -16,6 +16,7 @@ import {
   queryDashboardVolume,
   queryLevelDistribution,
   queryNewTodayIds,
+  queryTemplateSearch,
   queryTemplateSparklines,
   queryTemplateStatusCodes,
 } from '../db/dashboard-queries.js'
@@ -45,7 +46,9 @@ import {
   servicesQuerySchema,
   sparklineQuerySchema,
   type TemplateRow,
+  type TemplateSearchQuery,
   type TemplatesQuery,
+  templateSearchSchema,
   templateStatusCodesQuerySchema,
   templatesQuerySchema,
   type VolumeData,
@@ -490,6 +493,37 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       }
     },
   )
+
+  // 10. GET /templates/search
+  router.get('/templates/search', validateQuery(templateSearchSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<TemplateSearchQuery>(req)
+
+      const rows = await queryTemplateSearch(deps.db, tenantId, {
+        q: params.q,
+        hours: params.hours,
+        limit: params.limit,
+        level: params.level,
+      })
+
+      const data = toRawRows(rows).map((r) => ({
+        templateId: r.template_id as string,
+        templateText: r.template_text as string,
+        servicesAffected: r.services_affected as string[],
+        occurrenceCount: Number(r.occurrence_count),
+        errorCount: Number(r.error_count),
+        avgDurationMs: Number(r.avg_duration_ms),
+        maxAnomalyScore: Number(r.max_anomaly_score),
+        firstSeen: r.first_seen as string,
+        lastSeen: r.last_seen as string,
+      }))
+
+      respond(res, data, { hours: params.hours, limit: params.limit, count: data.length })
+    } catch (err) {
+      next(err)
+    }
+  })
 
   return router
 }

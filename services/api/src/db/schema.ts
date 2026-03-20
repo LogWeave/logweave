@@ -157,6 +157,10 @@ SELECT
     avgState(anomaly_score)           AS avg_anomaly_score
 FROM logweave.log_metadata
 GROUP BY tenant_id, service, level, interval_start`,
+
+  // ngram skip index on template_registry for text search (co-owned with clusterer)
+  `ALTER TABLE logweave.template_registry ADD INDEX IF NOT EXISTS idx_template_text_ngram
+   template_text TYPE ngrambf_v1(3, 512, 2, 0) GRANULARITY 1`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS
