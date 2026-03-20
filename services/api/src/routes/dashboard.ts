@@ -6,6 +6,7 @@ import {
   queryResolvedTemplates,
   queryTemplateSpikes,
 } from '../db/dashboard-changes-queries.js'
+import { queryDeployById } from '../db/deploy-queries.js'
 import {
   queryClusteringHealthSnapshot,
   queryClusteringHealthTrend,
@@ -424,15 +425,31 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       const tenantId = getTenantId(res)
       const params = getQuery<ChangesQuery>(req)
 
+      // Resolve deploy_id to since timestamp if provided
+      let since = params.since
+      if (params.deploy_id) {
+        const deploy = await queryDeployById(deps.db, tenantId, params.deploy_id)
+        if (!deploy) {
+          res.status(HttpStatus.NOT_FOUND).json({
+            error: { code: 'NOT_FOUND', message: `Deploy ${params.deploy_id} not found` },
+          })
+          return
+        }
+        since = deploy.timestamp
+      }
+
+      // Build query options with resolved since
+      const queryOpts = since ? { ...params, since } : params
+
       // When since is provided, compute equivalent hours for meta
-      const hours = params.since
-        ? Math.ceil((Date.now() - new Date(params.since).getTime()) / 3_600_000)
+      const hours = since
+        ? Math.ceil((Date.now() - new Date(since).getTime()) / 3_600_000)
         : params.hours
 
       const [newRows, spikeRows, resolvedRows] = await Promise.all([
-        queryNewTemplates(deps.db, tenantId, params),
-        queryTemplateSpikes(deps.db, tenantId, params),
-        queryResolvedTemplates(deps.db, tenantId, params),
+        queryNewTemplates(deps.db, tenantId, queryOpts),
+        queryTemplateSpikes(deps.db, tenantId, queryOpts),
+        queryResolvedTemplates(deps.db, tenantId, queryOpts),
       ])
 
       const events: ChangeEvent[] = [
@@ -448,7 +465,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         hours,
         limit: params.limit,
         count: events.length,
-        ...(params.since ? { since: params.since } : {}),
+        ...(since ? { since } : {}),
       })
     } catch (err) {
       next(err)

@@ -95,6 +95,7 @@ export const changesQuerySchema = z
       .refine((s) => !s || Date.now() - new Date(s).getTime() >= 600_000, {
         message: 'since must be at least 10 minutes ago',
       }),
+    deploy_id: z.string().min(1).optional(),
     service: z.string().optional(),
     threshold: z.coerce.number().min(1).max(100).default(3),
     limit: z.coerce.number().int().min(1).max(100).default(20),

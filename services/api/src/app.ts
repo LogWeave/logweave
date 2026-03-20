@@ -17,6 +17,7 @@ import { requestIdMiddleware } from './middleware/request-id.js'
 import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
 import { dashboardRoutes } from './routes/dashboard.js'
+import { deployRoutes } from './routes/deploys.js'
 import { healthRoutes } from './routes/health.js'
 import { ingestRoutes } from './routes/ingest.js'
 import { settingsRoutes } from './routes/settings.js'
@@ -128,6 +129,12 @@ export function createApp(deps: AppDependencies): express.Express {
   v1.use(
     settingsRoutes({
       settingsStore: deps.settingsStore,
+      logger: deps.logger,
+    }),
+  )
+  v1.use(
+    deployRoutes({
+      db: deps.db,
       logger: deps.logger,
     }),
   )
