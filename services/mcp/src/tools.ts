@@ -58,6 +58,7 @@ export async function logweaveErrorPatterns(
     service: args.service,
     limit: args.limit,
     sort: 'occurrence',
+    level: 'ERROR',
   })) as ApiResponse
 
   const rows = (res.data as Array<Record<string, unknown>>) ?? []
@@ -157,14 +158,24 @@ export async function logweaveTemplateDetail(
   }
 
   if (sparkline.length > 0) {
+    const counts = sparkline.map((s) => s.count as number)
+    const total = counts.reduce((a, b) => a + b, 0)
+    const max = Math.max(...counts)
+    const min = Math.min(...counts)
+    const avg = total / counts.length
+
+    // Determine trend direction from first vs last third
+    const third = Math.max(1, Math.floor(counts.length / 3))
+    const firstThirdAvg = counts.slice(0, third).reduce((a, b) => a + b, 0) / third
+    const lastThirdAvg = counts.slice(-third).reduce((a, b) => a + b, 0) / third
+    const trendDir = lastThirdAvg > firstThirdAvg * 1.2 ? 'trending UP' :
+      lastThirdAvg < firstThirdAvg * 0.8 ? 'trending DOWN' : 'stable'
+
     text += `\n### Occurrence Trend (${sparkline.length} intervals)\n`
-    const recent = sparkline.slice(-5)
-    for (const s of recent) {
-      text += `- ${s.intervalStart}: ${s.count}\n`
-    }
-    if (sparkline.length > 5) {
-      text += `  (showing last 5 of ${sparkline.length} intervals)\n`
-    }
+    text += `- Direction: ${trendDir}\n`
+    text += `- Range: ${min}–${max} per interval (avg ${avg.toFixed(1)})\n`
+    text += `- Latest: ${sparkline[sparkline.length - 1].intervalStart}: ${sparkline[sparkline.length - 1].count}\n`
+    text += `- Peak: ${sparkline[counts.indexOf(max)].intervalStart}: ${max}\n`
   }
 
   text += formatMeta(res.meta)
@@ -196,14 +207,25 @@ export async function logweaveServiceHealth(
   }
 
   if (trend.length > 0) {
+    const logCounts = trend.map((t) => t.logCount as number)
+    const errCounts = trend.map((t) => t.errorCount as number)
+    const totalLogs = logCounts.reduce((a, b) => a + b, 0)
+    const totalErrors = errCounts.reduce((a, b) => a + b, 0)
+    const maxLogs = Math.max(...logCounts)
+    const maxErrors = Math.max(...errCounts)
+
+    // Trend direction from first vs last third
+    const third = Math.max(1, Math.floor(logCounts.length / 3))
+    const firstThirdAvg = logCounts.slice(0, third).reduce((a, b) => a + b, 0) / third
+    const lastThirdAvg = logCounts.slice(-third).reduce((a, b) => a + b, 0) / third
+    const trendDir = lastThirdAvg > firstThirdAvg * 1.2 ? 'volume trending UP' :
+      lastThirdAvg < firstThirdAvg * 0.8 ? 'volume trending DOWN' : 'volume stable'
+
     text += `\n### Volume Trend (${trend.length} intervals)\n`
-    const recent = trend.slice(-5)
-    for (const t of recent) {
-      text += `- ${t.intervalStart}: ${t.logCount} logs, ${t.errorCount} errors\n`
-    }
-    if (trend.length > 5) {
-      text += `  (showing last 5 of ${trend.length} intervals)\n`
-    }
+    text += `- Direction: ${trendDir}\n`
+    text += `- Total: ${totalLogs} logs, ${totalErrors} errors\n`
+    text += `- Peak volume: ${maxLogs} logs/interval, peak errors: ${maxErrors}/interval\n`
+    text += `- Latest: ${trend[trend.length - 1].intervalStart}: ${trend[trend.length - 1].logCount} logs, ${trend[trend.length - 1].errorCount} errors\n`
   }
 
   text += formatMeta(res.meta)
