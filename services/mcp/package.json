@@ -1,0 +1,26 @@
+{
+  "name": "@logweave/mcp",
+  "version": "0.1.0",
+  "description": "LogWeave MCP server — log intelligence tools for AI assistants",
+  "type": "module",
+  "bin": {
+    "logweave-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "node --import tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.19",
+    "typescript": "catalog:"
+  }
+}
