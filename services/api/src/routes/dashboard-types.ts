@@ -13,6 +13,9 @@ export interface ApiResponse<T> {
     offset?: number
     count: number
     fetchedAt: string
+    timeRange?: string
+    dataRetention?: string
+    message?: string
   }
 }
 
@@ -243,6 +246,8 @@ export interface StatusCodeCount {
 export interface CrossServiceTemplate {
   templateId: string
   templateText: string
+  truncated?: boolean
+  trend?: string
   servicesAffected: string[]
   occurrenceCount: number
   errorCount: number
@@ -255,6 +260,7 @@ export interface CrossServiceTemplate {
 export interface TemplateDetailData {
   templateId: string
   templateText: string
+  truncated?: boolean
   servicesAffected: string[]
   occurrenceCount: number
   errorCount: number
