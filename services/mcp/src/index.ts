@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { LogWeaveClient } from './client.js'
+import { type DevToolsConfig, devDataSummary, devHealth, devQuery } from './dev-tools.js'
 import {
   logweaveChanges,
   logweaveDeploys,
@@ -216,6 +217,63 @@ server.registerTool(
     logweaveDeploys(client, args as { service?: string; limit?: number }),
   ),
 )
+
+// ---------------------------------------------------------------------------
+// Dev-only tools — registered when LOGWEAVE_DEV=true
+// ---------------------------------------------------------------------------
+
+const devMode = process.env.LOGWEAVE_DEV === 'true'
+
+if (devMode) {
+  const devConfig: DevToolsConfig = {
+    clickhouseUrl: process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://localhost:8123',
+    clustererUrl: process.env.LOGWEAVE_CLUSTERER_URL ?? 'http://localhost:8000',
+    apiUrl: apiUrl,
+  }
+
+  server.registerTool(
+    'dev_health',
+    {
+      title: '[Dev] Service Health Check',
+      description:
+        'Check if all LogWeave services are running (API, ClickHouse, Clusterer). ' +
+        'Dev-only tool — not available in production.',
+      inputSchema: {},
+      annotations: READ_ONLY,
+    },
+    toolHandler(() => devHealth(devConfig)),
+  )
+
+  server.registerTool(
+    'dev_query',
+    {
+      title: '[Dev] ClickHouse Query',
+      description:
+        'Run a read-only SQL query against ClickHouse. Only SELECT, SHOW, DESCRIBE, EXPLAIN, and WITH are allowed. ' +
+        'Results formatted as a markdown table (max 50 rows). Dev-only tool.',
+      inputSchema: {
+        sql: z.string().describe('SQL query to execute (SELECT only)'),
+      },
+      annotations: READ_ONLY,
+    },
+    toolHandler((args) => devQuery(devConfig, args as { sql: string })),
+  )
+
+  server.registerTool(
+    'dev_data_summary',
+    {
+      title: '[Dev] Data Summary',
+      description:
+        'Show row counts, time ranges, tenant counts, and log level distribution across all LogWeave tables. ' +
+        'Use this to understand what data exists. Dev-only tool.',
+      inputSchema: {},
+      annotations: READ_ONLY,
+    },
+    toolHandler(() => devDataSummary(devConfig)),
+  )
+
+  process.stderr.write('Dev mode enabled — 3 diagnostic tools registered\n')
+}
 
 // ---------------------------------------------------------------------------
 // Startup — connect transport first, health check lazily
