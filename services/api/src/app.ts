@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import express from 'express'
+import express, { Router } from 'express'
 import helmet from 'helmet'
 import type pino from 'pino'
 import { type Options as PinoHttpOptions, pinoHttp } from 'pino-http'
@@ -10,7 +10,9 @@ import type { DbClient } from './db/client.js'
 import { notFound } from './errors.js'
 import { requestContext } from './logger.js'
 import { createAuthMiddleware } from './middleware/auth.js'
+import { createConcurrentQueryGuard } from './middleware/concurrent-query-guard.js'
 import { createErrorHandler } from './middleware/error-handler.js'
+import { createRateLimiter } from './middleware/rate-limit.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
 import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
@@ -86,12 +88,24 @@ export function createApp(deps: AppDependencies): express.Express {
     }),
   )
 
-  // Routes — API (authenticated)
+  // Routes — API (authenticated, rate-limited)
   const auth = createAuthMiddleware(deps.config.apiKeys)
   deps.config.apiKeys.clear() // Plaintext keys no longer needed — hashed copies live in auth closure
-  app.use(
-    '/v1',
-    auth,
+
+  const rateLimiter = createRateLimiter({
+    keyRpm: deps.config.rateLimitRpm,
+    tenantRpm: deps.config.rateLimitTenantRpm,
+    ingestKeyRpm: deps.config.rateLimitIngestRpm,
+  })
+  const queryGuard = createConcurrentQueryGuard({
+    maxConcurrent: deps.config.maxConcurrentQueries,
+  })
+
+  const v1 = Router()
+  v1.use(auth)
+  v1.use(rateLimiter)
+  v1.use(queryGuard)
+  v1.use(
     ingestRoutes({
       clusterClient: deps.clusterClient,
       db: deps.db,
@@ -99,30 +113,25 @@ export function createApp(deps: AppDependencies): express.Express {
       anomalyScorer: deps.anomalyScorer,
     }),
   )
-  app.use(
-    '/v1',
-    auth,
+  v1.use(
     dashboardRoutes({
       db: deps.db,
       logger: deps.logger,
     }),
   )
-  app.use(
-    '/v1',
-    auth,
+  v1.use(
     watchRoutes({
       watchStore: deps.watchStore,
       logger: deps.logger,
     }),
   )
-  app.use(
-    '/v1',
-    auth,
+  v1.use(
     settingsRoutes({
       settingsStore: deps.settingsStore,
       logger: deps.logger,
     }),
   )
+  app.use('/v1', v1)
 
   // Dashboard SPA — serve static files if the dist directory exists
   const dashboardDir =

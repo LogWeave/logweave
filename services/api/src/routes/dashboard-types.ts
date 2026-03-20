@@ -8,6 +8,7 @@ export interface ApiResponse<T> {
   data: T
   meta: {
     hours: number
+    since?: string
     limit?: number
     offset?: number
     count: number
@@ -20,7 +21,7 @@ export interface ApiResponse<T> {
 // ---------------------------------------------------------------------------
 
 export const timeRangeSchema = z.object({
-  hours: z.coerce.number().int().min(1).max(168).default(24),
+  hours: z.coerce.number().int().min(1).max(720).default(24),
 })
 
 export const paginatedSchema = timeRangeSchema.extend({
@@ -53,7 +54,7 @@ export const servicesQuerySchema = paginatedSchema.extend({
 
 export const volumeQuerySchema = timeRangeSchema.extend({
   service: z.string().optional(),
-  offset: z.coerce.number().int().min(0).max(168).default(0),
+  offset: z.coerce.number().int().min(0).max(720).default(0),
   level: levelFilterField,
 })
 
@@ -78,12 +79,27 @@ export const clusteringHealthQuerySchema = timeRangeSchema.extend({
   level: levelFilterField,
 })
 
-export const changesQuerySchema = timeRangeSchema.extend({
-  service: z.string().optional(),
-  threshold: z.coerce.number().min(1).max(100).default(3),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  level: levelFilterField,
-})
+export const changesQuerySchema = z
+  .object({
+    hours: z.coerce.number().int().min(1).max(720).default(24),
+    since: z
+      .string()
+      .datetime({ offset: true })
+      .optional()
+      .refine((s) => !s || new Date(s).getTime() <= Date.now(), {
+        message: 'since must not be in the future',
+      })
+      .refine((s) => !s || Date.now() - new Date(s).getTime() <= 720 * 3_600_000, {
+        message: 'since must be within the last 30 days',
+      })
+      .refine((s) => !s || Date.now() - new Date(s).getTime() >= 600_000, {
+        message: 'since must be at least 10 minutes ago',
+      }),
+    service: z.string().optional(),
+    threshold: z.coerce.number().min(1).max(100).default(3),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    level: levelFilterField,
+  })
 
 export const levelsQuerySchema = timeRangeSchema.extend({
   service: z.string().optional(),
@@ -92,6 +108,21 @@ export const levelsQuerySchema = timeRangeSchema.extend({
 export const templateStatusCodesQuerySchema = timeRangeSchema.extend({
   template_id: z.string().min(1),
 })
+
+export const templateSearchSchema = paginatedSchema.extend({
+  q: z.string().min(3, 'Search query must be at least 3 characters'),
+  level: levelFilterField,
+})
+
+export type TemplateSearchQuery = z.infer<typeof templateSearchSchema>
+
+// Composite endpoint schemas — simpler than dashboard schemas, just hours + level
+export const compositeTimeSchema = z.object({
+  hours: z.coerce.number().int().min(1).max(720).default(24),
+  level: levelFilterField,
+})
+
+export type CompositeTimeQuery = z.infer<typeof compositeTimeSchema>
 
 // ---------------------------------------------------------------------------
 // Inferred query types
@@ -202,4 +233,55 @@ export interface LevelCount {
 export interface StatusCodeCount {
   statusCode: number
   count: number
+}
+
+// ---------------------------------------------------------------------------
+// Composite endpoint response types
+// ---------------------------------------------------------------------------
+
+export interface CrossServiceTemplate {
+  templateId: string
+  templateText: string
+  servicesAffected: string[]
+  occurrenceCount: number
+  errorCount: number
+  avgDurationMs: number
+  maxAnomalyScore: number
+  firstSeen: string
+  lastSeen: string
+}
+
+export interface TemplateDetailData {
+  templateId: string
+  templateText: string
+  servicesAffected: string[]
+  occurrenceCount: number
+  errorCount: number
+  avgDurationMs: number
+  maxAnomalyScore: number
+  firstSeen: string
+  lastSeen: string
+  sparkline: Array<{ intervalStart: string; count: number }>
+  statusCodes: StatusCodeCount[]
+}
+
+export interface ServiceHealthData {
+  service: string
+  logCount: number
+  errorCount: number
+  warnCount: number
+  errorRate: number
+  warnRate: number
+  topErrorPatterns: CrossServiceTemplate[]
+  volumeTrend: Array<{ intervalStart: string; logCount: number; errorCount: number }>
+}
+
+export interface OverviewCompositeData {
+  totalEvents: number
+  totalTemplates: number
+  newTemplatesToday: number
+  unclusteredCount: number
+  errorRate: number
+  serviceCount: number
+  topErrorPatterns: CrossServiceTemplate[]
 }

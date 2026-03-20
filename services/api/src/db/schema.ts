@@ -157,6 +157,10 @@ SELECT
     avgState(anomaly_score)           AS avg_anomaly_score
 FROM logweave.log_metadata
 GROUP BY tenant_id, service, level, interval_start`,
+
+  // ngram skip index on template_registry for text search (co-owned with clusterer)
+  `ALTER TABLE logweave.template_registry ADD INDEX IF NOT EXISTS idx_template_text_ngram
+   template_text TYPE ngrambf_v1(3, 512, 2, 0) GRANULARITY 1`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS
@@ -185,13 +189,9 @@ export async function initSchema(client: ClickHouseClient, logger: pino.Logger):
         await client.command({ query: migration })
       }
 
-      // Resource guardrails are best-effort — ALTER USER may require admin privileges
-      try {
-        await client.command({ query: RESOURCE_GUARDRAILS })
-        logger.info('ClickHouse resource guardrails applied')
-      } catch (guardrailErr) {
-        logger.warn({ err: guardrailErr }, 'Failed to apply resource guardrails (non-fatal)')
-      }
+      // Resource guardrails — fatal if they can't be applied (required for MCP/API safety)
+      await client.command({ query: RESOURCE_GUARDRAILS })
+      logger.info('ClickHouse resource guardrails applied')
 
       logger.info('ClickHouse schema initialized successfully')
       return

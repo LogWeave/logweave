@@ -35,6 +35,10 @@ export function serviceUnavailable(message: string): AppError {
   return new AppError(HttpStatus.SERVICE_UNAVAILABLE, 'SERVICE_UNAVAILABLE', message)
 }
 
+export function rateLimited(message: string): AppError {
+  return new AppError(HttpStatus.TOO_MANY_REQUESTS, 'RATE_LIMITED', message)
+}
+
 export interface ErrorResponseBody {
   error: {
     code: string

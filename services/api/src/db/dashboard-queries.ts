@@ -93,7 +93,64 @@ interface LevelDistributionRow {
   count: number
 }
 
+interface CrossServiceTemplateRow {
+  template_id: string
+  template_text: string
+  services_affected: string[]
+  occurrence_count: number
+  error_count: number
+  avg_duration_ms: number
+  max_anomaly_score: number
+  first_seen: string
+  last_seen: string
+}
+
 // -- Query functions --
+
+/**
+ * Aggregates template_stats across time intervals AND services.
+ * Returns top templates with a servicesAffected array per template.
+ * Used by MCP/API consumers that need cross-service blast radius.
+ */
+export async function queryTemplatesAcrossServices(
+  db: DbClient,
+  tenantId: string,
+  options?: DashboardTemplateOptions,
+): Promise<CrossServiceTemplateRow[]> {
+  const limit = clamp(options?.limit ?? DEFAULT_STATS_LIMIT, MAX_STATS_LIMIT)
+  const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
+  const service = options?.service
+  const levels = options?.level
+
+  const serviceFilter = service ? 'AND service = {service:String}' : ''
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
+
+  const query = `
+SELECT
+    template_id,
+    template_text,
+    groupArray(DISTINCT service)      AS services_affected,
+    countMerge(occurrence_count)      AS occurrence_count,
+    countMerge(error_count)         AS error_count,
+    avgMerge(avg_duration_ms)         AS avg_duration_ms,
+    maxMerge(max_anomaly_score)       AS max_anomaly_score,
+    min(interval_start)               AS first_seen,
+    max(interval_start)               AS last_seen
+FROM logweave.template_stats
+WHERE tenant_id = {tenant_id:String}
+  AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
+  ${serviceFilter}
+  ${levelFilter}
+GROUP BY template_id, template_text
+ORDER BY occurrence_count DESC
+LIMIT {limit:UInt32}`
+
+  const params: Record<string, unknown> = { limit, hours }
+  if (service) params.service = service
+  if (levels?.length) params.levels = levels
+
+  return db.query<CrossServiceTemplateRow>(tenantQuery(query, tenantId, params))
+}
 
 /**
  * Aggregates template_stats across time intervals (no interval_start in GROUP BY).
@@ -495,4 +552,59 @@ ORDER BY count DESC`
   return db.query<TemplateStatusCodeRow>(
     tenantQuery(query, tenantId, { hours, template_id: options.templateId }),
   )
+}
+
+/**
+ * Searches template_registry for templates matching a text query, then joins
+ * to template_stats for occurrence counts within the time window.
+ *
+ * Uses SELECT ... FINAL on template_registry (ReplacingMergeTree).
+ * Uses ILIKE for case-insensitive substring matching.
+ * Returns cross-service aggregated results (same shape as queryTemplatesAcrossServices).
+ */
+export async function queryTemplateSearch(
+  db: DbClient,
+  tenantId: string,
+  options: { q: string; hours?: number; limit?: number; level?: string[] },
+): Promise<CrossServiceTemplateRow[]> {
+  const hours = clamp(options.hours ?? DEFAULT_HOURS, MAX_HOURS)
+  const limit = clamp(options.limit ?? DEFAULT_STATS_LIMIT, MAX_STATS_LIMIT)
+  const levels = options.level
+
+  const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
+
+  const query = `
+WITH matching_templates AS (
+    SELECT template_id, template_text
+    FROM logweave.template_registry FINAL
+    WHERE tenant_id = {tenant_id:String}
+      AND template_text ILIKE {search_pattern:String}
+)
+SELECT
+    s.template_id,
+    any(m.template_text)                AS template_text,
+    groupArray(DISTINCT s.service)      AS services_affected,
+    countMerge(s.occurrence_count)      AS occurrence_count,
+    countMerge(s.error_count)         AS error_count,
+    avgMerge(s.avg_duration_ms)         AS avg_duration_ms,
+    maxMerge(s.max_anomaly_score)       AS max_anomaly_score,
+    min(s.interval_start)               AS first_seen,
+    max(s.interval_start)               AS last_seen
+FROM logweave.template_stats s
+INNER JOIN matching_templates m ON s.template_id = m.template_id
+WHERE s.tenant_id = {tenant_id:String}
+  AND s.interval_start > now64(3) - toIntervalHour({hours:UInt32})
+  ${levelFilter}
+GROUP BY s.template_id
+ORDER BY occurrence_count DESC
+LIMIT {limit:UInt32}`
+
+  const params: Record<string, unknown> = {
+    hours,
+    limit,
+    search_pattern: `%${options.q}%`,
+  }
+  if (levels?.length) params.levels = levels
+
+  return db.query<CrossServiceTemplateRow>(tenantQuery(query, tenantId, params))
 }

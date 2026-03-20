@@ -69,7 +69,7 @@ export const DEFAULT_METADATA_LIMIT = 500
 export const DEFAULT_HOURS = 24
 export const MAX_STATS_LIMIT = 1000
 export const MAX_METADATA_LIMIT = 5000
-export const MAX_HOURS = 168
+export const MAX_HOURS = 720
 
 export function clamp(value: number, max: number): number {
   return Math.min(Math.max(1, Math.round(value)), max)

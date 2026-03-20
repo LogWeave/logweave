@@ -11,7 +11,6 @@ metadata and intelligence. See PLAN.md for full V8 architecture (load on demand,
 - **API Server**: Node.js / Express / TypeScript — ingestion, dashboard, query endpoints
 - **Metadata Store**: ClickHouse (single-node, Docker) — ReplacingMergeTree for template registry
 - **Infrastructure**: Docker Compose (3 containers: API, clusterer, ClickHouse)
-- **LLM**: Claude Haiku (classification) / Sonnet (explanations) — swappable via env var
 - **Alerting**: Slack webhooks
 - **SDK**: `@logweave/transport` — Winston logger transport (npm, MIT)
 
@@ -114,7 +113,7 @@ When running multi-agent reviews (postmortems, PR reviews, plan reviews):
 **Branch naming: `LW-<issue-number>`** (e.g., `LW-5`, `LW-12`). For multi-issue work, use the primary issue number.
 **Commit frequently** — after each logical unit of work. Keeps context lean and mistakes easy to undo.
 
-Milestone order: Pre-Build Validation → Week 1a → Week 1b → Week 2 → Week 3 → Week 4 → Week 5
+Milestone order: Pre-Build Validation → Week 1a → Week 1b → Week 2 → Week 3 (LLM-Ready Pivot) → Week 4 → Week 5 → Week 6
 
 ## Architecture Reference
 
@@ -126,7 +125,14 @@ data model, roadmap items, pricing, etc.). For quick reference, the key sections
 - Section 9: Metadata Extraction (pipeline, pre-processing)
 - Section 15: Build Roadmap (milestone details)
 
+## Product Direction
+
+LogWeave is the **log intelligence layer that external AI agents query** — not an AI-powered tool itself.
+Users connect their own LLMs (which already know their codebase) to our API/MCP surface. We provide
+structured runtime intelligence (patterns, trends, anomalies). No built-in LLM features.
+
 ## Current Milestone
 
-Week 2 — Dashboard + Slack. Check `gh issue list -m "Week 2"` for active tasks.
-If no issues exist yet, scope them with `/scope-milestone`.
+Week 3 — LLM-Ready Pivot (#61). Design the API/MCP surface as the primary product.
+Use `/strategist` to develop product strategy, then `/scope-milestone` to break into issues.
+Check `gh issue list -m "Week 3 — LLM-Ready Pivot"` for active tasks.
