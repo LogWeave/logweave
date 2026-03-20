@@ -8,6 +8,17 @@
         "chrome-devtools-mcp@latest"
       ],
       "env": {}
+    },
+    "logweave": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "services/mcp/dist/index.js"
+      ],
+      "env": {
+        "LOGWEAVE_API_URL": "http://localhost:3000",
+        "LOGWEAVE_API_KEY": "dev-key"
+      }
     }
   }
 }
