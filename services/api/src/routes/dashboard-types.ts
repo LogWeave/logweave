@@ -20,7 +20,7 @@ export interface ApiResponse<T> {
 // ---------------------------------------------------------------------------
 
 export const timeRangeSchema = z.object({
-  hours: z.coerce.number().int().min(1).max(168).default(24),
+  hours: z.coerce.number().int().min(1).max(720).default(24),
 })
 
 export const paginatedSchema = timeRangeSchema.extend({
@@ -53,7 +53,7 @@ export const servicesQuerySchema = paginatedSchema.extend({
 
 export const volumeQuerySchema = timeRangeSchema.extend({
   service: z.string().optional(),
-  offset: z.coerce.number().int().min(0).max(168).default(0),
+  offset: z.coerce.number().int().min(0).max(720).default(0),
   level: levelFilterField,
 })
 
