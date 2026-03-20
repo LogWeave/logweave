@@ -72,6 +72,15 @@ export function computeTimeWindow(since: string): TimeWindow {
   }
 }
 
+/**
+ * Convert ISO 8601 timestamp to ClickHouse DateTime64(3) format.
+ * ClickHouse parameterized queries with DateTime64(3) type reject
+ * 'T' separators and 'Z' suffixes.
+ */
+export function toClickHouseDateTime(iso: string): string {
+  return iso.replace('T', ' ').replace('Z', '')
+}
+
 // -- Shared filter builders --
 
 function buildFilters(service?: string, levels?: string[]) {
@@ -145,10 +154,10 @@ LIMIT {limit:UInt32}`
 
     const params: Record<string, unknown> = {
       limit,
-      current_start: tw.currentStart,
-      current_end: tw.currentEnd,
-      previous_start: tw.previousStart,
-      previous_end: tw.previousEnd,
+      current_start: toClickHouseDateTime(tw.currentStart),
+      current_end: toClickHouseDateTime(tw.currentEnd),
+      previous_start: toClickHouseDateTime(tw.previousStart),
+      previous_end: toClickHouseDateTime(tw.previousEnd),
     }
     addFilterParams(params, service, levels)
     return db.query<NewTemplateRow>(tenantQuery(query, tenantId, params))
@@ -239,10 +248,10 @@ LIMIT {limit:UInt32}`
     const params: Record<string, unknown> = {
       limit,
       threshold,
-      current_start: tw.currentStart,
-      current_end: tw.currentEnd,
-      previous_start: tw.previousStart,
-      previous_end: tw.previousEnd,
+      current_start: toClickHouseDateTime(tw.currentStart),
+      current_end: toClickHouseDateTime(tw.currentEnd),
+      previous_start: toClickHouseDateTime(tw.previousStart),
+      previous_end: toClickHouseDateTime(tw.previousEnd),
     }
     addFilterParams(params, service, levels)
     return db.query<TemplateSpikeRow>(tenantQuery(query, tenantId, params))
@@ -346,10 +355,10 @@ LIMIT {limit:UInt32}`
 
     const params: Record<string, unknown> = {
       limit,
-      current_start: tw.currentStart,
-      current_end: tw.currentEnd,
-      previous_start: tw.previousStart,
-      previous_end: tw.previousEnd,
+      current_start: toClickHouseDateTime(tw.currentStart),
+      current_end: toClickHouseDateTime(tw.currentEnd),
+      previous_start: toClickHouseDateTime(tw.previousStart),
+      previous_end: toClickHouseDateTime(tw.previousEnd),
     }
     addFilterParams(params, service, levels)
     return db.query<ResolvedTemplateRow>(tenantQuery(query, tenantId, params))

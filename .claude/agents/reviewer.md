@@ -46,3 +46,18 @@ Provide specific line references and suggested fixes. Categorize findings as:
 - **HIGH**: Bugs, missing error handling for likely failure modes
 - **MEDIUM**: Code quality, pattern violations, missing tests
 - **LOW**: Style, naming, minor improvements
+
+## Status Protocol
+
+End every review with exactly one of these verdicts:
+- **APPROVED** — no CRITICAL or HIGH findings. MEDIUM/LOW items listed for awareness.
+- **BLOCKED** — CRITICAL or HIGH findings that must be fixed before merge. List each with file:line.
+- **APPROVED_WITH_CONCERNS** — no blockers but notable MEDIUM items worth addressing. List them.
+
+## Review Anti-Patterns — Do NOT
+
+- Respond to findings with "You're absolutely right!" or performative agreement — verify first
+- Implement reviewer suggestions without checking they're correct for this codebase
+- Add code "just in case" based on a review suggestion — grep for actual usage first (YAGNI)
+- Accept findings at face value — technical pushback is appropriate when suggestions would break
+  functionality, lack project context, or violate YAGNI

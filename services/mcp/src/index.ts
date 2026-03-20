@@ -85,13 +85,13 @@ const server = new McpServer({
 })
 
 server.registerTool(
-  'logweave_overview',
+  'overview',
   {
     title: 'System Overview',
     description:
       'Get a system health overview: total events, error rate, service count, and top error patterns. ' +
       'Use this first to understand the current state of the system. ' +
-      'Do not use for specific service or template queries — use logweave_service_health or logweave_template_detail instead.',
+      'Do not use for specific service or template queries — use service_health or template_detail instead.',
     inputSchema: {
       hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
     },
@@ -101,11 +101,12 @@ server.registerTool(
 )
 
 server.registerTool(
-  'logweave_error_patterns',
+  'error_patterns',
   {
     title: 'Error Patterns',
     description:
-      'List error patterns sorted by occurrence count. Shows template text, service, error count, and whether the pattern is new today. ' +
+      'List error patterns sorted by occurrence count. Only shows templates with actual errors (level=error). ' +
+      'Shows template text, service, error count, and whether the pattern is new today. ' +
       'Use this to see what errors are happening across all services. For a single service, pass the service parameter.',
     inputSchema: {
       hours: z.number().optional().describe('Time window in hours (default: 24)'),
@@ -120,14 +121,14 @@ server.registerTool(
 )
 
 server.registerTool(
-  'logweave_changes',
+  'changes',
   {
     title: 'Recent Changes',
     description:
       'See what changed recently: new error patterns, spiking patterns, and resolved patterns. ' +
-      'Anchor to a deploy using since (ISO8601 timestamp) or deploy_id from logweave_deploys. ' +
+      'Anchor to a deploy using since (ISO8601 timestamp) or deploy_id from deploys tool. ' +
       'Use this after deploys or to understand what is different from normal. ' +
-      'Do not use for listing all errors — use logweave_error_patterns instead.',
+      'Do not use for listing all errors — use error_patterns instead.',
     inputSchema: {
       hours: z.number().optional().describe('Time window in hours (default: 24). Ignored if since or deploy_id is set.'),
       service: z.string().optional().describe('Filter to a specific service name'),
@@ -142,12 +143,12 @@ server.registerTool(
 )
 
 server.registerTool(
-  'logweave_template_detail',
+  'template_detail',
   {
     title: 'Template Detail',
     description:
       'Deep dive on a specific error pattern: occurrence history, status codes, affected services, anomaly score. ' +
-      'Use a template_id from logweave_error_patterns or logweave_changes results. ' +
+      'Use a template_id from error_patterns or changes results. ' +
       'Do not use without a template_id.',
     inputSchema: {
       template_id: z.string().describe('Template ID to look up (from error_patterns or changes results)'),
@@ -161,13 +162,13 @@ server.registerTool(
 )
 
 server.registerTool(
-  'logweave_service_health',
+  'service_health',
   {
     title: 'Service Health',
     description:
       'Health report for a specific service: error rate, log volume, top error patterns, and volume trend. ' +
       'Use this to check if a specific service is having problems. ' +
-      'Do not use for cross-service overview — use logweave_overview instead.',
+      'Do not use for cross-service overview — use overview instead.',
     inputSchema: {
       service: z.string().describe('Service name to check'),
       hours: z.number().optional().describe('Time window in hours (default: 24)'),
@@ -180,7 +181,7 @@ server.registerTool(
 )
 
 server.registerTool(
-  'logweave_search_templates',
+  'search_templates',
   {
     title: 'Search Templates',
     description:
@@ -199,11 +200,11 @@ server.registerTool(
 )
 
 server.registerTool(
-  'logweave_deploys',
+  'deploys',
   {
     title: 'Recent Deployments',
     description:
-      'List recent deployments. Use this to find deploy IDs and timestamps for anchoring logweave_changes queries. ' +
+      'List recent deployments. Use this to find deploy IDs and timestamps for anchoring changes queries. ' +
       'Returns service name, version, commit SHA, and timestamp.',
     inputSchema: {
       service: z.string().optional().describe('Filter to a specific service name'),

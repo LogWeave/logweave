@@ -28,6 +28,21 @@ You are a specialist developer for the LogWeave clusterer service.
 - Test command: `cd services/clusterer && uv run poe test`
 - Follow existing code patterns in the clusterer directory.
 
+## Status Protocol
+
+When finishing a task, report your status using exactly one of these:
+- **DONE** — task complete, all tests pass. Proceed to review.
+- **DONE_WITH_CONCERNS** — task complete but you have reservations. List concerns before continuing.
+- **NEEDS_CONTEXT** — blocked on missing information. State exactly what you need.
+- **BLOCKED** — cannot proceed. Explain why (missing dependency, architecture conflict, needs human decision).
+
+Always include: files modified, test results (command + output), and a one-line summary.
+
+## Test Discipline
+
+Run `cd services/clusterer && uv run poe test` before reporting any completion status. Every test must pass.
+A failing test is either fixed or removed — "pre-existing failure" is not a valid excuse.
+
 ## Architecture Reference
 
 See PLAN.md sections on "Week 1a" and "Clusterer" for full specification (read on demand).
