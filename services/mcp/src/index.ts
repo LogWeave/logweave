@@ -58,7 +58,25 @@ function toolHandler(
 }
 
 // ---------------------------------------------------------------------------
-// MCP Server
+// Shared annotations
+// ---------------------------------------------------------------------------
+
+const READ_ONLY = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const
+
+const WRITE_OP = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false,
+} as const
+
+// ---------------------------------------------------------------------------
+// MCP Server — uses registerTool (modern API, server.tool is deprecated)
 // ---------------------------------------------------------------------------
 
 const server = new McpServer({
@@ -66,92 +84,132 @@ const server = new McpServer({
   version: '0.1.0',
 })
 
-// -- Tool: logweave_overview --
-server.tool(
+server.registerTool(
   'logweave_overview',
-  'Get a system health overview: total events, error rate, service count, and top error patterns. Use this first to understand the current state of the system. Do not use for specific service or template queries — use logweave_service_health or logweave_template_detail instead.',
   {
-    hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
+    title: 'System Overview',
+    description:
+      'Get a system health overview: total events, error rate, service count, and top error patterns. ' +
+      'Use this first to understand the current state of the system. ' +
+      'Do not use for specific service or template queries — use logweave_service_health or logweave_template_detail instead.',
+    inputSchema: {
+      hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
+    },
+    annotations: READ_ONLY,
   },
   toolHandler((args) => logweaveOverview(client, args as { hours?: number })),
 )
 
-// -- Tool: logweave_error_patterns --
-server.tool(
+server.registerTool(
   'logweave_error_patterns',
-  'List error patterns sorted by occurrence count. Shows template text, service, error count, and whether the pattern is new today. Use this to see what errors are happening across all services. For a single service, pass the service parameter.',
   {
-    hours: z.number().optional().describe('Time window in hours (default: 24)'),
-    service: z.string().optional().describe('Filter to a specific service name'),
-    limit: z.number().optional().describe('Max results to return (default: 100)'),
+    title: 'Error Patterns',
+    description:
+      'List error patterns sorted by occurrence count. Shows template text, service, error count, and whether the pattern is new today. ' +
+      'Use this to see what errors are happening across all services. For a single service, pass the service parameter.',
+    inputSchema: {
+      hours: z.number().optional().describe('Time window in hours (default: 24)'),
+      service: z.string().optional().describe('Filter to a specific service name'),
+      limit: z.number().optional().describe('Max results to return (default: 100)'),
+    },
+    annotations: READ_ONLY,
   },
   toolHandler((args) =>
     logweaveErrorPatterns(client, args as { hours?: number; service?: string; limit?: number }),
   ),
 )
 
-// -- Tool: logweave_changes --
-server.tool(
+server.registerTool(
   'logweave_changes',
-  'See what changed recently: new error patterns, spiking patterns, and resolved patterns. Anchor to a deploy using since (ISO8601 timestamp) or deploy_id from logweave_deploys. Use this after deploys or to understand what is different from normal. Do not use for listing all errors — use logweave_error_patterns instead.',
   {
-    hours: z.number().optional().describe('Time window in hours (default: 24). Ignored if since or deploy_id is set.'),
-    service: z.string().optional().describe('Filter to a specific service name'),
-    since: z.string().optional().describe('ISO8601 timestamp to anchor comparison (e.g. deploy time)'),
-    deploy_id: z.string().optional().describe('Deploy ID from logweave_deploys to anchor comparison'),
+    title: 'Recent Changes',
+    description:
+      'See what changed recently: new error patterns, spiking patterns, and resolved patterns. ' +
+      'Anchor to a deploy using since (ISO8601 timestamp) or deploy_id from logweave_deploys. ' +
+      'Use this after deploys or to understand what is different from normal. ' +
+      'Do not use for listing all errors — use logweave_error_patterns instead.',
+    inputSchema: {
+      hours: z.number().optional().describe('Time window in hours (default: 24). Ignored if since or deploy_id is set.'),
+      service: z.string().optional().describe('Filter to a specific service name'),
+      since: z.string().optional().describe('ISO8601 timestamp to anchor comparison (e.g. deploy time)'),
+      deploy_id: z.string().optional().describe('Deploy ID from logweave_deploys to anchor comparison'),
+    },
+    annotations: READ_ONLY,
   },
   toolHandler((args) =>
     logweaveChanges(client, args as { hours?: number; service?: string; since?: string; deploy_id?: string }),
   ),
 )
 
-// -- Tool: logweave_template_detail --
-server.tool(
+server.registerTool(
   'logweave_template_detail',
-  'Deep dive on a specific error pattern: occurrence history, status codes, affected services, anomaly score. Use a template_id from logweave_error_patterns or logweave_changes results. Do not use without a template_id.',
   {
-    template_id: z.string().describe('Template ID to look up (from error_patterns or changes results)'),
-    hours: z.number().optional().describe('Time window in hours (default: 24)'),
+    title: 'Template Detail',
+    description:
+      'Deep dive on a specific error pattern: occurrence history, status codes, affected services, anomaly score. ' +
+      'Use a template_id from logweave_error_patterns or logweave_changes results. ' +
+      'Do not use without a template_id.',
+    inputSchema: {
+      template_id: z.string().describe('Template ID to look up (from error_patterns or changes results)'),
+      hours: z.number().optional().describe('Time window in hours (default: 24)'),
+    },
+    annotations: READ_ONLY,
   },
   toolHandler((args) =>
     logweaveTemplateDetail(client, args as { template_id: string; hours?: number }),
   ),
 )
 
-// -- Tool: logweave_service_health --
-server.tool(
+server.registerTool(
   'logweave_service_health',
-  'Health report for a specific service: error rate, log volume, top error patterns, and volume trend. Use this to check if a specific service is having problems. Do not use for cross-service overview — use logweave_overview instead.',
   {
-    service: z.string().describe('Service name to check'),
-    hours: z.number().optional().describe('Time window in hours (default: 24)'),
+    title: 'Service Health',
+    description:
+      'Health report for a specific service: error rate, log volume, top error patterns, and volume trend. ' +
+      'Use this to check if a specific service is having problems. ' +
+      'Do not use for cross-service overview — use logweave_overview instead.',
+    inputSchema: {
+      service: z.string().describe('Service name to check'),
+      hours: z.number().optional().describe('Time window in hours (default: 24)'),
+    },
+    annotations: READ_ONLY,
   },
   toolHandler((args) =>
     logweaveServiceHealth(client, args as { service: string; hours?: number }),
   ),
 )
 
-// -- Tool: logweave_search_templates --
-server.tool(
+server.registerTool(
   'logweave_search_templates',
-  'Search for error patterns by text (e.g. "timeout", "database", "connection refused"). Minimum 3 characters. Use this to find patterns related to a specific topic. Returns matching templates with occurrence counts and affected services.',
   {
-    query: z.string().describe('Search text (minimum 3 characters)'),
-    hours: z.number().optional().describe('Time window in hours (default: 24)'),
-    limit: z.number().optional().describe('Max results to return (default: 100)'),
+    title: 'Search Templates',
+    description:
+      'Search for error patterns by text (e.g. "timeout", "database", "connection refused"). Minimum 3 characters. ' +
+      'Use this to find patterns related to a specific topic. Returns matching templates with occurrence counts and affected services.',
+    inputSchema: {
+      query: z.string().describe('Search text (minimum 3 characters)'),
+      hours: z.number().optional().describe('Time window in hours (default: 24)'),
+      limit: z.number().optional().describe('Max results to return (default: 100)'),
+    },
+    annotations: READ_ONLY,
   },
   toolHandler((args) =>
     logweaveSearchTemplates(client, args as { query: string; hours?: number; limit?: number }),
   ),
 )
 
-// -- Tool: logweave_deploys --
-server.tool(
+server.registerTool(
   'logweave_deploys',
-  'List recent deployments. Use this to find deploy IDs and timestamps for anchoring logweave_changes queries. Returns service name, version, commit SHA, and timestamp.',
   {
-    service: z.string().optional().describe('Filter to a specific service name'),
-    limit: z.number().optional().describe('Max results to return (default: 10)'),
+    title: 'Recent Deployments',
+    description:
+      'List recent deployments. Use this to find deploy IDs and timestamps for anchoring logweave_changes queries. ' +
+      'Returns service name, version, commit SHA, and timestamp.',
+    inputSchema: {
+      service: z.string().optional().describe('Filter to a specific service name'),
+      limit: z.number().optional().describe('Max results to return (default: 10)'),
+    },
+    annotations: READ_ONLY,
   },
   toolHandler((args) =>
     logweaveDeploys(client, args as { service?: string; limit?: number }),
