@@ -14,23 +14,48 @@ import {
 } from './tools.js'
 
 // ---------------------------------------------------------------------------
-// Configuration
+// Configuration — fail fast on missing env vars (stderr only, never stdout)
 // ---------------------------------------------------------------------------
 
 const apiUrl = process.env.LOGWEAVE_API_URL
 const apiKey = process.env.LOGWEAVE_API_KEY
 
 if (!apiUrl) {
-  console.error('LOGWEAVE_API_URL environment variable is required')
+  process.stderr.write('Error: LOGWEAVE_API_URL environment variable is required\n')
   process.exit(1)
 }
 
 if (!apiKey) {
-  console.error('LOGWEAVE_API_KEY environment variable is required')
+  process.stderr.write('Error: LOGWEAVE_API_KEY environment variable is required\n')
   process.exit(1)
 }
 
 const client = new LogWeaveClient({ apiUrl, apiKey })
+
+// ---------------------------------------------------------------------------
+// Helper: wrap tool handler with try/catch → isError response
+// Never throws — tool errors are returned as isError: true so the LLM can
+// recover (retry, adjust params, inform user) instead of crashing the server.
+// ---------------------------------------------------------------------------
+
+type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean }
+
+function toolHandler(
+  fn: (args: Record<string, unknown>) => Promise<string>,
+): (args: Record<string, unknown>) => Promise<ToolResult> {
+  return async (args) => {
+    try {
+      const text = await fn(args)
+      return { content: [{ type: 'text' as const, text }] }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return {
+        isError: true,
+        content: [{ type: 'text' as const, text: `Error: ${message}` }],
+      }
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // MCP Server
@@ -44,120 +69,118 @@ const server = new McpServer({
 // -- Tool: logweave_overview --
 server.tool(
   'logweave_overview',
-  'Get a system health overview: total events, error rate, service count, and top 5 error patterns. Use this to understand the current state of the system.',
-  { hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)') },
-  async (args) => {
-    const text = await logweaveOverview(client, args)
-    return { content: [{ type: 'text' as const, text }] }
+  'Get a system health overview: total events, error rate, service count, and top error patterns. Use this first to understand the current state of the system. Do not use for specific service or template queries — use logweave_service_health or logweave_template_detail instead.',
+  {
+    hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
   },
+  toolHandler((args) => logweaveOverview(client, args as { hours?: number })),
 )
 
 // -- Tool: logweave_error_patterns --
 server.tool(
   'logweave_error_patterns',
-  'List error patterns sorted by occurrence count. Shows template text, service, error count, and whether the pattern is new today. Use this to see what errors are happening.',
+  'List error patterns sorted by occurrence count. Shows template text, service, error count, and whether the pattern is new today. Use this to see what errors are happening across all services. For a single service, pass the service parameter.',
   {
     hours: z.number().optional().describe('Time window in hours (default: 24)'),
-    service: z.string().optional().describe('Filter by service name'),
-    limit: z.number().optional().describe('Max results (default: 100)'),
+    service: z.string().optional().describe('Filter to a specific service name'),
+    limit: z.number().optional().describe('Max results to return (default: 100)'),
   },
-  async (args) => {
-    const text = await logweaveErrorPatterns(client, args)
-    return { content: [{ type: 'text' as const, text }] }
-  },
+  toolHandler((args) =>
+    logweaveErrorPatterns(client, args as { hours?: number; service?: string; limit?: number }),
+  ),
 )
 
 // -- Tool: logweave_changes --
 server.tool(
   'logweave_changes',
-  'See what changed recently: new error patterns, spiking patterns, and resolved patterns. Can be anchored to a deploy timestamp or deploy ID. Use this after deploys or to understand what is different.',
+  'See what changed recently: new error patterns, spiking patterns, and resolved patterns. Anchor to a deploy using since (ISO8601 timestamp) or deploy_id from logweave_deploys. Use this after deploys or to understand what is different from normal. Do not use for listing all errors — use logweave_error_patterns instead.',
   {
-    hours: z.number().optional().describe('Time window in hours (default: 24)'),
-    service: z.string().optional().describe('Filter by service name'),
-    since: z.string().optional().describe('ISO8601 timestamp to anchor the comparison (e.g., deploy time)'),
+    hours: z.number().optional().describe('Time window in hours (default: 24). Ignored if since or deploy_id is set.'),
+    service: z.string().optional().describe('Filter to a specific service name'),
+    since: z.string().optional().describe('ISO8601 timestamp to anchor comparison (e.g. deploy time)'),
     deploy_id: z.string().optional().describe('Deploy ID from logweave_deploys to anchor comparison'),
   },
-  async (args) => {
-    const text = await logweaveChanges(client, args)
-    return { content: [{ type: 'text' as const, text }] }
-  },
+  toolHandler((args) =>
+    logweaveChanges(client, args as { hours?: number; service?: string; since?: string; deploy_id?: string }),
+  ),
 )
 
 // -- Tool: logweave_template_detail --
 server.tool(
   'logweave_template_detail',
-  'Deep dive on a specific error pattern: occurrence history, status codes, affected services, anomaly score. Use a template_id from logweave_error_patterns or logweave_changes.',
+  'Deep dive on a specific error pattern: occurrence history, status codes, affected services, anomaly score. Use a template_id from logweave_error_patterns or logweave_changes results. Do not use without a template_id.',
   {
-    template_id: z.string().describe('Template ID to look up'),
+    template_id: z.string().describe('Template ID to look up (from error_patterns or changes results)'),
     hours: z.number().optional().describe('Time window in hours (default: 24)'),
   },
-  async (args) => {
-    const text = await logweaveTemplateDetail(client, args)
-    return { content: [{ type: 'text' as const, text }] }
-  },
+  toolHandler((args) =>
+    logweaveTemplateDetail(client, args as { template_id: string; hours?: number }),
+  ),
 )
 
 // -- Tool: logweave_service_health --
 server.tool(
   'logweave_service_health',
-  'Health report for a specific service: error rate, log volume, top error patterns, and volume trend. Use this to check if a specific service is having problems.',
+  'Health report for a specific service: error rate, log volume, top error patterns, and volume trend. Use this to check if a specific service is having problems. Do not use for cross-service overview — use logweave_overview instead.',
   {
     service: z.string().describe('Service name to check'),
     hours: z.number().optional().describe('Time window in hours (default: 24)'),
   },
-  async (args) => {
-    const text = await logweaveServiceHealth(client, args)
-    return { content: [{ type: 'text' as const, text }] }
-  },
+  toolHandler((args) =>
+    logweaveServiceHealth(client, args as { service: string; hours?: number }),
+  ),
 )
 
 // -- Tool: logweave_search_templates --
 server.tool(
   'logweave_search_templates',
-  'Search for error patterns by text. Use this to find patterns related to a specific topic (e.g., "timeout", "database", "connection refused").',
+  'Search for error patterns by text (e.g. "timeout", "database", "connection refused"). Minimum 3 characters. Use this to find patterns related to a specific topic. Returns matching templates with occurrence counts and affected services.',
   {
-    query: z.string().describe('Search text (min 3 characters)'),
+    query: z.string().describe('Search text (minimum 3 characters)'),
     hours: z.number().optional().describe('Time window in hours (default: 24)'),
-    limit: z.number().optional().describe('Max results (default: 100)'),
+    limit: z.number().optional().describe('Max results to return (default: 100)'),
   },
-  async (args) => {
-    const text = await logweaveSearchTemplates(client, args)
-    return { content: [{ type: 'text' as const, text }] }
-  },
+  toolHandler((args) =>
+    logweaveSearchTemplates(client, args as { query: string; hours?: number; limit?: number }),
+  ),
 )
 
 // -- Tool: logweave_deploys --
 server.tool(
   'logweave_deploys',
-  'List recent deployments. Use this to find deploy IDs and timestamps for anchoring logweave_changes queries.',
+  'List recent deployments. Use this to find deploy IDs and timestamps for anchoring logweave_changes queries. Returns service name, version, commit SHA, and timestamp.',
   {
-    service: z.string().optional().describe('Filter by service name'),
-    limit: z.number().optional().describe('Max results (default: 10)'),
+    service: z.string().optional().describe('Filter to a specific service name'),
+    limit: z.number().optional().describe('Max results to return (default: 10)'),
   },
-  async (args) => {
-    const text = await logweaveDeploys(client, args)
-    return { content: [{ type: 'text' as const, text }] }
-  },
+  toolHandler((args) =>
+    logweaveDeploys(client, args as { service?: string; limit?: number }),
+  ),
 )
 
 // ---------------------------------------------------------------------------
-// Startup
+// Startup — connect transport first, health check lazily
+// stdout is the JSON-RPC stream — never write to it directly.
+// All logging goes to stderr.
 // ---------------------------------------------------------------------------
 
 async function main() {
-  // Verify API is reachable before accepting connections
-  try {
-    await client.healthCheck()
-  } catch (err) {
-    console.error(`Failed to connect to LogWeave API at ${apiUrl}: ${err instanceof Error ? err.message : String(err)}`)
-    process.exit(1)
-  }
-
   const transport = new StdioServerTransport()
   await server.connect(transport)
+
+  // Health check after connection (non-blocking — tools will return errors if API is down)
+  try {
+    await client.healthCheck()
+    process.stderr.write('LogWeave MCP server connected successfully\n')
+  } catch (err) {
+    process.stderr.write(
+      `Warning: LogWeave API health check failed at ${apiUrl}: ${err instanceof Error ? err.message : String(err)}\n` +
+        'Tools will return errors until the API is reachable.\n',
+    )
+  }
 }
 
 main().catch((err) => {
-  console.error('Fatal error:', err)
+  process.stderr.write(`Fatal error: ${err instanceof Error ? err.message : String(err)}\n`)
   process.exit(1)
 })
