@@ -6,6 +6,8 @@ import {
   queryResolvedTemplates,
   queryTemplateSpikes,
 } from '../db/dashboard-changes-queries.js'
+import { queryDeployById } from '../db/deploy-queries.js'
+import { DATA_RETENTION, formatTimeRange, truncateTemplateText } from '../format.js'
 import {
   queryClusteringHealthSnapshot,
   queryClusteringHealthTrend,
@@ -47,6 +49,7 @@ import {
   servicesQuerySchema,
   sparklineQuerySchema,
   type CompositeTimeQuery,
+  type CrossServiceTemplate,
   type OverviewCompositeData,
   type ServiceHealthData,
   type TemplateDetailData,
@@ -76,10 +79,16 @@ export interface DashboardDeps {
 // Response helper
 // ---------------------------------------------------------------------------
 
-function respond<T>(res: Response, data: T, meta: Omit<ApiResponse<T>['meta'], 'fetchedAt'>): void {
+function respond<T>(res: Response, data: T, meta: Omit<ApiResponse<T>['meta'], 'fetchedAt' | 'timeRange' | 'dataRetention'>): void {
+  const hours = meta.hours
   const body: ApiResponse<T> = {
     data,
-    meta: { ...meta, fetchedAt: new Date().toISOString() },
+    meta: {
+      ...meta,
+      fetchedAt: new Date().toISOString(),
+      timeRange: formatTimeRange(hours),
+      dataRetention: DATA_RETENTION,
+    },
   }
   res.status(HttpStatus.OK).json(body)
 }
@@ -97,6 +106,29 @@ type RawRow = Record<string, unknown>
 
 function toRawRows(rows: unknown[]): RawRow[] {
   return rows as RawRow[]
+}
+
+/**
+ * Map cross-service template rows with LLM-friendly formatting:
+ * - Truncate template text to 200 chars
+ * - Add trend text (rising/falling/stable/new)
+ */
+function mapCrossServiceTemplates(rows: RawRow[]): CrossServiceTemplate[] {
+  return rows.map((r) => {
+    const { text, truncated } = truncateTemplateText(r.template_text as string)
+    return {
+      templateId: r.template_id as string,
+      templateText: text,
+      truncated,
+      servicesAffected: r.services_affected as string[],
+      occurrenceCount: Number(r.occurrence_count),
+      errorCount: Number(r.error_count),
+      avgDurationMs: Number(r.avg_duration_ms),
+      maxAnomalyScore: Number(r.max_anomaly_score),
+      firstSeen: r.first_seen as string,
+      lastSeen: r.last_seen as string,
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -424,15 +456,31 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       const tenantId = getTenantId(res)
       const params = getQuery<ChangesQuery>(req)
 
+      // Resolve deploy_id to since timestamp if provided
+      let since = params.since
+      if (params.deploy_id) {
+        const deploy = await queryDeployById(deps.db, tenantId, params.deploy_id)
+        if (!deploy) {
+          res.status(HttpStatus.NOT_FOUND).json({
+            error: { code: 'NOT_FOUND', message: `Deploy ${params.deploy_id} not found` },
+          })
+          return
+        }
+        since = deploy.timestamp
+      }
+
+      // Build query options with resolved since
+      const queryOpts = since ? { ...params, since } : params
+
       // When since is provided, compute equivalent hours for meta
-      const hours = params.since
-        ? Math.ceil((Date.now() - new Date(params.since).getTime()) / 3_600_000)
+      const hours = since
+        ? Math.ceil((Date.now() - new Date(since).getTime()) / 3_600_000)
         : params.hours
 
       const [newRows, spikeRows, resolvedRows] = await Promise.all([
-        queryNewTemplates(deps.db, tenantId, params),
-        queryTemplateSpikes(deps.db, tenantId, params),
-        queryResolvedTemplates(deps.db, tenantId, params),
+        queryNewTemplates(deps.db, tenantId, queryOpts),
+        queryTemplateSpikes(deps.db, tenantId, queryOpts),
+        queryResolvedTemplates(deps.db, tenantId, queryOpts),
       ])
 
       const events: ChangeEvent[] = [
@@ -448,7 +496,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         hours,
         limit: params.limit,
         count: events.length,
-        ...(params.since ? { since: params.since } : {}),
+        ...(since ? { since } : {}),
       })
     } catch (err) {
       next(err)
@@ -570,9 +618,11 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         return
       }
 
+      const { text: truncatedText, truncated } = truncateTemplateText(match.template_text as string)
       const data: TemplateDetailData = {
         templateId: match.template_id as string,
-        templateText: match.template_text as string,
+        templateText: truncatedText,
+        truncated,
         servicesAffected: match.services_affected as string[],
         occurrenceCount: Number(match.occurrence_count),
         errorCount: Number(match.error_count),
@@ -644,17 +694,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         warnCount,
         errorRate: logCount > 0 ? errorCount / logCount : 0,
         warnRate: logCount > 0 ? warnCount / logCount : 0,
-        topErrorPatterns: toRawRows(templateRows).map((r) => ({
-          templateId: r.template_id as string,
-          templateText: r.template_text as string,
-          servicesAffected: r.services_affected as string[],
-          occurrenceCount: Number(r.occurrence_count),
-          errorCount: Number(r.error_count),
-          avgDurationMs: Number(r.avg_duration_ms),
-          maxAnomalyScore: Number(r.max_anomaly_score),
-          firstSeen: r.first_seen as string,
-          lastSeen: r.last_seen as string,
-        })),
+        topErrorPatterns: mapCrossServiceTemplates(toRawRows(templateRows)),
         volumeTrend: toRawRows(volumeRows).map((r) => ({
           intervalStart: r.interval_start as string,
           logCount: Number(r.log_count),
@@ -703,17 +743,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         unclusteredCount: Number(rawCounts.unclustered_count ?? 0),
         errorRate: totalEvents > 0 ? errorCount / totalEvents : 0,
         serviceCount: Number(rawCounts.service_count ?? 0),
-        topErrorPatterns: toRawRows(topPatterns).map((r) => ({
-          templateId: r.template_id as string,
-          templateText: r.template_text as string,
-          servicesAffected: r.services_affected as string[],
-          occurrenceCount: Number(r.occurrence_count),
-          errorCount: Number(r.error_count),
-          avgDurationMs: Number(r.avg_duration_ms),
-          maxAnomalyScore: Number(r.max_anomaly_score),
-          firstSeen: r.first_seen as string,
-          lastSeen: r.last_seen as string,
-        })),
+        topErrorPatterns: mapCrossServiceTemplates(toRawRows(topPatterns)),
       }
 
       respond(res, data, { hours: params.hours, count: 1 })

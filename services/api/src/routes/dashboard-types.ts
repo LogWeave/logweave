@@ -13,6 +13,9 @@ export interface ApiResponse<T> {
     offset?: number
     count: number
     fetchedAt: string
+    timeRange?: string
+    dataRetention?: string
+    message?: string
   }
 }
 
@@ -95,6 +98,7 @@ export const changesQuerySchema = z
       .refine((s) => !s || Date.now() - new Date(s).getTime() >= 600_000, {
         message: 'since must be at least 10 minutes ago',
       }),
+    deploy_id: z.string().min(1).optional(),
     service: z.string().optional(),
     threshold: z.coerce.number().min(1).max(100).default(3),
     limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -242,6 +246,8 @@ export interface StatusCodeCount {
 export interface CrossServiceTemplate {
   templateId: string
   templateText: string
+  truncated?: boolean
+  trend?: string
   servicesAffected: string[]
   occurrenceCount: number
   errorCount: number
@@ -254,6 +260,7 @@ export interface CrossServiceTemplate {
 export interface TemplateDetailData {
   templateId: string
   templateText: string
+  truncated?: boolean
   servicesAffected: string[]
   occurrenceCount: number
   errorCount: number

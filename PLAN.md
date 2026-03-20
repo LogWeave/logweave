@@ -75,7 +75,8 @@ Supersedes all previous versions.*
 ## 1. What We Are (And What We Are Not)
 
 **We are a log intelligence platform.** We read log streams, extract patterns, detect
-anomalies, explain errors, and answer questions — in plain English.
+anomalies, and surface structured intelligence — queryable by your AI assistant via MCP
+or REST API.
 
 **We are not a log store.** We never hold raw log content. Not temporarily, not in
 samples, not in a cache. Raw logs belong to the customer. They stay in the customer's
@@ -210,7 +211,7 @@ first, migrate second.
 - Customer adds transport (one line)
 - Logs go to CloudWatch AND to us simultaneously
 - We extract metadata, detect patterns, surface anomalies
-- Dashboard, alerts, and "explain this error" available immediately
+- Dashboard, alerts, and MCP/API intelligence available immediately
 - CloudWatch bill unchanged; our subscription is $79/month on top
 - **This is a capability sale, not a cost sale**
 
@@ -302,13 +303,17 @@ from self-hosted (single-tenant).
 ### Stack (MVP) — Three Containers
 
 ```
-Docker Compose
+Docker Compose (3 containers)
   ├── logweave-api          (Node.js / Express)
   │     ├── POST /v1/ingest/batch
-  │     ├── POST /v1/query
-  │     ├── GET  /v1/explain/:id
-  │     ├── GET  /api/dashboard
-  │     └── GET  /                  (static dashboard)
+  │     ├── POST /v1/deploys
+  │     ├── GET  /v1/deploys
+  │     ├── GET  /v1/overview                    (composite)
+  │     ├── GET  /v1/templates/:id/detail        (composite)
+  │     ├── GET  /v1/services/:name/health       (composite)
+  │     ├── GET  /v1/templates/search
+  │     ├── GET  /v1/dashboard/*                 (existing dashboard endpoints)
+  │     └── GET  /                               (dashboard SPA)
   │
   ├── logweave-clusterer    (Python / FastAPI)
   │     └── POST /cluster
@@ -317,7 +322,13 @@ Docker Compose
         ├── log_metadata
         ├── template_stats     (materialised view)
         ├── service_stats      (materialised view)
-        └── template_registry
+        ├── template_registry
+        └── deploys
+
+Standalone (runs on developer's machine, not in Docker Compose)
+  └── @logweave/mcp         (Node.js, MCP server via stdio)
+        └── 7 tools: overview, error_patterns, changes, template_detail,
+            service_health, search_templates, deploys
 ```
 
 ### Two-Language Operational Overhead — Acknowledged
@@ -396,10 +407,10 @@ numbering.
 LOGWEAVE_CLICKHOUSE_URL=clickhouse://clickhouse:9000/logweave
 LOGWEAVE_CLUSTERER_URL=http://logweave-clusterer:8000
 LOGWEAVE_CLUSTERER_TIMEOUT_MS=500
-LOGWEAVE_LLM_PROVIDER=claude|openai
-LOGWEAVE_LLM_API_KEY=sk-...
-LOGWEAVE_LLM_MODEL_FAST=claude-haiku-4-5-20251001
-LOGWEAVE_LLM_MODEL_CAPABLE=claude-sonnet-4-6
+LOGWEAVE_RATE_LIMIT_RPM=60
+LOGWEAVE_RATE_LIMIT_TENANT_RPM=120
+LOGWEAVE_RATE_LIMIT_INGEST_RPM=300
+LOGWEAVE_MAX_CONCURRENT_QUERIES=8
 LOGWEAVE_LOG_SOURCE=cloudwatch|s3|azure_monitor|none
 LOGWEAVE_AWS_REGION=us-east-1
 LOGWEAVE_AWS_ROLE_ARN=
@@ -650,43 +661,47 @@ be confirmed in the pre-build experiment.
 
 ---
 
-## 10. LLM Layer
+## 10. External LLM Integration
 
-### Query Model: Constrained Templates
+*This section replaces the original "LLM Layer" — see ADR-011 for the decision rationale.*
 
-LLM classifies intent and fills slots in pre-written SQL templates. Never generates
-arbitrary SQL. `tenant_id` never enters LLM context — injected server-side only.
+### Design: Infrastructure for AI Agents
 
-**MVP: 3 templates:**
+LogWeave does not include a built-in LLM. Instead, it exposes structured log intelligence
+via REST API and MCP server. Users connect their own LLMs (Claude Code, Cursor, GPT, etc.)
+which already have codebase context that a built-in LLM could never match.
 
-1. `top_error_templates` — "top errors in the last hour / 24h / 7d"
-2. `template_first_seen` — "when did this error start?"
-3. `new_templates_since` — "what changed after the last deploy?"
+**LogWeave provides:** patterns, trends, anomalies, baselines, cross-service correlation.
+**User's LLM provides:** root cause analysis, fix suggestions, customer communication.
 
-Grow organically from questions customers ask that no template answers.
+### MCP Server (`@logweave/mcp`)
 
-### "Explain This Error"
+Standalone npm package. Runs locally on the developer's machine via stdio transport.
+Thin wrapper that translates MCP tool calls into HTTP requests against the LogWeave API.
 
-**NoneAdapter (default):** Template text + occurrence history + correlated events +
-field statistics → LLM → plain-English explanation + likely causes + remediation.
+**7 tools:**
 
-**With adapter (opt-in):** Fetch 5 raw samples → pass to LLM in-memory → richer explanation.
-Nothing persisted.
+| Tool | Purpose | API Endpoint |
+|------|---------|-------------|
+| `logweave_overview` | System health summary | `GET /v1/overview` |
+| `logweave_error_patterns` | Prioritised error list | `GET /v1/dashboard/templates` |
+| `logweave_changes` | New/spiking/resolved patterns | `GET /v1/dashboard/changes` |
+| `logweave_template_detail` | Deep dive on one pattern | `GET /v1/templates/:id/detail` |
+| `logweave_service_health` | Per-service health report | `GET /v1/services/:name/health` |
+| `logweave_search_templates` | Text search on patterns | `GET /v1/templates/search` |
+| `logweave_deploys` | Recent deployments | `GET /v1/deploys` |
 
-### Model Strategy
+### REST API (Direct)
 
-```
-Haiku:  intent classification, slot-filling     ~$0.001/query
-Sonnet: "explain this error"                    ~$0.015/call
-```
-
-Both behind abstractions. Swap model = one env var. Self-hosted: customer's own API key.
+The same endpoints power CI/CD gates, Slack bots, custom dashboards, and automation
+scripts. No MCP required — any HTTP client works.
 
 ### Multi-Tenant Security
 
-- Template parameters exclude `tenant_id` — server-side injected only
-- Query middleware confirms `tenant_id` filter before execution
-- ClickHouse Row-Level Security — database-level guarantee
+- All queries scoped by `tenant_id` from Bearer token auth
+- Per-key + per-tenant rate limiting with 429 + Retry-After
+- Per-tenant concurrent query limit (max 8)
+- ClickHouse resource guardrails (max execution time, memory, rows)
 
 ---
 
@@ -706,9 +721,10 @@ Five moments that make an engineer say "this is so much better than CloudWatch":
 ```
 Seeing the shape of a day's errors in 3 seconds. CloudWatch cannot do this at all.
 
-**2. One-click explain**
-> *"This error started at 14:47 UTC — 3 minutes after your last deployment. First seen
-> today. 847 occurrences, zero before the 14:44 deploy."*
+**2. Deploy-anchored changes (via MCP or API)**
+> Developer asks their LLM: "how does payment-service look after my deploy?"
+> LLM calls `logweave_changes` with the deploy timestamp, sees 3 new error patterns,
+> cross-references with the git diff, and identifies the root cause.
 
 **3. Slack alerts with context**
 
@@ -717,10 +733,11 @@ CloudWatch: `ERROR count exceeded threshold (value: 847)`
 LogWeave: *"NullPointerException in UserService is at 5x normal rate. First seen 14:47 UTC,
 3 minutes after your last deployment. New pattern. [View →]"*
 
-**4. Natural language that works**
+**4. MCP-powered investigation**
 
-`what's been failing in the last hour` → structured error table.
-`what changed after the last deploy` → template diff.
+Developer in their IDE asks their AI assistant: "what's been failing in the last hour?"
+The LLM calls `logweave_error_patterns` and gets a structured answer — then correlates
+with the codebase to suggest fixes. No built-in LLM needed.
 
 **5. Deploy diff**
 ```
@@ -888,12 +905,14 @@ CloudWatch's $1,650/month)**.
 
 | | <10 customers | <50 customers | <200 customers |
 |---|---|---|---|
-| ClickHouse | ~$250/month | ~$400/month | ~$800/month |
+| ClickHouse | ~$250/month | ~$450/month | ~$900/month |
 | API + clusterer (same VPS) | ~$50/month | ~$150/month | ~$300/month |
-| LLM API | ~$20/month | ~$100/month | ~$400/month |
-| **Total** | **~$320/month** | **~$650/month** | **~$1,500/month** |
+| LLM API | $0 | $0 | $0 |
+| **Total** | **~$300/month** | **~$600/month** | **~$1,200/month** |
 
-Break-even: ~5 customers at $79/month.
+LLM costs dropped to $0 — users bring their own LLM via MCP/API. ClickHouse costs
+modestly higher due to MCP query load (~7.5% increase). Break-even: ~4 customers at
+$79/month.
 
 ---
 
@@ -1122,12 +1141,21 @@ re-clusters pending rows.
 
 ---
 
-### Week 3 — Intelligence (Days 16–20)
+### Week 3 — LLM-Ready Pivot (Days 16–25)
 
-- [ ] "Explain this error" button on each template
-- [ ] LLM: template context + metadata → Haiku (classification) / Sonnet (explanation)
-- [ ] 3 query templates with natural language search bar
-- [ ] NoneAdapter (explain works without raw log access)
+*Reprioritised: built-in LLM features dropped in favour of API-first + MCP design (ADR-011).*
+
+- [x] ADR-011: drop built-in LLM, adopt API-first + MCP
+- [x] Cross-service template query with servicesAffected
+- [x] Template text search via template_registry
+- [x] Deploy-anchored changes with `since` timestamp param
+- [x] Composite API endpoints (overview, template detail, service health)
+- [x] Rate limiting (per-key + per-tenant + concurrent query guard)
+- [x] Deploy marker API (POST/GET /v1/deploys)
+- [x] LLM-friendly response formatting
+- [x] MCP server (`@logweave/mcp`) with 7 tools
+- [ ] Integration test: MCP server against live stack
+- [ ] Update PLAN.md (this change)
 
 ---
 
@@ -1140,8 +1168,8 @@ re-clusters pending rows.
 - [ ] ClickHouse startup migration runner (versioned SQL, idempotent)
 
 **Deliverable:** 3-container Docker Compose stack that receives logs via winston transport,
-extracts patterns, shows a dashboard, explains errors, alerts on anomalies. Works
-identically as SaaS or self-hosted.
+extracts patterns, shows a dashboard, surfaces intelligence via API/MCP, and alerts on
+anomalies. Works identically as SaaS or self-hosted.
 
 ---
 
@@ -1205,8 +1233,7 @@ services:
       - LOGWEAVE_CLICKHOUSE_URL=clickhouse://clickhouse:9000/logweave
       - LOGWEAVE_CLUSTERER_URL=http://logweave-clusterer:8000
       - LOGWEAVE_CLUSTERER_TIMEOUT_MS=500
-      - LOGWEAVE_LLM_PROVIDER=${LLM_PROVIDER}
-      - LOGWEAVE_LLM_API_KEY=${LLM_API_KEY}
+      - LOGWEAVE_RATE_LIMIT_RPM=600
       - LOGWEAVE_LICENSE_KEY=${LICENSE_KEY}
       - LOGWEAVE_LOG_SOURCE=${LOG_SOURCE:-none}
       - LOGWEAVE_RAW_DESTINATION=${RAW_DESTINATION:-none}
@@ -1344,17 +1371,18 @@ the Drain3 experiment. Both gates must pass before Week 1a begins.
 |---|---|---|
 | SDK | Winston transport (Node.js, MIT) | Buffer + retry + failover by contract |
 | API server | Express.js (Node.js) | Ingestion, query, dashboard — one process |
+| MCP server | `@logweave/mcp` (Node.js, stdio) | 7 tools for AI assistant integration |
 | Log clustering | Drain3 via `logweave-clusterer` (Python / FastAPI) | Per-tenant state, 60s checkpoint, 500ms degradation |
 | Template IDs | `template_registry` (ClickHouse, ReplacingMergeTree) | `SELECT ... FINAL`; stable IDs across restarts |
 | Unclustered recovery | `pre_processed_message` column + startup reconciliation | Closes data loss gap from clusterer outages |
 | Pre-processing | Regex pipeline (in API server, before clusterer call) | `\d{6,}` default threshold; validated in pre-build experiment |
 | Metadata store | ClickHouse (single node, Docker) | Shared table, tenant_id partitioned, TTL retention |
-| Dashboard | Static HTML + Chart.js | Served from Express, no build step |
-| LLM — queries | Claude Haiku (config-swappable) | Via `QueryClassifier` abstraction |
-| LLM — explanations | Claude Sonnet (config-swappable) | Via `LogExplainer` abstraction |
-| Log source read-back | `LogSourceAdapter` interface | NoneAdapter default; CloudWatch + S3 in Week 6 |
+| Dashboard | React / Vite SPA + Tailwind + ECharts | Served from Express |
+| External LLM | User's own (via MCP or REST API) | No built-in LLM — see ADR-011 |
+| Log source read-back | `LogSourceAdapter` interface | NoneAdapter default; S3 connector designed (ADR-010) |
 | Raw log routing (Model C) | AWS SDK `PutObject` | OpenDAL added when second cloud needed |
 | Alerting | Slack webhook | Graduated threshold (10x → 3x). Daily summary 9am. |
+| Rate limiting | Hand-rolled sliding window | Per-key + per-tenant + concurrent query guard |
 | Billing (SaaS) | Stripe manual invoicing → Stripe Billing | Manual for first 20 |
 | Billing (self-hosted) | Stripe + signed JWT license key | Offline-capable |
 | Deployment | Docker Compose (3 containers) | api + clusterer + clickhouse |
@@ -1363,13 +1391,13 @@ the Drain3 experiment. Both gates must pass before Week 1a begins.
 
 ## One-Paragraph Pitch
 
-> "We replace CloudWatch Logs as a query and intelligence tool — without replacing it as
-> a storage system. Add one line to your winston config and your logs get pattern detection,
-> anomaly alerts with context, and plain-English queries. We never store your raw log
-> content — we extract intelligence and discard the rest. When you're ready, redirect your
-> logs from CloudWatch to S3 and save 50–80% on log costs. We charge per service, not per
-> gigabyte — so when we help you reduce noise, your bill goes down, not up. Run it as SaaS
-> or self-hosted on any cloud."
+> "We're the log intelligence layer your AI agent queries. Add one line to your winston
+> config and your logs get pattern detection, anomaly alerts, and structured intelligence
+> — queryable via REST API or MCP server. Your AI assistant already knows your codebase;
+> LogWeave tells it what's happening at runtime. Together, they diagnose production issues
+> faster than any dashboard. We never store your raw log content — we extract patterns
+> and discard the rest. When you're ready, redirect logs from CloudWatch to S3 and save
+> 50–80% on log costs. Per-service pricing, not per-gigabyte. SaaS or self-hosted."
 
 ---
 

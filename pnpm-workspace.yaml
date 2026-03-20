@@ -1,6 +1,7 @@
 packages:
   - "services/api"
   - "services/dashboard"
+  - "services/mcp"
   - "packages/transport"
   - "benchmarks"
   - "simulator"
