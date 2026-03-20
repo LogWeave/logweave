@@ -3,6 +3,7 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import { unauthorized } from '../errors.js'
 
 const TENANT_ID_KEY = 'tenantId'
+const KEY_ID_KEY = 'keyId'
 
 function sha256(value: string): Buffer {
   return createHash('sha256').update(value).digest()
@@ -52,6 +53,7 @@ export function createAuthMiddleware(keyMap: Map<string, string>): RequestHandle
     }
 
     res.locals[TENANT_ID_KEY] = matchedTenantId
+    res.locals[KEY_ID_KEY] = tokenHash.toString('hex').slice(0, 16)
     next()
   }
 }
@@ -66,4 +68,12 @@ export function getTenantId(res: Response): string {
     throw new Error('getTenantId called without auth middleware — programming error')
   }
   return tenantId
+}
+
+export function getKeyId(res: Response): string {
+  const keyId = res.locals[KEY_ID_KEY]
+  if (typeof keyId !== 'string' || keyId.length === 0) {
+    throw new Error('getKeyId called without auth middleware — programming error')
+  }
+  return keyId
 }

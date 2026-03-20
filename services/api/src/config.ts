@@ -55,6 +55,10 @@ const configSchema = z.object({
   recoveryLookbackHours: z.coerce.number().int().min(1).max(168).default(24),
   apiKeys: apiKeysSchema,
   dashboardBaseUrl: z.string().url().optional(),
+  rateLimitRpm: z.coerce.number().int().min(1).max(10_000).default(60),
+  rateLimitTenantRpm: z.coerce.number().int().min(1).max(10_000).default(120),
+  rateLimitIngestRpm: z.coerce.number().int().min(1).max(10_000).default(300),
+  maxConcurrentQueries: z.coerce.number().int().min(1).max(100).default(8),
 })
 
 export type Config = z.infer<typeof configSchema>
@@ -75,5 +79,9 @@ export function loadConfig(): Config {
     recoveryLookbackHours: process.env.LOGWEAVE_RECOVERY_LOOKBACK_HOURS,
     apiKeys: process.env.LOGWEAVE_API_KEYS,
     dashboardBaseUrl: process.env.LOGWEAVE_DASHBOARD_BASE_URL,
+    rateLimitRpm: process.env.LOGWEAVE_RATE_LIMIT_RPM,
+    rateLimitTenantRpm: process.env.LOGWEAVE_RATE_LIMIT_TENANT_RPM,
+    rateLimitIngestRpm: process.env.LOGWEAVE_RATE_LIMIT_INGEST_RPM,
+    maxConcurrentQueries: process.env.LOGWEAVE_MAX_CONCURRENT_QUERIES,
   })
 }

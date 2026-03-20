@@ -189,13 +189,9 @@ export async function initSchema(client: ClickHouseClient, logger: pino.Logger):
         await client.command({ query: migration })
       }
 
-      // Resource guardrails are best-effort — ALTER USER may require admin privileges
-      try {
-        await client.command({ query: RESOURCE_GUARDRAILS })
-        logger.info('ClickHouse resource guardrails applied')
-      } catch (guardrailErr) {
-        logger.warn({ err: guardrailErr }, 'Failed to apply resource guardrails (non-fatal)')
-      }
+      // Resource guardrails — fatal if they can't be applied (required for MCP/API safety)
+      await client.command({ query: RESOURCE_GUARDRAILS })
+      logger.info('ClickHouse resource guardrails applied')
 
       logger.info('ClickHouse schema initialized successfully')
       return
