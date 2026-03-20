@@ -72,6 +72,29 @@ Auto-format hook runs ruff (via uvx) and biome on every file write (see .claude/
 - NEVER add Co-Authored-By lines to commits
 - NEVER modify clusterer code from an API-focused task (or vice versa) without explicit instruction
 - NEVER use Kubernetes, SQS, or Kafka in MVP — defer per PLAN.md
+- NEVER claim a test failure is "pre-existing" or "known" — every failing test is either fixed or removed. There is no middle ground.
+- NEVER declare work complete without running the test suite and seeing all tests pass
+
+## Verification Before Completion
+
+Before declaring any task complete, you MUST have **fresh evidence** that it works:
+
+1. **Run the test suite** for every modified service — see actual PASS output, not memory of a prior run
+2. **No weasel words** — if you catch yourself saying "should work", "probably fine", "seems correct",
+   or expressing satisfaction before running verification, STOP and run the actual commands
+3. **Test failures are binary** — a failing test is either fixed (because it caught a real bug) or
+   removed (because it's no longer relevant). "Pre-existing failure" is not a valid status.
+4. **Verification means running commands** — reading code is not verification. Seeing green test output is.
+
+The stop-gate hook (.claude/hooks/stop-gate.sh) enforces this: if tests fail, you cannot finish.
+
+## Brainstorming Workflow
+
+For any non-trivial creative work (new features, architecture changes, behavior modifications):
+1. Use `/brainstorm <topic>` BEFORE planning or coding
+2. This runs a structured Socratic questioning process to surface edge cases and design decisions
+3. The output is a design spec committed to `docs/specs/`
+4. Only after the spec is approved should you proceed to planning or implementation
 
 ## Feedback Loop
 

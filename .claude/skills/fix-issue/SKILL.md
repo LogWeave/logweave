@@ -38,12 +38,24 @@ Fix the GitHub issue: $ARGUMENTS
 10. Run the appropriate test suite:
     - Clusterer: `cd services/clusterer && uv run poe test`
     - API: `cd services/api && pnpm test`
-11. Verify all tests pass (existing + new)
+11. **Every test must pass.** If a test fails:
+    - If it's a real bug your change exposed: fix it
+    - If the test is no longer relevant: remove it
+    - "Pre-existing failure" is NOT a valid status — never use this phrase
 12. Create a descriptive commit referencing the issue number
 
-## Phase 5: Exit Gate
+## Phase 5: Verification Gate
 
-13. Walk through **every** acceptance criterion from the issue — verify each is met
-14. Run the reviewer agent on the diff (background)
-15. Address any CRITICAL or HIGH findings before proceeding
-16. Push and create a PR with `gh pr create`
+13. **Run the test suite again** after committing — see actual PASS output, not memory of a prior run
+14. If you catch yourself thinking "should work" or "probably fine" — STOP and run the commands
+15. Walk through **every** acceptance criterion from the issue — verify each is met with evidence
+
+## Phase 6: Review
+
+16. Run the reviewer agent on the diff (background)
+17. When reviewer returns, check its verdict:
+    - **APPROVED**: proceed to push
+    - **APPROVED_WITH_CONCERNS**: evaluate concerns, fix if warranted, then push
+    - **BLOCKED**: fix all CRITICAL/HIGH findings before proceeding
+18. Do NOT implement reviewer suggestions blindly — verify they're correct for this codebase first
+19. Push and create a PR with `gh pr create`
