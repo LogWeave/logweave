@@ -122,6 +122,12 @@ Three things that compound over time and cannot be replicated by an LLM reading 
   Mitigated: the dashboard remains valuable as a visual overview.
 - **Support engineers need an intermediary**: Non-technical users cannot use MCP directly.
   Mitigated: Slack bot planned for Week 4-5.
+- **Cannot answer customer-specific queries**: The metadata-only model (ADR-002) means
+  LogWeave cannot tell you "what happened to customer X" — patterns are aggregated across
+  all traffic. Mitigated partially by S3 drill-down (ADR-010, Week 5) which can retrieve
+  raw logs, but filtering by customer requires customer-identifiable fields in log metadata.
+  This is the lowest-scoring persona result (mid-level dev: 5.0/10) and represents a
+  structural ceiling for the customer-bug-report use case.
 
 ### Requires
 
@@ -129,6 +135,7 @@ Three things that compound over time and cannot be replicated by an LLM reading 
 - Per-tenant concurrent query limit to prevent noisy neighbours (issue #68)
 - Composite API endpoints to keep MCP tool latency under 500ms (issue #66)
 - Template text search via `template_registry` with skip index (issue #64)
+  — queries MUST use `SELECT ... FINAL` (ReplacingMergeTree consistency, per ADR-003/ADR-006)
 - Cross-service template aggregation with `servicesAffected` (issue #63)
 - Deploy marker API for deploy-anchored change detection (issue #69)
 
@@ -147,8 +154,13 @@ Scored against the status quo (CloudWatch + manual investigation):
 |---------|-------|------------|
 | SRE | 7.0/10 | "Pattern clustering alone saves 5-10 min per incident" |
 | Platform eng | 6.5/10 | "I would adopt this and build on it" |
-| Developer + AI | 7.0/10 | "LLM + patterns + code context is genuinely powerful" |
-| Support (with AI) | 7.0/10 | "AI translates between customer language and LogWeave data" |
+| Junior dev (on-call) | 7.0/10 | LLM + patterns + code context is genuinely powerful at 2am |
+| Eng lead (Monday check) | 7.0/10 | Changes summary is exactly what they want |
+| Senior dev (cross-service) | 7.0/10 | Good triage; S3 connector (Week 5) closes depth gap |
+| Support (with AI) | 7.0/10 | AI translates between customer language and LogWeave data |
+| Support (dashboard only) | 3.0/10 | Dashboard speaks developer language; Slack bot planned |
+| Mid-level dev (bug report) | 5.0/10 | Can't answer "what happened to THIS customer" — metadata-only model |
 
-Average: 6.6/10 as MVP, with clear path to 8+ via deploy markers, raw log samples,
-custom alert thresholds, and webhooks.
+Average across 7 personas (excluding dashboard-only support): 6.6/10 as MVP, with clear
+path to 8+ via deploy markers, raw log samples, custom alert thresholds, and webhooks.
+Full review details in `docs/plans/strategy-61.md`.

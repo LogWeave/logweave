@@ -312,7 +312,7 @@ The heavy lifting is done. We have:
 | Section 10: LLM Layer (entire section) | **DROP** | User's own LLM via MCP/API |
 | Claude Haiku query classification | **DROP** | MCP tools with structured inputs |
 | Claude Sonnet "explain this error" | **DROP** | User's LLM + template data + codebase |
-| 3 NL query templates | **DROP** | 8 MCP tools with structured inputs |
+| 3 NL query templates | **DROP** | 7 MCP tools with structured inputs |
 | `LOGWEAVE_LLM_*` env vars (4 vars) | **DROP** | Not needed |
 | `/v1/query`, `/v1/explain/:id` endpoints | **DROP** | MCP tools |
 
