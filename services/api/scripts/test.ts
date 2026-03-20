@@ -5,12 +5,23 @@ const mode = process.argv[2] // --unit or --integration
 
 let files: string[]
 
+// Files that require a running ClickHouse instance
+const CLICKHOUSE_FILES = new Set([
+  'tests/db/queries.test.ts',
+  'tests/db/insert.test.ts',
+  'tests/db/mv.test.ts',
+  'tests/db/schema.test.ts',
+  'tests\\db\\queries.test.ts',
+  'tests\\db\\insert.test.ts',
+  'tests\\db\\mv.test.ts',
+  'tests\\db\\schema.test.ts',
+])
+
 if (mode === '--unit') {
-  // Unit tests: everything except db/ and e2e/ (no ClickHouse needed)
+  // Unit tests: everything except ClickHouse-dependent files and e2e/integration
   files = globSync('tests/**/*.test.ts').filter(
     (f) =>
-      !f.startsWith('tests/db/') &&
-      !f.startsWith('tests\\db\\') &&
+      !CLICKHOUSE_FILES.has(f) &&
       !f.startsWith('tests/e2e/') &&
       !f.startsWith('tests\\e2e\\') &&
       !f.startsWith('tests/integration/') &&
