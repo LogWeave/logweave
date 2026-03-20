@@ -174,6 +174,8 @@ Returns: Grouped by type — new templates, spiking templates (with ratio), reso
 
 - `since` accepts ISO8601 timestamp
 - When `since` is provided: current window = [since, now], previous window = [since - duration, since]
+- **"New" detection uses set-difference** (templates in current minus templates in previous),
+  NOT `is_new_template` flag (which is relative to Drain3 global state, not time windows)
 - Spikes include ratio ("5.2x normal")
 - New patterns flagged distinctly from spikes
 - Returns in <500ms
@@ -349,32 +351,39 @@ real risk — mitigated by per-tenant concurrent query limit (cap at 8).
 
 ## Milestone Structure
 
-### Week 3a — API Hardening + New Endpoints
+### Week 3a — API Hardening + New Endpoints (~7-8 days)
 
 Focus: make the existing API ready for external machine consumption.
 
 1. ADR: Drop built-in LLM, adopt API-first + MCP design
-2. Cross-service template query function (`groupArray(DISTINCT service)`)
+2. Cross-service template query function (new function, `groupArray(DISTINCT service)`)
 3. Template text search via `template_registry` + ngram skip index
+   - Note: API server queries `template_registry` for the first time — schema co-ownership
+     with clusterer. Add skip index via API's MIGRATIONS array.
 4. `since` timestamp param for changes endpoint (all 3 change queries)
-5. Deploy marker API (`POST /v1/deploys`, `GET /v1/deploys`)
-6. Composite API endpoints (template detail, service health, overview)
-7. Raise MAX_HOURS to 720 for read endpoints
-8. LLM-friendly response formatting (trend text, time range, retention, truncation)
-9. Per-key + per-tenant rate limiting with 429 + Retry-After
-10. Per-tenant concurrent query limit (semaphore, cap at 8)
+   - "New" detection uses set-difference, NOT `is_new_template` flag
+   - All 3 queries need dual code path (hours-based OR since-based)
+   - HIGH complexity — budget 1.5-2 days for this item alone
+5. Composite API endpoints (template detail, service health, overview)
+6. Raise MAX_HOURS to 720 (3 locations: Zod schema, constant, offset cap)
+7. Per-key + per-tenant rate limiting with 429 + Retry-After
+8. Per-tenant concurrent query limit (semaphore, cap at 8)
 
-### Week 3b — MCP Server + Integration
+### Week 3b — MCP Server + Deploy + Integration (~5-6 days)
 
-Focus: ship the MCP server and validate with real usage.
+Focus: ship the MCP server, deploy markers, and validate with real usage.
 
-1. MCP server scaffold (`@logweave/mcp`, tool definitions, error handling)
-2. MCP tools: overview + error patterns + changes + deploys
-3. MCP tools: template detail + service health + search
-4. MCP server: auth, User-Agent header, client-side rate limit handling
-5. Integration test: MCP server against live LogWeave stack
-6. Update PLAN.md: sections 6, 10, 11, 13, 16, 21
-7. **GATE: do not publish `@logweave/mcp` to npm until rate limiting is deployed**
+1. Deploy marker API (`POST /v1/deploys`, `GET /v1/deploys`)
+   - New `deploys` table: MergeTree, UUIDv7 deploy_id, ORDER BY (tenant_id, service, timestamp), TTL 90d
+   - Wire `deploy_id` as alternative to `since` in changes endpoint
+2. LLM-friendly response formatting (trend text, time range, retention, truncation)
+3. MCP server scaffold (`@logweave/mcp`, tool definitions, error handling)
+4. MCP tools: overview + error patterns + changes + deploys
+5. MCP tools: template detail + service health + search
+6. MCP server: auth, User-Agent header, client-side rate limit handling
+7. Integration test: MCP server against live LogWeave stack
+8. Update PLAN.md: sections 6, 10, 11, 13, 16, 21
+9. **GATE: do not publish `@logweave/mcp` to npm until rate limiting is deployed**
 
 ---
 
