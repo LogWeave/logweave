@@ -415,6 +415,11 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       const tenantId = getTenantId(res)
       const params = getQuery<ChangesQuery>(req)
 
+      // When since is provided, compute equivalent hours for meta
+      const hours = params.since
+        ? Math.ceil((Date.now() - new Date(params.since).getTime()) / 3_600_000)
+        : params.hours
+
       const [newRows, spikeRows, resolvedRows] = await Promise.all([
         queryNewTemplates(deps.db, tenantId, params),
         queryTemplateSpikes(deps.db, tenantId, params),
@@ -430,7 +435,12 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       // Sort by ratio descending (spikes first), then new, then resolved
       events.sort((a, b) => b.ratio - a.ratio)
 
-      respond(res, events, { hours: params.hours, limit: params.limit, count: events.length })
+      respond(res, events, {
+        hours,
+        limit: params.limit,
+        count: events.length,
+        ...(params.since ? { since: params.since } : {}),
+      })
     } catch (err) {
       next(err)
     }

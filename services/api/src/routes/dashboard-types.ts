@@ -8,6 +8,7 @@ export interface ApiResponse<T> {
   data: T
   meta: {
     hours: number
+    since?: string
     limit?: number
     offset?: number
     count: number
@@ -78,12 +79,27 @@ export const clusteringHealthQuerySchema = timeRangeSchema.extend({
   level: levelFilterField,
 })
 
-export const changesQuerySchema = timeRangeSchema.extend({
-  service: z.string().optional(),
-  threshold: z.coerce.number().min(1).max(100).default(3),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  level: levelFilterField,
-})
+export const changesQuerySchema = z
+  .object({
+    hours: z.coerce.number().int().min(1).max(720).default(24),
+    since: z
+      .string()
+      .datetime({ offset: true })
+      .optional()
+      .refine((s) => !s || new Date(s).getTime() <= Date.now(), {
+        message: 'since must not be in the future',
+      })
+      .refine((s) => !s || Date.now() - new Date(s).getTime() <= 720 * 3_600_000, {
+        message: 'since must be within the last 30 days',
+      })
+      .refine((s) => !s || Date.now() - new Date(s).getTime() >= 600_000, {
+        message: 'since must be at least 10 minutes ago',
+      }),
+    service: z.string().optional(),
+    threshold: z.coerce.number().min(1).max(100).default(3),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    level: levelFilterField,
+  })
 
 export const levelsQuerySchema = timeRangeSchema.extend({
   service: z.string().optional(),
