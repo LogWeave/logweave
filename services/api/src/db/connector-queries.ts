@@ -12,7 +12,7 @@ export interface ConnectorRow {
   type: string
   config: string
   created_at: string
-  updated_at: string
+  version: string
 }
 
 // ---------------------------------------------------------------------------
@@ -21,26 +21,30 @@ export interface ConnectorRow {
 
 const INSERT_CONNECTOR = `
 INSERT INTO logweave.tenant_connectors
-  (tenant_id, connector_id, name, type, config, created_at, updated_at)
+  (tenant_id, connector_id, name, type, config, created_at, version, is_deleted)
 VALUES
-  ({tenant_id:String}, {connector_id:String}, {name:String}, {type:String}, {config:String}, now64(3), now64(3))`
+  ({tenant_id:String}, {connector_id:String}, {name:String}, {type:String}, {config:String}, now64(3), {version:UInt64}, 0)`
 
 const LIST_CONNECTORS = `
-SELECT tenant_id, connector_id, name, type, config, created_at, updated_at
+SELECT tenant_id, connector_id, name, type, config, created_at, version
 FROM logweave.tenant_connectors FINAL
 WHERE tenant_id = {tenant_id:String}
+  AND is_deleted = 0
 ORDER BY created_at DESC`
 
 const GET_CONNECTOR = `
-SELECT tenant_id, connector_id, name, type, config, created_at, updated_at
+SELECT tenant_id, connector_id, name, type, config, created_at, version
 FROM logweave.tenant_connectors FINAL
 WHERE tenant_id = {tenant_id:String}
-  AND connector_id = {connector_id:String}`
+  AND connector_id = {connector_id:String}
+  AND is_deleted = 0`
 
+// Tombstone delete: insert a row with is_deleted=1 and version > current
 const DELETE_CONNECTOR = `
-ALTER TABLE logweave.tenant_connectors DELETE
-WHERE tenant_id = {tenant_id:String}
-  AND connector_id = {connector_id:String}`
+INSERT INTO logweave.tenant_connectors
+  (tenant_id, connector_id, name, type, config, created_at, version, is_deleted)
+VALUES
+  ({tenant_id:String}, {connector_id:String}, '', '', '', now64(3), {version:UInt64}, 1)`
 
 // ---------------------------------------------------------------------------
 // Functions
@@ -62,6 +66,7 @@ export async function insertConnector(
       name: params.name,
       type: params.type,
       config: params.config,
+      version: Date.now(),
     }),
   )
 }
@@ -90,6 +95,9 @@ export async function deleteConnector(
   connectorId: string,
 ): Promise<void> {
   await db.command(
-    tenantQuery(DELETE_CONNECTOR, tenantId, { connector_id: connectorId }),
+    tenantQuery(DELETE_CONNECTOR, tenantId, {
+      connector_id: connectorId,
+      version: Date.now(),
+    }),
   )
 }

@@ -9,6 +9,8 @@ export interface RateLimitOptions {
   tenantRpm: number
   /** Requests per minute per API key for ingest routes */
   ingestKeyRpm: number
+  /** Requests per minute per API key for raw-logs routes (S3 I/O is expensive) */
+  rawLogsKeyRpm?: number
 }
 
 interface WindowEntry {
@@ -57,8 +59,14 @@ export function createRateLimiter(options: RateLimitOptions): RequestHandler {
 
     // Determine per-key limit based on route
     const isIngest = req.path.startsWith('/ingest/')
-    const keyRpm = isIngest ? options.ingestKeyRpm : options.keyRpm
-    const bucketKey = `${keyId}:${isIngest ? 'ingest' : 'default'}`
+    const isRawLogs = req.path.includes('/raw-logs')
+    const keyRpm = isIngest
+      ? options.ingestKeyRpm
+      : isRawLogs
+        ? (options.rawLogsKeyRpm ?? 10)
+        : options.keyRpm
+    const bucketLabel = isIngest ? 'ingest' : isRawLogs ? 'raw-logs' : 'default'
+    const bucketKey = `${keyId}:${bucketLabel}`
 
     const keyWindow = getOrResetWindow(keyWindows, bucketKey, now)
     const tenantWindow = getOrResetWindow(tenantWindows, tenantId, now)
