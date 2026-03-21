@@ -1,5 +1,5 @@
 import type { DbClient } from './client.js'
-import { DEFAULT_HOURS, MAX_HOURS, clamp, tenantQuery } from './queries.js'
+import { clamp, DEFAULT_HOURS, MAX_HOURS, tenantQuery } from './queries.js'
 
 // ---------------------------------------------------------------------------
 // Row interfaces (ClickHouse returns strings — cast in route handler)

@@ -292,15 +292,20 @@ export async function logweaveTraceDetails(
   client: LogWeaveClient,
   args: { trace_id: string; hours?: number },
 ): Promise<string> {
-  const res = (await client.get(`/traces/${encodeURIComponent(args.trace_id)}`, {
-    hours: args.hours,
-  })) as ApiResponse
+  let res: ApiResponse
+  try {
+    res = (await client.get(`/traces/${encodeURIComponent(args.trace_id)}`, {
+      hours: args.hours,
+    })) as ApiResponse
+  } catch (err) {
+    // API returns 404 when trace not found — return friendly message instead of error
+    if (err instanceof Error && err.message.includes('(404)')) {
+      return `No events found for trace ${args.trace_id} in the specified time window. The trace may have expired (30-day retention) or the trace_id may be incorrect.`
+    }
+    throw err
+  }
 
   const events = (res.data as Array<Record<string, unknown>>) ?? []
-
-  if (events.length === 0) {
-    return `No events found for trace ${args.trace_id}.${formatMeta(res.meta)}`
-  }
 
   const services = [...new Set(events.map((e) => e.service as string))]
 
