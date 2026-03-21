@@ -143,7 +143,6 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
         type: r.type,
         config: redactConfig(r.config),
         createdAt: r.created_at,
-        updatedAt: r.updated_at,
       }))
 
       res.status(HttpStatus.OK).json({

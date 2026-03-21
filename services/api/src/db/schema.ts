@@ -183,8 +183,9 @@ GROUP BY tenant_id, service, level, interval_start`,
     type            LowCardinality(String),
     config          String,
     created_at      DateTime64(3) DEFAULT now64(3),
-    updated_at      DateTime64(3) DEFAULT now64(3)
-  ) ENGINE = ReplacingMergeTree(updated_at)
+    version         UInt64,
+    is_deleted      UInt8 DEFAULT 0
+  ) ENGINE = ReplacingMergeTree(version, is_deleted)
   ORDER BY (tenant_id, connector_id)`,
 ]
 
