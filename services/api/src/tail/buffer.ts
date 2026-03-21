@@ -264,30 +264,19 @@ export class TailBuffer {
         continue
       }
 
-      // Age out old events
+      // Check if all events are expired — if so, reset the ring entirely.
+      // Partial eviction is handled by the circular wrap (oldest events are
+      // naturally overwritten by new pushes). The `recent()` method already
+      // filters by timestamp, so stale events are invisible to consumers.
       const cutoff = now - maxAgeMs
-      const startIdx = this.ringStartIndex(ring)
-      let evicted = 0
+      const newestIdx = (ring.head - 1 + ring.events.length) % ring.events.length
+      const newest = ring.events[newestIdx]
 
-      for (let i = 0; i < ring.size; i++) {
-        const idx = (startIdx + i) % ring.events.length
-        const evt = ring.events[idx]
-        if (!evt) continue
-        const evtTime = new Date(evt.timestamp).getTime()
-        if (evtTime < cutoff) {
-          ring.events[idx] = undefined
-          evicted++
-        } else {
-          break // events are chronological, stop at first non-expired
-        }
-      }
-
-      if (evicted > 0) {
-        ring.size -= evicted
-        if (ring.size <= 0) {
-          ring.size = 0
-          ring.head = 0
-        }
+      if (newest && new Date(newest.timestamp).getTime() < cutoff) {
+        // All events are expired — reset the ring
+        ring.events = new Array(ring.events.length)
+        ring.head = 0
+        ring.size = 0
       }
     }
   }

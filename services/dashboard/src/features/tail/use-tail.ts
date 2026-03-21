@@ -77,14 +77,11 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
     if (filters.level) params.set('level', filters.level)
     if (filters.templateId) params.set('template_id', filters.templateId)
     if (filters.minAnomaly !== undefined) params.set('min_anomaly', String(filters.minAnomaly))
+    // EventSource can't send Authorization headers — pass API key as query param
+    if (config.apiKey) params.set('api_key', config.apiKey)
 
     const url = `${config.apiUrl}/v1/tail?${params.toString()}`
-
-    const es = new EventSource(url, {
-      // Note: EventSource doesn't support custom headers natively.
-      // Auth is handled via query param or cookie in production.
-      // For dev, the API key is passed as a query param.
-    })
+    const es = new EventSource(url)
 
     eventSourceRef.current = es
 

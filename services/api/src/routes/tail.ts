@@ -1,6 +1,7 @@
 import { type Request, type Response, Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
+import { insertAuditEvent } from '../db/audit-queries.js'
 import type { DbClient } from '../db/client.js'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId, getKeyId } from '../middleware/auth.js'
@@ -186,12 +187,22 @@ export function tailRoutes(deps: TailDeps): Router {
       writeSseComment(res, 'keepalive')
     }, 10_000)
 
-    // Cleanup on disconnect
+    // Cleanup on disconnect — guarded against double invocation (C1 fix)
+    let cleaned = false
+    const onShutdown = (): void => {
+      try { res.write('event: shutdown\ndata: {}\n\n') } catch { /* already closed */ }
+      cleanup('shutdown')
+    }
+
     function cleanup(reason: string): void {
+      if (cleaned) return
+      cleaned = true
+
       clearInterval(drainInterval)
       clearInterval(heartbeat)
       unsubscribe()
       decrementConnections(tenantId)
+      process.removeListener('SIGTERM', onShutdown)
 
       const durationMs = Date.now() - startTime
       deps.logger.info(
@@ -199,22 +210,34 @@ export function tailRoutes(deps: TailDeps): Router {
         'Tail SSE connection closed',
       )
 
-      res.end()
+      // Audit: tail.disconnect
+      insertAuditEvent(deps.db, tenantId, {
+        keyId,
+        action: 'tail.disconnect',
+        details: JSON.stringify({ reason }),
+        durationMs,
+        eventsStreamed,
+      }).catch(() => { /* audit write failure must not crash cleanup */ })
+
+      try { res.end() } catch { /* already ended */ }
     }
 
     req.on('close', () => cleanup('client'))
     res.on('error', () => cleanup('error'))
-
-    // Server shutdown
-    process.once('SIGTERM', () => {
-      res.write('event: shutdown\ndata: {}\n\n')
-      cleanup('shutdown')
-    })
+    process.on('SIGTERM', onShutdown)
 
     deps.logger.info(
       { tenantId, keyId, filters },
       'Tail SSE connection opened',
     )
+
+    // Audit: tail.connect
+    insertAuditEvent(deps.db, tenantId, {
+      keyId,
+      action: 'tail.connect',
+      sourceIp: req.ip ?? '',
+      details: JSON.stringify(filters),
+    }).catch(() => { /* audit write failure must not crash the connection */ })
   })
 
   // GET /tail/poll — cursor-based polling for MCP tool
