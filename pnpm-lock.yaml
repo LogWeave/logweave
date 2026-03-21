@@ -196,6 +196,10 @@ importers:
         version: 5.9.3
 
   simulator:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1014.0
+        version: 3.1014.0
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.0.0

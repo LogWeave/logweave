@@ -1,4 +1,5 @@
 import { LogWeaveTransport } from '../../packages/transport/src/transport.js'
+import { S3Writer } from './s3-writer.js'
 import { ModeController, Scheduler } from './scheduler.js'
 import { TemplateEngine } from './template-engine.js'
 import type { CliOptions, DefaultsConfig, ServiceConfig } from './types.js'
@@ -15,6 +16,7 @@ export class Runner {
   private readonly scheduler: Scheduler
   private readonly modeController: ModeController
   private readonly options: CliOptions
+  private readonly s3Writer: S3Writer | null = null
   /** Cumulative weight array for weighted service selection */
   private readonly serviceWeights: number[]
   private readonly totalServiceWeight: number
@@ -23,6 +25,15 @@ export class Runner {
 
   constructor({ services, options, defaults }: RunnerDeps) {
     this.options = options
+
+    if (options.s3Bucket) {
+      this.s3Writer = new S3Writer({
+        endpoint: options.s3Endpoint ?? 'http://localhost:9002',
+        bucket: options.s3Bucket,
+        accessKeyId: 'minioadmin',
+        secretAccessKey: 'minioadmin',
+      })
+    }
 
     for (const svc of services) {
       const engine = new TemplateEngine(svc)
@@ -106,6 +117,17 @@ export class Runner {
     const transport = this.transports[idx]
     if (!transport) return
 
+    // Dual-write: also write to S3 if enabled
+    const serviceName = engine.serviceName
+    if (this.s3Writer) {
+      this.s3Writer.addEvent(serviceName, {
+        message: event.message,
+        level: event.level,
+        timestamp: event.timestamp,
+        ...event,
+      })
+    }
+
     transport.write(
       {
         level: event.level,
@@ -127,6 +149,7 @@ export class Runner {
     console.log(`  Rate:     ${this.options.rate} events/sec`)
     console.log(`  Mode:     ${this.options.mode}`)
     console.log(`  Endpoint: ${this.options.dryRun ? '(dry-run)' : this.options.endpoint}`)
+    console.log(`  S3:       ${this.s3Writer ? `s3://${this.options.s3Bucket}` : '(disabled)'}`)
     console.log(
       `  Duration: ${this.options.duration === 0 ? 'indefinite' : `${this.options.duration}s`}`,
     )
@@ -134,6 +157,7 @@ export class Runner {
 
     this.scheduler.start()
     this.modeController.start()
+    this.s3Writer?.startFlushing()
 
     if (this.options.duration > 0) {
       this.durationTimer = setTimeout(() => {
@@ -157,7 +181,10 @@ export class Runner {
     this.scheduler.stop()
     this.modeController.stop()
 
-    await Promise.all(this.transports.map((t) => t.closeAsync()))
+    await Promise.all([
+      ...this.transports.map((t) => t.closeAsync()),
+      this.s3Writer?.close(),
+    ])
 
     console.log(`  Events sent: ${this.eventCount}`)
     console.log(`  Duration:    ${elapsed}s`)

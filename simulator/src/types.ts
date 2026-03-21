@@ -71,6 +71,10 @@ export interface CliOptions {
   bufferSize: number
   flushMs: number
   dryRun: boolean
+  /** S3 bucket name — enables dual-write to MinIO/S3 when set */
+  s3Bucket?: string
+  /** S3 endpoint URL (default: http://localhost:9002) */
+  s3Endpoint?: string
   /** Tracks which flags were explicitly provided (vs defaults) */
   _explicit: {
     rate: boolean

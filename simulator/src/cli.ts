@@ -54,6 +54,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliOptions {
 
   const dryRun = hasFlag(argv, '--dry-run')
 
+  const s3Bucket = getArg(argv, '--s3-bucket') ?? process.env.LOGWEAVE_SIM_S3_BUCKET
+  const s3Endpoint = getArg(argv, '--s3-endpoint') ?? process.env.LOGWEAVE_SIM_S3_ENDPOINT ?? 'http://localhost:9002'
+
   return {
     rate,
     services,
@@ -64,6 +67,8 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliOptions {
     bufferSize,
     flushMs,
     dryRun,
+    s3Bucket: s3Bucket ?? undefined,
+    s3Endpoint,
     _explicit: {
       rate: rateRaw !== undefined,
       bufferSize: bufferSizeRaw !== undefined,
