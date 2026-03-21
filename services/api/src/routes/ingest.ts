@@ -18,6 +18,7 @@ export interface IngestDeps {
   anomalyScorer: AnomalyScorer
   tailBuffer?: TailBuffer
   settingsStore?: TenantSettingsStore
+  eventBus?: import('../events/event-bus.js').EventBus
 }
 
 const ingestBatchSchema = z.object({

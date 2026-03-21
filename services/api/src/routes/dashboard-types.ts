@@ -113,6 +113,12 @@ export const templateStatusCodesQuerySchema = timeRangeSchema.extend({
   template_id: z.string().min(1),
 })
 
+export const templateTrendSchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(90),
+})
+
+export type TemplateTrendQuery = z.infer<typeof templateTrendSchema>
+
 export const templateSearchSchema = paginatedSchema.extend({
   q: z.string().min(3, 'Search query must be at least 3 characters'),
   level: levelFilterField,

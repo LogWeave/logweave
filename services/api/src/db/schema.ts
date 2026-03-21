@@ -205,6 +205,35 @@ GROUP BY tenant_id, service, level, interval_start`,
   ) ENGINE = MergeTree()
   ORDER BY (tenant_id, timestamp)
   TTL toDateTime(timestamp) + toIntervalDay(365) DELETE`,
+
+  // 12. Template daily summary — 365-day trend analysis (daily granularity)
+  `CREATE TABLE IF NOT EXISTS logweave.template_daily_summary (
+    tenant_id          LowCardinality(String),
+    service            LowCardinality(String),
+    template_id        String,
+    day                Date,
+    occurrence_count   AggregateFunction(count),
+    error_count        AggregateFunction(countIf, UInt8),
+    avg_duration_ms    AggregateFunction(avg, Float64),
+    max_anomaly_score  AggregateFunction(max, Float32)
+  ) ENGINE = AggregatingMergeTree()
+  PARTITION BY toYYYYMM(day)
+  ORDER BY (tenant_id, service, template_id, day)
+  TTL day + toIntervalDay(365) DELETE
+  SETTINGS ttl_only_drop_parts = 1`,
+
+  `CREATE MATERIALIZED VIEW IF NOT EXISTS logweave.template_daily_summary_mv
+  TO logweave.template_daily_summary AS
+  SELECT
+      tenant_id, service, template_id,
+      toDate(timestamp) AS day,
+      countState()                      AS occurrence_count,
+      countIfState(level = 'ERROR')     AS error_count,
+      avgState(duration_ms)             AS avg_duration_ms,
+      maxState(anomaly_score)           AS max_anomaly_score
+  FROM logweave.log_metadata
+  WHERE template_id != '0'
+  GROUP BY tenant_id, service, template_id, day`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS
