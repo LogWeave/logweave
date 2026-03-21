@@ -18,6 +18,7 @@ import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
 import { connectorRoutes } from './routes/connectors.js'
 import { rawLogsRoutes } from './routes/raw-logs.js'
+import { tailRoutes } from './routes/tail.js'
 import { correlationRoutes } from './routes/correlation.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { deployRoutes } from './routes/deploys.js'
@@ -163,6 +164,16 @@ export function createApp(deps: AppDependencies): express.Express {
       logger: deps.logger,
     }),
   )
+  if (deps.tailBuffer) {
+    v1.use(
+      tailRoutes({
+        tailBuffer: deps.tailBuffer,
+        settingsStore: deps.settingsStore,
+        db: deps.db,
+        logger: deps.logger,
+      }),
+    )
+  }
   app.use('/v1', v1)
 
   // Dashboard SPA — serve static files if the dist directory exists
