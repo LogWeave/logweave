@@ -174,6 +174,18 @@ GROUP BY tenant_id, service, level, interval_start`,
   ORDER BY (tenant_id, service, timestamp)
   TTL toDateTime(timestamp) + toIntervalDay(90) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
+
+  // 10. Connector config — stores log source connection settings per tenant
+  `CREATE TABLE IF NOT EXISTS logweave.tenant_connectors (
+    tenant_id       LowCardinality(String),
+    connector_id    String,
+    name            String,
+    type            LowCardinality(String),
+    config          String,
+    created_at      DateTime64(3) DEFAULT now64(3),
+    updated_at      DateTime64(3) DEFAULT now64(3)
+  ) ENGINE = ReplacingMergeTree(updated_at)
+  ORDER BY (tenant_id, connector_id)`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS
