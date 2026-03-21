@@ -324,7 +324,18 @@ Actions logged:
 - For single-instance deployments (self-hosted): no limitation.
 - For multi-instance: use sticky sessions for SSE. Accept partial visibility.
   MCP tool polling may hit different instances (cursor is instance-local).
-- Future: Redis pub/sub or NATS for cross-instance event broadcasting.
+
+**Upgrade path: Redis Streams** (when multi-instance is needed):
+- Add Redis container to Docker Compose
+- Ingest pipeline publishes tail events to a Redis Stream per tenant
+  (`XADD logweave:tail:{tenant_id}`) with MAXLEN cap for automatic trimming
+- Each API instance subscribes via `XREAD BLOCK` and populates its local ring buffer
+  from the shared stream — all instances see all events
+- SSE reconnection uses Redis stream IDs instead of local sequence numbers
+- MCP cursor maps to Redis stream ID — works across instances
+- Redis Streams persist to disk, survive Redis restarts, and support consumer groups
+- Migration: swap the ring buffer's `push()` source from direct ingest to Redis consumer.
+  The TailBuffer interface and all consumers (SSE, MCP, dashboard) are unchanged.
 
 ## Open Questions
 
