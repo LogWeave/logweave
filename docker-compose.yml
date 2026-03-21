@@ -48,16 +48,54 @@ services:
       # Higher than default 500ms to account for Docker networking + container startup overhead
       LOGWEAVE_CLUSTERER_TIMEOUT_MS: 5000
       LOGWEAVE_RECOVERY_INTERVAL_MS: 10000
+      LOGWEAVE_S3_ENDPOINT: http://minio:9000
+      LOGWEAVE_S3_ACCESS_KEY: minioadmin
+      LOGWEAVE_S3_SECRET_KEY: minioadmin
+      LOGWEAVE_S3_BUCKET: logweave-logs
+      LOGWEAVE_S3_FORCE_PATH_STYLE: "true"
     depends_on:
       clickhouse:
         condition: service_healthy
       clusterer:
         condition: service_started
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/healthz"]
       interval: 10s
       timeout: 3s
       retries: 3
+
+  # MinIO — S3-compatible local object store for raw log storage + drill-down
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9002:9000"   # S3 API (9000 taken by ClickHouse native)
+      - "9001:9001"   # MinIO Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Create default bucket on startup
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb --ignore-existing local/logweave-logs;
+      echo 'Bucket logweave-logs ready';
+      "
 
   # Log simulator — generates realistic events for development + demo
   # Usage: docker compose --profile simulator up
@@ -80,3 +118,4 @@ services:
 
 volumes:
   clickhouse_data:
+  minio_data:
