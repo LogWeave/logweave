@@ -463,3 +463,64 @@ export async function logweaveRawLogs(
   text += formatMeta(res.meta)
   return text
 }
+
+// ---------------------------------------------------------------------------
+// Live tail
+// ---------------------------------------------------------------------------
+
+export async function logweaveLiveTail(
+  client: LogWeaveClient,
+  args: {
+    service?: string
+    level?: string
+    template_id?: string
+    min_anomaly?: number
+    seconds?: number
+    limit?: number
+    cursor?: number
+  },
+): Promise<string> {
+  const res = (await client.get('/tail/poll', {
+    service: args.service,
+    level: args.level,
+    template_id: args.template_id,
+    min_anomaly: args.min_anomaly,
+    seconds: args.seconds,
+    limit: args.limit,
+    cursor: args.cursor,
+  })) as ApiResponse
+
+  const d = res.data as Record<string, unknown>
+  const events = (d.events as Array<Record<string, unknown>>) ?? []
+  const cursor = d.cursor as number
+  const gap = d.gap as boolean | undefined
+
+  if (events.length === 0) {
+    const msg = res.meta.message
+      ? String(res.meta.message)
+      : 'No events in the buffer. Events appear when logs are ingested.'
+    return `${msg}\n\nCursor: ${cursor} (use this in your next call)`
+  }
+
+  let text = `## Live Events (${events.length})\n\n`
+
+  if (gap) {
+    const missed = d.missedEstimate as number
+    text += `**Warning:** ~${missed} events were missed since your last poll. Buffer wrapped.\n\n`
+  }
+
+  for (const e of events) {
+    const anomaly = (e.anomalyScore as number) > 0.5 ? ` [ANOMALY ${e.anomalyScore}]` : ''
+    const status = e.statusCode ? ` [${e.statusCode}]` : ''
+    const dur = e.durationMs ? ` ${e.durationMs}ms` : ''
+    text += `- **${e.timestamp}** ${e.service} ${e.level}${status}${dur}${anomaly}\n`
+    text += `  ${e.templateText}\n`
+    if (e.preProcessedMessage) {
+      text += `  Message: ${e.preProcessedMessage}\n`
+    }
+  }
+
+  text += `\nCursor: ${cursor} (use this in your next call to get only new events)`
+  text += formatMeta(res.meta)
+  return text
+}

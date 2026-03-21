@@ -9,6 +9,7 @@ import {
   logweaveCorrelations,
   logweaveDeploys,
   logweaveErrorPatterns,
+  logweaveLiveTail,
   logweaveOverview,
   logweaveRawLogs,
   logweaveRelatedPatterns,
@@ -328,6 +329,38 @@ server.registerTool(
   },
   toolHandler((args) =>
     logweaveRawLogs(client, args as { template_id: string; service: string; hours?: number; limit?: number }),
+  ),
+)
+
+// ---------------------------------------------------------------------------
+// Live tail
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  'live_tail',
+  {
+    title: 'Live Event Stream',
+    description:
+      'Poll the live event buffer to see what is happening right now. Returns recent events ' +
+      'from the ingest pipeline. Use cursor from previous calls to get only new events (avoids duplicates). ' +
+      'Filter by service, level, template_id, or anomaly score. Requires tail to be enabled for the tenant. ' +
+      'Use this during incident investigation to watch patterns emerge in real-time.',
+    inputSchema: {
+      service: z.string().optional().describe('Filter to a specific service'),
+      level: z.string().optional().describe('Filter to a log level (e.g. ERROR)'),
+      template_id: z.string().optional().describe('Filter to a specific template pattern'),
+      min_anomaly: z.number().optional().describe('Minimum anomaly score (0-1)'),
+      seconds: z.number().optional().describe('How far back on first call (default: 30, max: 60)'),
+      limit: z.number().optional().describe('Max events to return (default: 50, max: 200)'),
+      cursor: z.number().optional().describe('Sequence number from previous call — get only new events'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveLiveTail(client, args as {
+      service?: string; level?: string; template_id?: string;
+      min_anomaly?: number; seconds?: number; limit?: number; cursor?: number
+    }),
   ),
 )
 

@@ -8,12 +8,16 @@ import { ingestBatch } from '../pipeline/ingest.js'
 import type { DbClient } from '../db/client.js'
 import type { AnomalyScorer } from '../pipeline/anomaly-scorer.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
+import type { TailBuffer } from '../tail/buffer.js'
+import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 
 export interface IngestDeps {
   clusterClient: ClusterClient
   db: DbClient
   logger: pino.Logger
   anomalyScorer: AnomalyScorer
+  tailBuffer?: TailBuffer
+  settingsStore?: TenantSettingsStore
 }
 
 const ingestBatchSchema = z.object({
@@ -42,6 +46,8 @@ export function ingestRoutes(deps: IngestDeps): Router {
             db: deps.db,
             logger: deps.logger,
             anomalyScorer: deps.anomalyScorer,
+            tailBuffer: deps.tailBuffer,
+            settingsStore: deps.settingsStore,
           },
           tenantId,
           body.events,

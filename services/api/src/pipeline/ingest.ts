@@ -2,7 +2,9 @@ import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
 import { batchInsert } from '../db/insert.js'
 import * as metrics from '../metrics.js'
+import type { TailBuffer } from '../tail/buffer.js'
 import type { LogMetadataRow } from '../types.js'
+import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 import type { AnomalyScorer } from './anomaly-scorer.js'
 import type { ClusterClient, ClusterResult } from './cluster-client.js'
 import { parseEvent, processEvent, PREPROCESSING_VERSION } from './index.js'
@@ -13,6 +15,8 @@ export interface IngestDependencies {
   db: DbClient
   logger: pino.Logger
   anomalyScorer: AnomalyScorer
+  tailBuffer?: TailBuffer
+  settingsStore?: TenantSettingsStore
 }
 
 export interface IngestResult {
@@ -148,6 +152,30 @@ export async function ingestBatch(
       clustered++
       if (cluster.isNewTemplate) {
         newTemplates++
+      }
+    }
+  }
+
+  // Phase 3.5: Publish to live tail buffer (sync, non-blocking)
+  if (deps.tailBuffer && deps.settingsStore) {
+    const tailMode = deps.settingsStore.get(tenantId).tailMode
+    if (tailMode && tailMode !== 'disabled') {
+      for (const row of rows) {
+        deps.tailBuffer.push(tenantId, {
+          timestamp: row.timestamp,
+          service: row.service,
+          level: row.level,
+          templateId: row.template_id ?? '0',
+          templateText: row.template_text ?? '',
+          preProcessedMessage: tailMode === 'preprocessed'
+            ? (row.pre_processed_message ?? '')
+            : undefined,
+          anomalyScore: row.anomaly_score ?? 0,
+          statusCode: row.status_code ?? 0,
+          durationMs: row.duration_ms ?? 0,
+          traceId: row.trace_id ?? '',
+          route: row.route ?? '',
+        })
       }
     }
   }

@@ -187,6 +187,20 @@ GROUP BY tenant_id, service, level, interval_start`,
     is_deleted      UInt8 DEFAULT 0
   ) ENGINE = ReplacingMergeTree(version, is_deleted)
   ORDER BY (tenant_id, connector_id)`,
+
+  // 11. Audit log — append-only, SOC2 compliance (365-day retention)
+  `CREATE TABLE IF NOT EXISTS logweave.audit_log (
+    timestamp          DateTime64(3) DEFAULT now64(3),
+    tenant_id          LowCardinality(String),
+    key_id             String,
+    action             LowCardinality(String),
+    source_ip          String DEFAULT '',
+    details            String DEFAULT '',
+    duration_ms        UInt64 DEFAULT 0,
+    events_streamed    UInt64 DEFAULT 0
+  ) ENGINE = MergeTree()
+  ORDER BY (tenant_id, timestamp)
+  TTL toDateTime(timestamp) + toIntervalDay(365) DELETE`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS

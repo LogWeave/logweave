@@ -22,20 +22,26 @@ export function createAuthMiddleware(keyMap: Map<string, string>): RequestHandle
   }
 
   return (req: Request, res: Response, next: NextFunction): void => {
+    // Extract token from Authorization header or query param (for SSE/EventSource)
+    let token: string | undefined
     const header = req.get('authorization')
-    if (!header) {
-      next(unauthorized('Missing Authorization header'))
-      return
+
+    if (header) {
+      if (!header.startsWith('Bearer ')) {
+        next(unauthorized('Authorization must use Bearer scheme'))
+        return
+      }
+      token = header.slice(7).trim()
+    } else {
+      // Fallback: ?api_key= query param (required for EventSource which can't set headers)
+      const queryKey = req.query.api_key
+      if (typeof queryKey === 'string') {
+        token = queryKey.trim()
+      }
     }
 
-    if (!header.startsWith('Bearer ')) {
-      next(unauthorized('Authorization must use Bearer scheme'))
-      return
-    }
-
-    const token = header.slice(7).trim()
-    if (token.length === 0) {
-      next(unauthorized('Bearer token is empty'))
+    if (!token || token.length === 0) {
+      next(unauthorized('Missing Authorization header or api_key query parameter'))
       return
     }
 
