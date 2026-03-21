@@ -183,6 +183,48 @@ export class ClusterClient {
     return Array.from({ length: count }, () => ({ ...FALLBACK_RESULT }))
   }
 
+  /**
+   * Embed text(s) via the clusterer's POST /embed endpoint.
+   * Returns null on ANY failure — never throws.
+   */
+  async embed(texts: string[]): Promise<number[][] | null> {
+    if (this.circuitOpen) {
+      this.callsSinceOpen++
+      if (this.callsSinceOpen % this.probeInterval !== 0) {
+        return null
+      }
+    }
+
+    try {
+      const response = await this.fetchFn(`${this.url}/embed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texts }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      })
+
+      if (!response.ok) {
+        this.logger.warn({ statusCode: response.status }, 'Clusterer /embed returned non-OK')
+        this.onFailure()
+        return null
+      }
+
+      const body = (await response.json()) as { embeddings?: number[][] }
+      if (!Array.isArray(body.embeddings)) {
+        this.logger.warn('Clusterer /embed returned malformed response')
+        this.onFailure()
+        return null
+      }
+
+      this.onSuccess()
+      return body.embeddings
+    } catch {
+      this.logger.warn('Clusterer /embed request failed')
+      this.onFailure()
+      return null
+    }
+  }
+
   private isValidResponse(body: unknown): body is ClustererResponse {
     if (typeof body !== 'object' || body === null) return false
     const obj = body as Record<string, unknown>

@@ -13,7 +13,8 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from clusterer.checkpoint import CheckpointManager
 from clusterer.config import get_settings
 from clusterer.drain_service import DrainService, TenantLimitError
-from clusterer.models import ClusterRequest, ClusterResponse
+from clusterer.embedding import EmbeddingService
+from clusterer.models import ClusterRequest, ClusterResponse, EmbedRequest, EmbedResponse
 from clusterer.pipeline import ClusterPipeline
 from clusterer.template_registry import TemplateRegistry
 
@@ -56,7 +57,10 @@ async def lifespan(app: FastAPI):
         max_clusters=settings.drain3_max_clusters,
         max_tenants=settings.max_tenants,
     )
-    registry = TemplateRegistry(ch_client)
+    embedding_service = EmbeddingService()
+    app.state.embedding_service = embedding_service
+    app.state.backfill_running = False
+    registry = TemplateRegistry(ch_client, embedding_service=embedding_service)
     hmac_key = settings.checkpoint_hmac_key.get_secret_value()
     checkpoint_mgr = CheckpointManager(settings.drain3_checkpoint_dir, hmac_key=hmac_key)
     if not hmac_key:
@@ -214,6 +218,91 @@ async def cluster(request: ClusterRequest) -> ClusterResponse:
         semaphore.release()
 
     return ClusterResponse(results=results)
+
+
+@app.post("/embed", response_model=EmbedResponse)
+async def embed(request: EmbedRequest) -> EmbedResponse:
+    embedding_service: EmbeddingService = app.state.embedding_service
+    semaphore: asyncio.Semaphore = app.state.semaphore
+
+    try:
+        await asyncio.wait_for(semaphore.acquire(), timeout=0.1)
+    except TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="Server busy",
+            headers={"Retry-After": "1"},
+        ) from None
+
+    try:
+        embeddings = await asyncio.wait_for(
+            asyncio.to_thread(embedding_service.embed, request.texts),
+            timeout=app.state.settings.request_timeout_seconds,
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Embedding timeout") from None
+    except Exception:
+        logger.exception("Internal error in /embed")
+        raise HTTPException(status_code=500, detail="Embedding failed") from None
+    finally:
+        semaphore.release()
+
+    return EmbedResponse(
+        embeddings=embeddings,
+        model=EmbeddingService.MODEL_NAME,
+        dimensions=EmbeddingService.DIMENSIONS,
+    )
+
+
+@app.post("/embed/backfill")
+async def embed_backfill() -> dict[str, str]:
+    """Backfill embeddings for templates with empty vectors. Non-blocking."""
+    if app.state.backfill_running:
+        return {"status": "already_running"}
+
+    asyncio.create_task(_run_backfill())
+    return {"status": "started"}
+
+
+async def _run_backfill() -> None:
+    app.state.backfill_running = True
+    try:
+        ch_client = app.state.ch_client
+        embedding_service: EmbeddingService = app.state.embedding_service
+        batch_size = 100
+
+        while True:
+            rows = await asyncio.to_thread(
+                ch_client.query,
+                "SELECT tenant_id, template_text, template_id "
+                "FROM template_registry FINAL "
+                "WHERE length(embedding) = 0 "
+                f"LIMIT {batch_size}",
+            )
+            if not rows.result_rows:
+                break
+
+            texts = [row[1] for row in rows.result_rows]
+            embeddings = await asyncio.to_thread(embedding_service.embed, texts)
+            model_name = EmbeddingService.MODEL_NAME
+
+            insert_rows = [
+                [row[0], row[1], row[2], emb, model_name]
+                for row, emb in zip(rows.result_rows, embeddings)
+            ]
+            await asyncio.to_thread(
+                ch_client.insert,
+                "template_registry",
+                insert_rows,
+                column_names=["tenant_id", "template_text", "template_id", "embedding", "embedding_model"],
+            )
+            logger.info("Backfilled %d template embeddings", len(insert_rows))
+
+        logger.info("Embedding backfill complete")
+    except Exception:
+        logger.exception("Embedding backfill failed")
+    finally:
+        app.state.backfill_running = False
 
 
 if __name__ == "__main__":

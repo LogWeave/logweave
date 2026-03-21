@@ -42,3 +42,16 @@ class ClusterResultItem(BaseModel):
 
 class ClusterResponse(BaseModel):
     results: list[ClusterResultItem]
+
+
+class EmbedRequest(BaseModel):
+    texts: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=32_768)]],
+        Field(min_length=1, max_length=100),
+    ]
+
+
+class EmbedResponse(BaseModel):
+    embeddings: list[list[float]]
+    model: str
+    dimensions: int
