@@ -48,11 +48,6 @@ services:
       # Higher than default 500ms to account for Docker networking + container startup overhead
       LOGWEAVE_CLUSTERER_TIMEOUT_MS: 5000
       LOGWEAVE_RECOVERY_INTERVAL_MS: 10000
-      LOGWEAVE_S3_ENDPOINT: http://minio:9000
-      LOGWEAVE_S3_ACCESS_KEY: minioadmin
-      LOGWEAVE_S3_SECRET_KEY: minioadmin
-      LOGWEAVE_S3_BUCKET: logweave-logs
-      LOGWEAVE_S3_FORCE_PATH_STYLE: "true"
     depends_on:
       clickhouse:
         condition: service_healthy

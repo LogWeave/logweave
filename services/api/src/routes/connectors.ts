@@ -37,11 +37,22 @@ const s3ConfigSchema = z
     region: z.string().min(1).max(64),
     logFormat: z.enum(['jsonl', 'text']),
     compression: z.enum(['none', 'gzip']),
+    // endpoint, forcePathStyle, accessKeyId, secretAccessKey — dev/MinIO only.
+    // SSRF note: endpoint allows arbitrary URLs. In production, reject configs with
+    // endpoint set (AssumeRole doesn't need it). Currently allowed for local dev with MinIO.
     endpoint: z.string().url().optional(),
     forcePathStyle: z.boolean().optional(),
     accessKeyId: z.string().max(128).optional(),
     secretAccessKey: z.string().max(128).optional(),
   })
+  .refine(
+    (c) => {
+      // endpoint only allowed in dev mode (SSRF prevention — see ADR-010)
+      if (c.endpoint && process.env.NODE_ENV === 'production') return false
+      return true
+    },
+    { message: 'Custom endpoint is not allowed in production (SSRF risk). Use IAM AssumeRole instead.' },
+  )
   .refine(
     (c) => {
       // secretAccessKey only allowed with endpoint (MinIO mode)
@@ -71,9 +82,8 @@ const createConnectorSchema = z.object({
 function redactConfig(configJson: string): Record<string, unknown> {
   try {
     const config = JSON.parse(configJson) as Record<string, unknown>
-    if (config.secretAccessKey) {
-      config.secretAccessKey = '***'
-    }
+    if (config.secretAccessKey) config.secretAccessKey = '***'
+    if (config.accessKeyId) config.accessKeyId = '***'
     return config
   } catch {
     return {}

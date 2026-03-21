@@ -123,8 +123,9 @@ describe('POST /v1/connectors', () => {
     assert.ok(res.body.data.connectorId)
     assert.equal(res.body.data.name, 'Dev S3')
     assert.equal(res.body.data.type, 's3')
-    // secretAccessKey should be redacted
+    // credentials should be redacted
     assert.equal(res.body.data.config.secretAccessKey, '***')
+    assert.equal(res.body.data.config.accessKeyId, '***')
     assert.equal(res.body.data.config.bucket, 'logweave-logs')
   })
 
