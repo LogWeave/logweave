@@ -98,6 +98,12 @@ interface TailBuffer {
     limit?: number
   }): { events: TailEvent[]; cursor: number }
 
+  /**
+   * Subscribe to new events (for SSE). Returns unsubscribe function.
+   * CRITICAL: callbacks MUST NOT perform I/O. They should append to a
+   * per-connection queue. The SSE write loop drains the queue asynchronously.
+   * This prevents blocking the ingest pipeline on slow SSE clients.
+   */
   subscribe(tenantId: string, callback: (event: TailEvent) => void): () => void
 
   stats(): { tenants: number; totalEvents: number; memoryBytes: number }
@@ -106,7 +112,12 @@ interface TailBuffer {
 
 Implementation: `Map<tenantId, { events: TailEvent[], head: number, seq: number }>`.
 Circular array with configurable max size. Lazy tenant creation on first event (only
-for tenants with tail enabled).
+for tenants with tail enabled). Evict idle tenant buffers after 5 minutes of no events.
+
+**Buffer-wrap reconnection:** When `Last-Event-ID` or `cursor` refers to a sequence
+number that has been evicted, replay from the oldest available event and include
+`gap: true, missedEstimate: N` in the first event so the client/LLM knows events
+were missed.
 
 Configuration via environment:
 - `LOGWEAVE_TAIL_BUFFER_SIZE`: max events per tenant (default 10000)
@@ -114,8 +125,16 @@ Configuration via environment:
 - `LOGWEAVE_TAIL_MAX_CONNECTIONS`: max SSE connections per tenant (default 5)
 - `LOGWEAVE_TAIL_MAX_MEMORY_MB`: global memory ceiling for all buffers (default 256)
 
+**Memory estimation:** Each buffered event consumes approximately 500–900 bytes of
+V8 heap (11 fields + string allocations + object overhead). At the default buffer
+size of 10,000 events, each tail-enabled tenant uses 5–9 MB. The 256 MB default
+ceiling holds ~28–51 concurrent tenants. Self-hosted deployments (1–5 tenants) can
+increase the ceiling. SaaS deployments with 50+ tenants should size accordingly or
+accept LRU eviction of less-active tenants.
+
 **Memory safety:** When total buffer memory approaches `MAX_MEMORY_MB`, evict the
-least-recently-active tenant's buffer first. Log a warning when eviction occurs.
+least-recently-active tenant's buffer first. Log a warning including the evicted
+tenant ID, buffer size, and reason.
 
 ### 3. Pipeline Hook
 
@@ -195,7 +214,8 @@ Connection lifecycle:
 - Returns 403 if tail is disabled for the tenant
 - Connection tracked against per-tenant limit (default 5)
 - Connection limit exceeded: return 429 with message "Maximum tail connections reached"
-- Heartbeat: `:keepalive\n\n` every 15 seconds (prevents proxy timeouts)
+- Heartbeat: `:keepalive\n\n` every 10 seconds (prevents proxy timeouts, allows
+  for GC pause tolerance against 60s ALB idle timeout)
 - Response header: `X-Accel-Buffering: no` (prevents nginx buffering)
 - Client reconnection: `Last-Event-ID` header → server replays from buffer
 - Backpressure: if client falls >1000 events behind, disconnect with error event
@@ -204,7 +224,11 @@ Connection lifecycle:
 Rate limiting: connections counted against a separate `tailConnections` limit.
 
 **Proxy guidance:** nginx requires `proxy_buffering off;` for SSE. ALB idle timeout
-is 60s, covered by the 15s heartbeat. Document these requirements in setup guide.
+is 60s, covered by the 10s heartbeat. Document these requirements in setup guide.
+
+**Stats endpoint:** `GET /v1/tail/stats` (authenticated) returns buffer utilization:
+`{ tenants, totalEvents, memoryBytes, connectionsActive }`. Include in `/readyz`
+response as well for monitoring dashboards.
 
 ### 6. Dashboard UI: Live Tail Panel
 
@@ -241,9 +265,12 @@ TTL toDateTime(timestamp) + toIntervalDay(365) DELETE
 
 Actions logged:
 - `tail.connect` — SSE connection opened (with filters)
-- `tail.disconnect` — SSE connection closed (with reason: client/backpressure/timeout/shutdown)
+- `tail.disconnect` — SSE connection closed (with reason, duration, events_streamed)
 - `tail.mode_change` — tail_mode setting changed (from → to)
-- `tail.mcp_poll` — MCP live_tail tool called
+- `tail.mcp_session` — MCP polling session (logged once per session, not per poll).
+  A session starts on first poll (cursor=undefined) and ends when no poll is received
+  for 120 seconds. The audit record includes total polls, duration, and events returned.
+  This prevents audit log bloat from high-frequency polling.
 
 ### 8. Security & Compliance (revised after reviews)
 
@@ -306,7 +333,8 @@ None — resolved during brainstorming and persona reviews.
 ## Test Strategy
 
 - **Ring buffer unit tests:** push/evict, since/recent with cursors, service/level/template
-  filtering, tenant isolation, idle eviction, memory ceiling enforcement
+  filtering, tenant isolation, idle eviction, memory ceiling enforcement,
+  buffer-wrap gap detection (cursor points to evicted seq → replay from oldest + gap flag)
 - **Pipeline hook test:** verify events only buffered for enabled tenants
 - **MCP tool test:** cursor-based pagination, filter params, empty buffer, disabled tenant
 - **SSE endpoint tests:** connection lifecycle, auth, 403 for disabled tenant, heartbeat,
@@ -333,3 +361,10 @@ None — resolved during brainstorming and persona reviews.
 | Deploy = buffer loss | Acknowledged; Last-Event-ID replay from buffer |
 | SSE proxy concerns | X-Accel-Buffering header + proxy guidance |
 | Connection limit exceeded behavior | 429 with clear message |
+| Subscribe callbacks must be non-blocking | Documented in interface contract; queue, don't write |
+| Buffer-wrap reconnection undefined | Replay from oldest + gap:true warning |
+| Memory estimation absent | Documented: ~500-900 bytes/event, sizing guidance added |
+| MCP poll audit logging too noisy | Session-based aggregation (one record per session) |
+| Buffer stats not exposed | GET /v1/tail/stats endpoint + /readyz inclusion |
+| Heartbeat too tight for GC pauses | Reduced to 10s (was 15s) |
+| Idle tenant buffer cleanup | 5-minute idle eviction added |
