@@ -413,3 +413,53 @@ export async function logweaveServiceOutlier(
   text += formatMeta(res.meta)
   return text
 }
+
+// ---------------------------------------------------------------------------
+// Raw log drill-down
+// ---------------------------------------------------------------------------
+
+export async function logweaveRawLogs(
+  client: LogWeaveClient,
+  args: { template_id: string; service: string; hours?: number; limit?: number },
+): Promise<string> {
+  const res = (await client.get(
+    `/templates/${encodeURIComponent(args.template_id)}/raw-logs`,
+    {
+      service: args.service,
+      hours: args.hours,
+      limit: args.limit,
+    },
+  )) as ApiResponse
+
+  const d = res.data as Record<string, unknown>
+  const lines = (d.lines as Array<Record<string, unknown>>) ?? []
+
+  if (lines.length === 0) {
+    const msg = res.meta.message
+      ? String(res.meta.message)
+      : 'No matching raw log lines found.'
+    return `${msg}${formatMeta(res.meta)}`
+  }
+
+  let text = `## Raw Log Samples (${lines.length} lines)\n\n`
+
+  for (const line of lines) {
+    const ts = line.timestamp ? `**${line.timestamp}** ` : ''
+    text += `${ts}\`${line.message}\`\n`
+    if (line.sourceUrl) {
+      text += `  Source: [${line.source}](${line.sourceUrl})\n`
+    } else if (line.source) {
+      text += `  Source: ${line.source}\n`
+    }
+    text += '\n'
+  }
+
+  const truncated = d.truncated as boolean
+  if (truncated) {
+    text += `\n**Note:** Scan was truncated (${d.truncatedReason}). Narrow your time window or service filter for more complete results.\n`
+  }
+
+  text += `\nFiles scanned: ${d.filesScanned} | Bytes scanned: ${d.bytesScanned}`
+  text += formatMeta(res.meta)
+  return text
+}

@@ -16,5 +16,8 @@
     "typescript": "catalog:",
     "winston": "^3.0.0",
     "winston-transport": "^4.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1014.0"
   }
 }

@@ -270,4 +270,34 @@ describe('POST /v1/ingest/batch', () => {
     assert.equal(row?.source_ref, '')
     assert.equal(row?.preprocessing_version, 1)
   })
+
+  it('accepts custom source_type and source_ref', async () => {
+    const { app, insertedRows } = createTestApp()
+
+    await request(app)
+      .post('/v1/ingest/batch')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        events: [validEvent()],
+        source_type: 's3',
+        source_ref: 's3://bucket/logs/2026/03/21/14/file.jsonl.gz',
+      })
+
+    const row = insertedRows[0]?.[0]
+    assert.equal(row?.source_type, 's3')
+    assert.equal(row?.source_ref, 's3://bucket/logs/2026/03/21/14/file.jsonl.gz')
+  })
+
+  it('defaults source_type and source_ref when not provided', async () => {
+    const { app, insertedRows } = createTestApp()
+
+    await request(app)
+      .post('/v1/ingest/batch')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({ events: [validEvent()] })
+
+    const row = insertedRows[0]?.[0]
+    assert.equal(row?.source_type, 'transport')
+    assert.equal(row?.source_ref, '')
+  })
 })

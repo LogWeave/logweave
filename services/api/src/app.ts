@@ -16,6 +16,8 @@ import { createRateLimiter } from './middleware/rate-limit.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
 import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
+import { connectorRoutes } from './routes/connectors.js'
+import { rawLogsRoutes } from './routes/raw-logs.js'
 import { correlationRoutes } from './routes/correlation.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { deployRoutes } from './routes/deploys.js'
@@ -141,6 +143,18 @@ export function createApp(deps: AppDependencies): express.Express {
   )
   v1.use(
     correlationRoutes({
+      db: deps.db,
+      logger: deps.logger,
+    }),
+  )
+  v1.use(
+    connectorRoutes({
+      db: deps.db,
+      logger: deps.logger,
+    }),
+  )
+  v1.use(
+    rawLogsRoutes({
       db: deps.db,
       logger: deps.logger,
     }),
