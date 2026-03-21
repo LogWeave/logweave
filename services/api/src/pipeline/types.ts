@@ -55,6 +55,10 @@ export interface ParseOptions {
    * Checked DURING extraction — the field is never read from the event.
    */
   neverExtract?: ReadonlySet<string>
+  /** Source type identifier (e.g., 'transport', 's3', 'fluentbit'). Defaults to 'transport'. */
+  sourceType?: string
+  /** Pointer to where the raw log lives (e.g., S3 key, S3 prefix). Defaults to ''. */
+  sourceRef?: string
 }
 
 /**

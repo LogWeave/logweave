@@ -21,6 +21,8 @@ const ingestBatchSchema = z.object({
   service: z.string().optional(),
   environment: z.string().optional(),
   neverExtract: z.array(z.string()).optional(),
+  source_type: z.string().max(64).optional(),
+  source_ref: z.string().max(1024).optional(),
 })
 
 export function ingestRoutes(deps: IngestDeps): Router {
@@ -49,6 +51,8 @@ export function ingestRoutes(deps: IngestDeps): Router {
             neverExtract: body.neverExtract
               ? new Set(body.neverExtract)
               : undefined,
+            sourceType: body.source_type,
+            sourceRef: body.source_ref,
           },
         )
 

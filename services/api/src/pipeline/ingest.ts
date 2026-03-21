@@ -56,6 +56,7 @@ function toMetadataRow(
   item: ParsedItem,
   cluster: ClusterResult,
   anomalyScore: number,
+  options: ParseOptions,
 ): LogMetadataRow {
   return {
     tenant_id: tenantId,
@@ -71,8 +72,8 @@ function toMetadataRow(
     duration_ms: item.processed.durationMs ?? 0,
     trace_id: item.processed.traceId ?? '',
     route: item.processed.route ?? '',
-    source_type: 'transport',
-    source_ref: '',
+    source_type: options.sourceType ?? 'transport',
+    source_ref: options.sourceRef ?? '',
     pre_processed_message:
       cluster.templateId === '0' ? item.processed.preProcessedMessage : null,
     preprocessing_version: PREPROCESSING_VERSION,
@@ -139,7 +140,7 @@ export async function ingestBatch(
       cluster.templateId,
     )
 
-    rows.push(toMetadataRow(tenantId, item, cluster, anomalyScore))
+    rows.push(toMetadataRow(tenantId, item, cluster, anomalyScore, options))
 
     if (cluster.templateId === '0') {
       unclustered++
