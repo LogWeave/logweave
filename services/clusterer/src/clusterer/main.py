@@ -255,13 +255,24 @@ async def embed(request: EmbedRequest) -> EmbedResponse:
 
 
 @app.post("/embed/backfill")
-async def embed_backfill() -> dict[str, str]:
-    """Backfill embeddings for templates with empty vectors. Non-blocking."""
+async def embed_backfill(request: Request) -> dict[str, str]:
+    """Backfill embeddings for templates with empty vectors. Non-blocking.
+
+    Internal endpoint — only accessible from within the Docker network.
+    """
     if app.state.backfill_running:
         return {"status": "already_running"}
 
     asyncio.create_task(_run_backfill())
     return {"status": "started"}
+
+
+_BACKFILL_SELECT = """\
+SELECT tenant_id, template_text, template_id, first_seen
+FROM template_registry FINAL
+WHERE length(embedding) = 0
+LIMIT {batch_size:UInt32}
+"""
 
 
 async def _run_backfill() -> None:
@@ -270,14 +281,13 @@ async def _run_backfill() -> None:
         ch_client = app.state.ch_client
         embedding_service: EmbeddingService = app.state.embedding_service
         batch_size = 100
+        total = 0
 
         while True:
             rows = await asyncio.to_thread(
                 ch_client.query,
-                "SELECT tenant_id, template_text, template_id "
-                "FROM template_registry FINAL "
-                "WHERE length(embedding) = 0 "
-                f"LIMIT {batch_size}",
+                _BACKFILL_SELECT,
+                parameters={"batch_size": batch_size},
             )
             if not rows.result_rows:
                 break
@@ -286,19 +296,24 @@ async def _run_backfill() -> None:
             embeddings = await asyncio.to_thread(embedding_service.embed, texts)
             model_name = EmbeddingService.MODEL_NAME
 
+            # Preserve first_seen to avoid ReplacingMergeTree overwrite
             insert_rows = [
-                [row[0], row[1], row[2], emb, model_name]
+                [row[0], row[1], row[2], row[3], emb, model_name]
                 for row, emb in zip(rows.result_rows, embeddings)
             ]
             await asyncio.to_thread(
                 ch_client.insert,
                 "template_registry",
                 insert_rows,
-                column_names=["tenant_id", "template_text", "template_id", "embedding", "embedding_model"],
+                column_names=[
+                    "tenant_id", "template_text", "template_id",
+                    "first_seen", "embedding", "embedding_model",
+                ],
             )
-            logger.info("Backfilled %d template embeddings", len(insert_rows))
+            total += len(insert_rows)
+            logger.info("Backfilled %d template embeddings (%d total)", len(insert_rows), total)
 
-        logger.info("Embedding backfill complete")
+        logger.info("Embedding backfill complete — %d templates processed", total)
     except Exception:
         logger.exception("Embedding backfill failed")
     finally:
