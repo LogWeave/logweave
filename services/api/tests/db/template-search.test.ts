@@ -4,7 +4,7 @@ import express from 'express'
 import request from 'supertest'
 import pino from 'pino'
 import type { DbClient } from '../../src/db/client.js'
-import { queryTemplateSearch } from '../../src/db/dashboard-queries.js'
+import { queryTemplateSearch, querySemanticSearch } from '../../src/db/dashboard-queries.js'
 import { createAuthMiddleware } from '../../src/middleware/auth.js'
 import { createErrorHandler } from '../../src/middleware/error-handler.js'
 import { dashboardRoutes } from '../../src/routes/dashboard.js'
@@ -265,5 +265,97 @@ describe('GET /v1/templates/search', () => {
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data, [])
     assert.equal(res.body.meta.count, 0)
+  })
+
+  it('accepts mode=substring (default behavior)', async () => {
+    const app = createTestApp(searchQueryMap())
+
+    const res = await request(app)
+      .get('/v1/templates/search?q=timeout&mode=substring')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.length, 2)
+  })
+
+  it('accepts mode=semantic param (falls back to substring without clusterClient)', async () => {
+    const app = createTestApp(searchQueryMap())
+
+    const res = await request(app)
+      .get('/v1/templates/search?q=timeout&mode=semantic')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    // Without clusterClient in deps, falls through to ILIKE
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.length, 2)
+  })
+
+  it('rejects invalid mode', async () => {
+    const app = createTestApp(searchQueryMap())
+
+    const res = await request(app)
+      .get('/v1/templates/search?q=timeout&mode=invalid')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 400)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// querySemanticSearch tests
+// ---------------------------------------------------------------------------
+
+describe('querySemanticSearch', () => {
+  it('uses cosineDistance in the query', async () => {
+    const { db, captured } = createCapturingDb(mockSearchResults)
+    const embedding = Array.from({ length: 384 }, () => 0.1)
+
+    await querySemanticSearch(db, 'tenant-a', { embedding })
+
+    assert.equal(captured.length, 1)
+    const sql = captured[0].query
+    assert.ok(sql.includes('cosineDistance'), 'should use cosineDistance')
+    assert.ok(sql.includes('template_registry FINAL'), 'should use FINAL')
+    assert.ok(sql.includes('length(embedding) > 0'), 'should filter non-embedded templates')
+  })
+
+  it('respects tenant isolation', async () => {
+    const { db, captured } = createCapturingDb([])
+    const embedding = Array.from({ length: 384 }, () => 0.1)
+
+    await querySemanticSearch(db, 'tenant-xyz', { embedding })
+
+    assert.equal(captured[0].query_params.tenant_id, 'tenant-xyz')
+    const sql = captured[0].query
+    const tenantMatches = sql.match(/tenant_id = \{tenant_id:String\}/g)
+    assert.ok(tenantMatches && tenantMatches.length >= 2, 'tenant filter in both registry and stats')
+  })
+
+  it('passes threshold parameter', async () => {
+    const { db, captured } = createCapturingDb([])
+    const embedding = Array.from({ length: 384 }, () => 0.1)
+
+    await querySemanticSearch(db, 'tenant-a', { embedding, threshold: 0.3 })
+
+    assert.equal(captured[0].query_params.threshold, 0.3)
+  })
+
+  it('uses default threshold of 0.5', async () => {
+    const { db, captured } = createCapturingDb([])
+    const embedding = Array.from({ length: 384 }, () => 0.1)
+
+    await querySemanticSearch(db, 'tenant-a', { embedding })
+
+    assert.equal(captured[0].query_params.threshold, 0.5)
+  })
+
+  it('returns same shape as queryTemplateSearch', async () => {
+    const { db } = createCapturingDb(mockSearchResults)
+    const embedding = Array.from({ length: 384 }, () => 0.1)
+
+    const results = await querySemanticSearch(db, 'tenant-a', { embedding })
+
+    assert.equal(results.length, 2)
+    assert.equal(results[0].template_id, 'tmpl-timeout-1')
   })
 })

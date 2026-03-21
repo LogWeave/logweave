@@ -7,12 +7,18 @@ skip ClickHouse entirely. Only new template discoveries hit the network.
 cityHash64 is computed server-side in ClickHouse to avoid a Python dependency.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
 import clickhouse_connect.driver
 from cachetools import LRUCache
 from uuid_utils import uuid7
+
+if TYPE_CHECKING:
+    from clusterer.embedding import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +30,9 @@ CREATE TABLE IF NOT EXISTS template_registry (
     template_text_hash  UInt64 DEFAULT cityHash64(template_text),
     template_text       String,
     template_id         String,
-    first_seen          DateTime64(3) DEFAULT now64(3)
+    first_seen          DateTime64(3) DEFAULT now64(3),
+    embedding           Array(Float32) DEFAULT [],
+    embedding_model     LowCardinality(String) DEFAULT ''
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (tenant_id, template_text_hash)
 """
@@ -47,15 +55,21 @@ WHERE tenant_id = {tid:String}
 
 _INSERT_SQL = """\
 INSERT INTO template_registry
-    (tenant_id, template_text_hash, template_text, template_id, first_seen)
+    (tenant_id, template_text_hash, template_text, template_id, first_seen, embedding, embedding_model)
 VALUES
-    ({tid:String}, cityHash64({text:String}), {text:String}, {template_id:String}, now64(3))
+    ({tid:String}, cityHash64({text:String}), {text:String}, {template_id:String}, now64(3),
+     {embedding:Array(Float32)}, {embedding_model:String})
 """
 
 
 class TemplateRegistry:
-    def __init__(self, client: clickhouse_connect.driver.Client) -> None:
+    def __init__(
+        self,
+        client: clickhouse_connect.driver.Client,
+        embedding_service: EmbeddingService | None = None,
+    ) -> None:
         self._client = client
+        self._embedding = embedding_service
         self._cache: LRUCache = LRUCache(maxsize=_CACHE_MAX_SIZE)
         self._tenant_locks: dict[str, asyncio.Lock] = {}
         self._global_lock = asyncio.Lock()
@@ -203,20 +217,48 @@ class TemplateRegistry:
         )
         return {row[0]: row[1] for row in result.result_rows}
 
+    def _embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """Best-effort embedding. Returns empty vectors on failure."""
+        if self._embedding is None:
+            return [[] for _ in texts]
+        try:
+            return self._embedding.embed(texts)
+        except Exception:
+            logger.warning("Embedding failed, inserting without vectors", exc_info=True)
+            return [[] for _ in texts]
+
+    def _get_model_name(self) -> str:
+        if self._embedding is None:
+            return ""
+        return self._embedding.MODEL_NAME
+
     def _insert_template(self, tenant_id: str, template_text: str, template_id: str) -> None:
         """Sync ClickHouse insert."""
+        embeddings = self._embed_texts([template_text])
         self._client.command(
             _INSERT_SQL,
-            parameters={"tid": tenant_id, "text": template_text, "template_id": template_id},
+            parameters={
+                "tid": tenant_id,
+                "text": template_text,
+                "template_id": template_id,
+                "embedding": embeddings[0],
+                "embedding_model": self._get_model_name(),
+            },
         )
 
     def _batch_insert_templates(self, tenant_id: str, entries: list[tuple[str, str]]) -> None:
         """Batch INSERT via client.insert(). cityHash64 and first_seen computed by DEFAULT."""
-        rows = [[tenant_id, text, template_id] for text, template_id in entries]
+        texts = [text for text, _ in entries]
+        embeddings = self._embed_texts(texts)
+        model_name = self._get_model_name()
+        rows = [
+            [tenant_id, text, template_id, emb, model_name]
+            for (text, template_id), emb in zip(entries, embeddings)
+        ]
         self._client.insert(
             "template_registry",
             rows,
-            column_names=["tenant_id", "template_text", "template_id"],
+            column_names=["tenant_id", "template_text", "template_id", "embedding", "embedding_model"],
         )
 
     def ensure_schema(self) -> None:

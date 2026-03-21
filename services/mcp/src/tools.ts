@@ -234,21 +234,23 @@ export async function logweaveServiceHealth(
 
 export async function logweaveSearchTemplates(
   client: LogWeaveClient,
-  args: { query: string; hours?: number; limit?: number },
+  args: { query: string; hours?: number; limit?: number; mode?: string },
 ): Promise<string> {
   const res = (await client.get('/templates/search', {
     q: args.query,
     hours: args.hours,
     limit: args.limit,
+    mode: args.mode,
   })) as ApiResponse
 
   const rows = (res.data as Array<Record<string, unknown>>) ?? []
+  const modeLabel = args.mode === 'semantic' ? ' (semantic)' : ''
 
   if (rows.length === 0) {
-    return `No templates matching "${args.query}" found.${formatMeta(res.meta)}`
+    return `No templates matching "${args.query}"${modeLabel} found.${formatMeta(res.meta)}`
   }
 
-  let text = `## Search Results for "${args.query}" (${rows.length} matches)\n\n`
+  let text = `## Search Results for "${args.query}"${modeLabel} (${rows.length} matches)\n\n`
   for (const r of rows) {
     const services = (r.servicesAffected as string[]).join(', ')
     text += `- **${r.templateText}** — ${r.occurrenceCount} occurrences (${services})\n`

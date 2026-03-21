@@ -188,6 +188,10 @@ GROUP BY tenant_id, service, level, interval_start`,
   ) ENGINE = ReplacingMergeTree(version, is_deleted)
   ORDER BY (tenant_id, connector_id)`,
 
+  // Embedding columns on template_registry for semantic search (co-owned with clusterer)
+  `ALTER TABLE logweave.template_registry ADD COLUMN IF NOT EXISTS embedding Array(Float32) DEFAULT []`,
+  `ALTER TABLE logweave.template_registry ADD COLUMN IF NOT EXISTS embedding_model LowCardinality(String) DEFAULT ''`,
+
   // 11. Audit log — append-only, SOC2 compliance (365-day retention)
   `CREATE TABLE IF NOT EXISTS logweave.audit_log (
     timestamp          DateTime64(3) DEFAULT now64(3),

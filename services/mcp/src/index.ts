@@ -192,17 +192,20 @@ server.registerTool(
   {
     title: 'Search Templates',
     description:
-      'Search for error patterns by text (e.g. "timeout", "database", "connection refused"). Minimum 3 characters. ' +
-      'Use this to find patterns related to a specific topic. Returns matching templates with occurrence counts and affected services.',
+      'Search for error patterns by text. Supports two modes: ' +
+      '"substring" (default, exact text matching) and "semantic" (finds conceptually related patterns — ' +
+      'e.g. "database slow" matches "connection pool exhausted"). Use semantic mode when the exact wording is unknown. ' +
+      'Minimum 3 characters.',
     inputSchema: {
       query: z.string().describe('Search text (minimum 3 characters)'),
       hours: z.number().optional().describe('Time window in hours (default: 24)'),
       limit: z.number().optional().describe('Max results to return (default: 100)'),
+      mode: z.enum(['substring', 'semantic']).optional().describe('Search mode (default: substring)'),
     },
     annotations: READ_ONLY,
   },
   toolHandler((args) =>
-    logweaveSearchTemplates(client, args as { query: string; hours?: number; limit?: number }),
+    logweaveSearchTemplates(client, args as { query: string; hours?: number; limit?: number; mode?: string }),
   ),
 )
 

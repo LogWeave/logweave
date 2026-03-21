@@ -18,6 +18,7 @@ import {
   queryDashboardVolume,
   queryLevelDistribution,
   queryNewTodayIds,
+  querySemanticSearch,
   queryTemplateSearch,
   queryTemplateSparklines,
   queryTemplateStatusCodes,
@@ -73,6 +74,7 @@ import {
 export interface DashboardDeps {
   db: DbClient
   logger: pino.Logger
+  clusterClient?: import('../pipeline/cluster-client.js').ClusterClient
 }
 
 // ---------------------------------------------------------------------------
@@ -548,18 +550,34 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     },
   )
 
-  // 10. GET /templates/search
+  // 10. GET /templates/search — supports mode=substring (default) and mode=semantic
   router.get('/templates/search', validateQuery(templateSearchSchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const params = getQuery<TemplateSearchQuery>(req)
 
-      const rows = await queryTemplateSearch(deps.db, tenantId, {
-        q: params.q,
-        hours: params.hours,
-        limit: params.limit,
-        level: params.level,
-      })
+      let rows: Awaited<ReturnType<typeof queryTemplateSearch>>
+
+      if (params.mode === 'semantic' && deps.clusterClient) {
+        const embeddings = await deps.clusterClient.embed([params.q])
+        if (embeddings && embeddings[0]) {
+          rows = await querySemanticSearch(deps.db, tenantId, {
+            embedding: embeddings[0],
+            hours: params.hours,
+            limit: params.limit,
+            level: params.level,
+          })
+        } else {
+          deps.logger.warn({ query: params.q }, 'Semantic search fell back to substring (embed failed)')
+          rows = await queryTemplateSearch(deps.db, tenantId, {
+            q: params.q, hours: params.hours, limit: params.limit, level: params.level,
+          })
+        }
+      } else {
+        rows = await queryTemplateSearch(deps.db, tenantId, {
+          q: params.q, hours: params.hours, limit: params.limit, level: params.level,
+        })
+      }
 
       const data = toRawRows(rows).map((r) => ({
         templateId: r.template_id as string,

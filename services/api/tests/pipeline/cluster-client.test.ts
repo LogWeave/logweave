@@ -425,3 +425,84 @@ describe('ClusterClient', () => {
     assert.equal(client.consecutiveFailures, 0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// embed() tests
+// ---------------------------------------------------------------------------
+
+const EMBED_RESPONSE = {
+  embeddings: [[0.1, 0.2, 0.3]],
+  model: 'test-model',
+  dimensions: 3,
+}
+
+describe('ClusterClient.embed()', () => {
+  it('returns embeddings on success', async () => {
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, EMBED_RESPONSE))
+
+    const result = await client.embed(['hello world'])
+
+    assert.deepEqual(result, [[0.1, 0.2, 0.3]])
+  })
+
+  it('returns null on non-OK status', async () => {
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(500, {}))
+
+    const result = await client.embed(['hello'])
+
+    assert.equal(result, null)
+  })
+
+  it('returns null on malformed response', async () => {
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, { wrong: 'shape' }))
+
+    const result = await client.embed(['hello'])
+
+    assert.equal(result, null)
+  })
+
+  it('returns null on network error', async () => {
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      mockFetchError(new Error('ECONNREFUSED')),
+    )
+
+    const result = await client.embed(['hello'])
+
+    assert.equal(result, null)
+  })
+
+  it('returns null when circuit is open (not probe call)', async () => {
+    const { logger } = createTestLogger()
+    // Open circuit via 5 failed cluster calls
+    const failClient = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(500, {}))
+    for (let i = 0; i < 5; i++) {
+      await failClient.cluster('t', ['m'])
+    }
+    assert.equal(failClient.isCircuitOpen, true)
+
+    const result = await failClient.embed(['hello'])
+    assert.equal(result, null)
+  })
+
+  it('shares circuit breaker state with cluster()', async () => {
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(500, {}))
+
+    // 5 failed embed calls should open the circuit
+    for (let i = 0; i < 5; i++) {
+      await client.embed(['hello'])
+    }
+    assert.equal(client.isCircuitOpen, true)
+
+    // cluster() should also be affected
+    const results = await client.cluster('t', ['m'])
+    assert.equal(results[0]?.templateId, '0') // fallback
+  })
+})

@@ -126,6 +126,7 @@ export function createApp(deps: AppDependencies): express.Express {
     dashboardRoutes({
       db: deps.db,
       logger: deps.logger,
+      clusterClient: deps.clusterClient,
     }),
   )
   v1.use(
