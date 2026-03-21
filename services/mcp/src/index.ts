@@ -10,6 +10,7 @@ import {
   logweaveDeploys,
   logweaveErrorPatterns,
   logweaveOverview,
+  logweaveRawLogs,
   logweaveRelatedPatterns,
   logweaveSearchTemplates,
   logweaveServiceHealth,
@@ -301,6 +302,32 @@ server.registerTool(
   },
   toolHandler((args) =>
     logweaveServiceOutlier(client, args as { service: string; hours?: number }),
+  ),
+)
+
+// ---------------------------------------------------------------------------
+// Raw log drill-down
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  'raw_logs',
+  {
+    title: 'Raw Log Samples',
+    description:
+      'Fetch actual raw log lines that match a template pattern from the customer\'s S3 storage. ' +
+      'Use this to see real log content when investigating an error — actual IPs, user IDs, error messages. ' +
+      'Requires a configured S3 connector. If none is configured, this tool will tell you. ' +
+      'Always specify both template_id (from error_patterns, changes, or search_templates) and service.',
+    inputSchema: {
+      template_id: z.string().describe('Template ID to match against raw logs'),
+      service: z.string().describe('Service name — required to locate the correct S3 path'),
+      hours: z.number().optional().describe('Time window in hours (default: 1, max: 24)'),
+      limit: z.number().optional().describe('Max lines to return (default: 20, max: 100)'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveRawLogs(client, args as { template_id: string; service: string; hours?: number; limit?: number }),
   ),
 )
 
