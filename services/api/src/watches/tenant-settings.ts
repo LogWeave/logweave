@@ -1,10 +1,13 @@
 import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
 
+export type TailMode = 'disabled' | 'metadata' | 'preprocessed'
+
 export interface TenantSettings {
   slackWebhookUrl?: string
   lastTestStatus?: 'success' | 'failed'
   lastTestAt?: string
+  tailMode?: TailMode
 }
 
 interface SettingsRow {
@@ -13,7 +16,7 @@ interface SettingsRow {
   setting_value: string
 }
 
-const SETTING_KEYS: (keyof TenantSettings)[] = ['slackWebhookUrl', 'lastTestStatus', 'lastTestAt']
+const SETTING_KEYS: (keyof TenantSettings)[] = ['slackWebhookUrl', 'lastTestStatus', 'lastTestAt', 'tailMode']
 
 export interface TenantSettingsStoreOpts {
   db?: DbClient
@@ -54,6 +57,8 @@ export class TenantSettingsStore {
         existing.lastTestStatus = row.setting_value as 'success' | 'failed'
       } else if (row.setting_key === 'lastTestAt') {
         existing.lastTestAt = row.setting_value
+      } else if (row.setting_key === 'tailMode') {
+        existing.tailMode = row.setting_value as TailMode
       }
       this.settings.set(row.tenant_id, existing)
     }

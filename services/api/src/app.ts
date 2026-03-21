@@ -25,6 +25,7 @@ import { healthRoutes } from './routes/health.js'
 import { ingestRoutes } from './routes/ingest.js'
 import { settingsRoutes } from './routes/settings.js'
 import { watchRoutes } from './routes/watches.js'
+import type { TailBuffer } from './tail/buffer.js'
 import type { TenantSettingsStore } from './watches/tenant-settings.js'
 import type { WatchStore } from './watches/watch-store.js'
 
@@ -37,6 +38,7 @@ export interface AppDependencies {
   anomalyScorer: AnomalyScorer
   watchStore: WatchStore
   settingsStore: TenantSettingsStore
+  tailBuffer?: TailBuffer
 }
 
 export function createApp(deps: AppDependencies): express.Express {
@@ -115,6 +117,8 @@ export function createApp(deps: AppDependencies): express.Express {
       db: deps.db,
       logger: deps.logger,
       anomalyScorer: deps.anomalyScorer,
+      tailBuffer: deps.tailBuffer,
+      settingsStore: deps.settingsStore,
     }),
   )
   v1.use(
