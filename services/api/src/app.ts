@@ -27,6 +27,7 @@ import { ingestRoutes } from './routes/ingest.js'
 import { settingsRoutes } from './routes/settings.js'
 import { watchRoutes } from './routes/watches.js'
 import type { TailBuffer } from './tail/buffer.js'
+import type { EventBus } from './events/event-bus.js'
 import type { TenantSettingsStore } from './watches/tenant-settings.js'
 import type { WatchStore } from './watches/watch-store.js'
 
@@ -40,6 +41,7 @@ export interface AppDependencies {
   watchStore: WatchStore
   settingsStore: TenantSettingsStore
   tailBuffer?: TailBuffer
+  eventBus?: EventBus
 }
 
 export function createApp(deps: AppDependencies): express.Express {
@@ -120,6 +122,7 @@ export function createApp(deps: AppDependencies): express.Express {
       anomalyScorer: deps.anomalyScorer,
       tailBuffer: deps.tailBuffer,
       settingsStore: deps.settingsStore,
+      eventBus: deps.eventBus,
     }),
   )
   v1.use(

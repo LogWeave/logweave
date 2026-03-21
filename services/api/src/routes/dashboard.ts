@@ -19,6 +19,7 @@ import {
   queryLevelDistribution,
   queryNewTodayIds,
   querySemanticSearch,
+  queryTemplateTrend,
   queryTemplateSearch,
   queryTemplateSparklines,
   queryTemplateStatusCodes,
@@ -56,9 +57,11 @@ import {
   type TemplateDetailData,
   type TemplateRow,
   type TemplateSearchQuery,
+  type TemplateTrendQuery,
   type TemplatesQuery,
   compositeTimeSchema,
   templateSearchSchema,
+  templateTrendSchema,
   templateStatusCodesQuerySchema,
   templatesQuerySchema,
   type VolumeData,
@@ -592,6 +595,32 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       }))
 
       respond(res, data, { hours: params.hours, limit: params.limit, count: data.length })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // 10b. GET /templates/:id/trend — 365-day daily trend
+  router.get('/templates/:id/trend', validateQuery(templateTrendSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<TemplateTrendQuery>(req)
+      const templateId = req.params.id as string
+
+      const rows = await queryTemplateTrend(deps.db, tenantId, {
+        templateId,
+        days: params.days,
+      })
+
+      const data = rows.map((r) => ({
+        day: r.day,
+        occurrenceCount: Number(r.occurrence_count),
+        errorCount: Number(r.error_count),
+        avgDurationMs: Number(r.avg_duration_ms),
+        maxAnomalyScore: Number(r.max_anomaly_score),
+      }))
+
+      respond(res, data, { hours: params.days * 24, count: data.length })
     } catch (err) {
       next(err)
     }
