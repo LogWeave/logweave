@@ -1,10 +1,11 @@
-import { LayoutDashboard, Radio, Settings } from 'lucide-react'
+import { Bell, LayoutDashboard, Radio, Settings } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '../lib/cn'
 import { useDashboardStore } from '../stores/dashboard-store'
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+  { icon: Bell, label: 'Alerts', path: '/alerts' },
   { icon: Radio, label: 'Live Tail', path: '/tail' },
   { icon: Settings, label: 'Settings', path: '/settings' },
 ]
