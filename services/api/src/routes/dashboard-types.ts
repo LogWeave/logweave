@@ -119,6 +119,16 @@ export const templateTrendSchema = z.object({
 
 export type TemplateTrendQuery = z.infer<typeof templateTrendSchema>
 
+export const templateEventsSchema = z.object({
+  hours: z.coerce.number().int().min(1).max(720).default(24),
+  status_code: z.coerce.number().int().optional(),
+  since: z.string().datetime({ offset: true }).optional(),
+  until: z.string().datetime({ offset: true }).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+})
+
+export type TemplateEventsQuery = z.infer<typeof templateEventsSchema>
+
 export const templateSearchSchema = paginatedSchema.extend({
   q: z.string().min(3, 'Search query must be at least 3 characters'),
   level: levelFilterField,

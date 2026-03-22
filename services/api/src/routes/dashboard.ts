@@ -19,6 +19,7 @@ import {
   queryLevelDistribution,
   queryNewTodayIds,
   querySemanticSearch,
+  queryTemplateEvents,
   queryTemplateTrend,
   queryTemplateSearch,
   queryTemplateSparklines,
@@ -56,10 +57,12 @@ import {
   type ServiceHealthData,
   type TemplateDetailData,
   type TemplateRow,
+  type TemplateEventsQuery,
   type TemplateSearchQuery,
   type TemplateTrendQuery,
   type TemplatesQuery,
   compositeTimeSchema,
+  templateEventsSchema,
   templateSearchSchema,
   templateTrendSchema,
   templateStatusCodesQuerySchema,
@@ -620,6 +623,38 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       }))
 
       respond(res, data, { hours: params.days * 24, count: data.length })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // 10c. GET /templates/:id/events — individual log events for drill-down
+  router.get('/templates/:id/events', validateQuery(templateEventsSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const params = getQuery<TemplateEventsQuery>(req)
+      const templateId = req.params.id as string
+
+      const rows = await queryTemplateEvents(deps.db, tenantId, {
+        templateId,
+        statusCode: params.status_code,
+        since: params.since,
+        until: params.until,
+        hours: params.hours,
+        limit: params.limit,
+      })
+
+      const data = rows.map((r) => ({
+        timestamp: r.timestamp,
+        traceId: r.trace_id,
+        route: r.route,
+        durationMs: Number(r.duration_ms),
+        level: r.level,
+        service: r.service,
+        statusCode: Number(r.status_code),
+      }))
+
+      respond(res, data, { hours: params.hours, count: data.length })
     } catch (err) {
       next(err)
     }
