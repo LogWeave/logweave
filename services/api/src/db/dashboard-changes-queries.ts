@@ -122,7 +122,7 @@ export async function queryNewTemplates(
 WITH
   current_active AS (
     SELECT template_id, any(template_text) AS template_text,
-           any(service) AS service,
+           any(service) AS service_name,
            countMerge(occurrence_count) AS occurrence_count,
            countMerge(error_count) AS error_count,
            min(interval_start) AS first_seen
@@ -144,7 +144,7 @@ WITH
       ${levelFilter}
   )
 SELECT
-    c.template_id, c.template_text, c.service,
+    c.template_id, c.template_text, c.service_name AS service,
     c.occurrence_count, c.error_count, c.first_seen
 FROM current_active c
 LEFT JOIN previous_ids p ON c.template_id = p.template_id
@@ -170,7 +170,7 @@ LIMIT {limit:UInt32}`
 SELECT
     template_id,
     any(template_text) AS template_text,
-    any(service) AS service,
+    any(service) AS service_name,
     count() AS occurrence_count,
     countIf(level = 'ERROR') AS error_count,
     min(timestamp) AS first_seen
@@ -214,7 +214,7 @@ export async function queryTemplateSpikes(
     const query = `
 WITH
   current AS (
-    SELECT template_id, any(template_text) AS template_text, any(service) AS service,
+    SELECT template_id, any(template_text) AS template_text, any(service) AS service_name,
            countMerge(occurrence_count) AS cnt
     FROM logweave.template_stats
     WHERE tenant_id = {tenant_id:String}
@@ -235,7 +235,7 @@ WITH
     GROUP BY template_id
   )
 SELECT
-    c.template_id, c.template_text, c.service,
+    c.template_id, c.template_text, c.service_name AS service,
     c.cnt AS current_count,
     coalesce(p.cnt, 0) AS previous_count,
     if(coalesce(p.cnt, 0) > 0, CAST(c.cnt AS Float64) / p.cnt, 999) AS spike_ratio
@@ -264,7 +264,7 @@ LIMIT {limit:UInt32}`
   const query = `
 WITH
   current AS (
-    SELECT template_id, any(template_text) AS template_text, any(service) AS service,
+    SELECT template_id, any(template_text) AS template_text, any(service) AS service_name,
            countMerge(occurrence_count) AS cnt
     FROM logweave.template_stats
     WHERE tenant_id = {tenant_id:String}
@@ -284,7 +284,7 @@ WITH
     GROUP BY template_id
   )
 SELECT
-    c.template_id, c.template_text, c.service,
+    c.template_id, c.template_text, c.service_name AS service,
     c.cnt AS current_count,
     coalesce(p.cnt, 0) AS previous_count,
     if(coalesce(p.cnt, 0) > 0, CAST(c.cnt AS Float64) / p.cnt, 999) AS spike_ratio
@@ -332,7 +332,7 @@ WITH
   ),
   previous_active AS (
     SELECT template_id, any(template_text) AS template_text,
-           any(service) AS service,
+           any(service) AS service_name,
            max(interval_start) AS last_seen,
            countMerge(occurrence_count) AS prev_count
     FROM logweave.template_stats
@@ -345,7 +345,7 @@ WITH
     HAVING prev_count >= 5
   )
 SELECT
-    p.template_id, p.template_text, p.service,
+    p.template_id, p.template_text, p.service_name AS service,
     p.last_seen, p.prev_count
 FROM previous_active p
 LEFT JOIN current_ids c ON p.template_id = c.template_id
@@ -380,7 +380,7 @@ WITH
   ),
   previous_active AS (
     SELECT template_id, any(template_text) AS template_text,
-           any(service) AS service,
+           any(service) AS service_name,
            max(interval_start) AS last_seen,
            countMerge(occurrence_count) AS prev_count
     FROM logweave.template_stats
@@ -393,7 +393,7 @@ WITH
     HAVING prev_count >= 5
   )
 SELECT
-    p.template_id, p.template_text, p.service,
+    p.template_id, p.template_text, p.service_name AS service,
     p.last_seen, p.prev_count
 FROM previous_active p
 LEFT JOIN current_ids c ON p.template_id = c.template_id
