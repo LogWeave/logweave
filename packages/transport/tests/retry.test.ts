@@ -165,6 +165,86 @@ describe('retryFetch', () => {
     assert.equal(result!.status, 200)
   })
 
+  // -- 429 retry behavior --
+
+  it('retries on 429 with Retry-After header', async () => {
+    const mock = mockFetchSequence([
+      { status: 429, headers: { 'retry-after': '2' } },
+      { status: 200 },
+    ])
+    const delays: number[] = []
+    const trackingSleep = async (ms: number): Promise<void> => {
+      delays.push(ms)
+    }
+
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: trackingSleep },
+    )
+
+    assert.equal(mock.calls.length, 2, 'should retry once after 429')
+    assert.notEqual(result, null)
+    assert.equal(result!.status, 200)
+    assert.equal(delays[0], 2000, 'should sleep for Retry-After seconds * 1000')
+  })
+
+  it('caps Retry-After at 30 seconds', async () => {
+    const mock = mockFetchSequence([
+      { status: 429, headers: { 'retry-after': '120' } },
+      { status: 200 },
+    ])
+    const delays: number[] = []
+    const trackingSleep = async (ms: number): Promise<void> => {
+      delays.push(ms)
+    }
+
+    await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: trackingSleep },
+    )
+
+    assert.equal(delays[0], 30000, 'should cap at 30s (30000ms)')
+  })
+
+  it('uses exponential backoff when Retry-After header absent', async () => {
+    const mock = mockFetchSequence([{ status: 429 }, { status: 200 }])
+    const delays: number[] = []
+    const trackingSleep = async (ms: number): Promise<void> => {
+      delays.push(ms)
+    }
+
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: trackingSleep },
+    )
+
+    assert.equal(mock.calls.length, 2)
+    assert.notEqual(result, null)
+    // First attempt (attempt=0), backoff range is 0 to 1000ms
+    assert.ok(delays[0]! >= 0 && delays[0]! <= 1000, `delay should be 0-1000ms, got ${delays[0]}`)
+  })
+
+  it('drops batch after exhausting retries on repeated 429', async () => {
+    const mock = mockFetchSequence([
+      { status: 429, headers: { 'retry-after': '1' } },
+      { status: 429, headers: { 'retry-after': '1' } },
+      { status: 429, headers: { 'retry-after': '1' } },
+      { status: 429, headers: { 'retry-after': '1' } },
+    ])
+
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: immediateSleep },
+    )
+
+    assert.equal(mock.calls.length, 4, 'should exhaust all 4 attempts')
+    assert.equal(result, null, 'should drop batch after exhausting retries')
+  })
+
   it('respects abort signal and stops retrying', async () => {
     const mock = mockFetch(500)
     const controller = new AbortController()

@@ -29,7 +29,9 @@ export function mockFetch(
  * Creates a mock fetch that returns different responses in sequence.
  * After the sequence is exhausted, returns the last response.
  */
-export function mockFetchSequence(responses: Array<{ status: number; body?: unknown }>): {
+export function mockFetchSequence(
+  responses: Array<{ status: number; body?: unknown; headers?: Record<string, string> }>,
+): {
   fetch: FetchFn
   calls: MockFetchCall[]
 } {
@@ -40,7 +42,10 @@ export function mockFetchSequence(responses: Array<{ status: number; body?: unkn
     const responseIndex = Math.min(index, responses.length - 1)
     const resp = responses[responseIndex]!
     index++
-    return new Response(resp.body ? JSON.stringify(resp.body) : null, { status: resp.status })
+    return new Response(resp.body ? JSON.stringify(resp.body) : null, {
+      status: resp.status,
+      headers: resp.headers,
+    })
   }
   return { fetch, calls }
 }
