@@ -47,14 +47,19 @@ function InvestigationPrompt({
   statusCode,
   templateId,
   service,
+  timeRange,
   onClose,
 }: {
   statusCode: number
   templateId: string
   service: string
+  timeRange?: { start: string; end: string } | null
   onClose: () => void
 }) {
-  const prompt = `Show me the ${statusCode} errors for template ${templateId} on ${service}. What's causing them? Check the trace IDs and related patterns.`
+  const timeContext = timeRange
+    ? ` Focus on the window between ${new Date(timeRange.start).toLocaleTimeString()} and ${new Date(timeRange.end).toLocaleTimeString()}.`
+    : ''
+  const prompt = `Show me the ${statusCode} errors for template ${templateId} on ${service}.${timeContext} What's causing them? Check the trace IDs and related patterns.`
 
   return (
     <div className="bg-surface-base rounded-[var(--radius-md)] p-3 space-y-3">
@@ -91,9 +96,17 @@ function InvestigationPrompt({
 }
 
 function DetailContent({ template }: { template: TemplateRow }) {
+  const selectedTimeRange = useDashboardStore((s) => s.selectedTimeRange)
+  const setSelectedTimeRange = useDashboardStore((s) => s.setSelectedTimeRange)
+  const investigatingStatusCode = useDashboardStore((s) => s.investigatingStatusCode)
+  const setInvestigatingStatusCode = useDashboardStore((s) => s.setInvestigatingStatusCode)
+
   const { data: sparklineResponse } = useSparklines([template.templateId])
   const sparklinePoints = sparklineResponse?.data?.[template.templateId] ?? []
-  const { data: statusCodeResponse } = useTemplateStatusCodes(template.templateId)
+  const statusCodeTimeWindow = selectedTimeRange
+    ? { since: selectedTimeRange.start, until: selectedTimeRange.end }
+    : null
+  const { data: statusCodeResponse } = useTemplateStatusCodes(template.templateId, statusCodeTimeWindow)
   const statusCodes = statusCodeResponse?.data ?? []
   const { data: watchesResponse } = useWatches()
   const watchedIds = watchesResponse?.data ?? []
@@ -102,10 +115,6 @@ function DetailContent({ template }: { template: TemplateRow }) {
   const unwatchMutation = useUnwatchTemplate()
   const { data: slackResponse } = useSlackSettings()
   const slackConfigured = slackResponse?.data?.configured ?? false
-  const investigatingStatusCode = useDashboardStore((s) => s.investigatingStatusCode)
-  const setInvestigatingStatusCode = useDashboardStore((s) => s.setInvestigatingStatusCode)
-  const selectedTimeRange = useDashboardStore((s) => s.selectedTimeRange)
-  const setSelectedTimeRange = useDashboardStore((s) => s.setSelectedTimeRange)
 
 
   return (
@@ -120,7 +129,23 @@ function DetailContent({ template }: { template: TemplateRow }) {
         </div>
       </div>
 
-      {/* Stats grid */}
+      {/* Stats grid — shows selected range stats when brush is active */}
+      {selectedTimeRange && (
+        <div className="text-[10px] text-brand-400 flex items-center gap-2">
+          <span>
+            Selected: {new Date(selectedTimeRange.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {' – '}
+            {new Date(selectedTimeRange.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <button
+            type="button"
+            className="hover:text-brand-300 underline"
+            onClick={() => setSelectedTimeRange(null)}
+          >
+            Clear
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <StatBox label="Occurrences" value={template.occurrenceCount.toLocaleString()} />
         <StatBox
@@ -222,6 +247,7 @@ function DetailContent({ template }: { template: TemplateRow }) {
           statusCode={investigatingStatusCode}
           templateId={template.templateId}
           service={template.service}
+          timeRange={selectedTimeRange}
           onClose={() => setInvestigatingStatusCode(null)}
         />
       )}
@@ -272,15 +298,6 @@ function DetailContent({ template }: { template: TemplateRow }) {
             Occurrence History ({sparklinePoints.length} points)
             <InfoTooltip content={TOOLTIPS.occurrenceHistory} />
           </h4>
-          {selectedTimeRange && (
-            <button
-              type="button"
-              className="text-[10px] text-brand-400 hover:text-brand-300 mb-1"
-              onClick={() => setSelectedTimeRange(null)}
-            >
-              Clear selection ×
-            </button>
-          )}
           <div className="bg-surface-base rounded-[var(--radius-md)] p-2">
             <SelectableSparkline
               points={sparklinePoints}

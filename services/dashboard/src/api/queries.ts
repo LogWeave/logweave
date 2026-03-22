@@ -177,15 +177,20 @@ export function useLevels() {
   })
 }
 
-export function useTemplateStatusCodes(templateId: string | null) {
+export function useTemplateStatusCodes(
+  templateId: string | null,
+  timeWindow?: { since: string; until: string } | null,
+) {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: queryKeys.templateStatusCodes(hours, templateId),
+    queryKey: queryKeys.templateStatusCodes(hours, templateId, timeWindow?.since, timeWindow?.until),
     queryFn: () =>
       api.get<ApiResponse<StatusCodeCount[]>>('/v1/dashboard/template-status-codes', {
         hours,
         template_id: templateId ?? undefined,
+        since: timeWindow?.since,
+        until: timeWindow?.until,
       }),
     enabled: templateId !== null,
     staleTime: config.staleTimeMs,

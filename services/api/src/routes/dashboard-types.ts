@@ -111,6 +111,8 @@ export const levelsQuerySchema = timeRangeSchema.extend({
 
 export const templateStatusCodesQuerySchema = timeRangeSchema.extend({
   template_id: z.string().min(1),
+  since: z.string().optional(),
+  until: z.string().optional(),
 })
 
 export const templateTrendSchema = z.object({

@@ -543,6 +543,8 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         const rows = await queryTemplateStatusCodes(deps.db, tenantId, {
           hours: params.hours,
           templateId: params.template_id,
+          since: params.since,
+          until: params.until,
         })
         const data: StatusCodeCount[] = toRawRows(rows).map((r) => ({
           statusCode: Number(r.status_code),
