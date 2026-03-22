@@ -5,7 +5,6 @@ import { timeRangeToHours, useDashboardStore } from '../stores/dashboard-store'
 import { levelApiParam, levelParam, queryKeys } from './query-keys'
 import type {
   ApiResponse,
-  ChangeEvent,
   ClusteringHealthData,
   LevelCount,
   OverviewData,

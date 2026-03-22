@@ -18,6 +18,11 @@ import {
   logweaveServiceOutlier,
   logweaveTemplateDetail,
   logweaveTraceDetails,
+  logweaveListServices,
+  logweaveDiagnoseService,
+  logweaveTemplateTrend,
+  logweaveLevelDistribution,
+  logweaveTemplateEvents,
 } from './tools.js'
 
 // ---------------------------------------------------------------------------
@@ -364,6 +369,106 @@ server.registerTool(
       service?: string; level?: string; template_id?: string;
       min_anomaly?: number; seconds?: number; limit?: number; cursor?: number
     }),
+  ),
+)
+
+// ---------------------------------------------------------------------------
+// New tools from gap analysis (#113)
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  'list_services',
+  {
+    title: 'List Services',
+    description:
+      'List all services with error rates, log volumes, and anomaly scores. ' +
+      'Use this to discover which services exist and which need attention. ' +
+      'Start here when you need to find service names for service_health or diagnose_service.',
+    inputSchema: {
+      hours: z.number().optional().describe('Time window in hours (default: 24)'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) => logweaveListServices(client, args as { hours?: number })),
+)
+
+server.registerTool(
+  'diagnose_service',
+  {
+    title: 'Diagnose Service',
+    description:
+      'Full diagnostic report for a service: health metrics, outlier detection (z-score), ' +
+      'and recent changes (new/spiking/resolved patterns). Combines service_health + service_outlier + changes ' +
+      'into a single call. Use this when investigating why a specific service is having problems.',
+    inputSchema: {
+      service: z.string().describe('Service name (use list_services to discover names)'),
+      hours: z.number().optional().describe('Time window in hours (default: 24)'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveDiagnoseService(client, args as { service: string; hours?: number }),
+  ),
+)
+
+server.registerTool(
+  'template_trend',
+  {
+    title: 'Template Long-Term Trend',
+    description:
+      'Get daily occurrence counts for a template over up to 365 days. ' +
+      'Use this to determine if a pattern is getting worse over weeks/months, or if it is seasonal. ' +
+      'For short-term trends (hours), use template_detail instead.',
+    inputSchema: {
+      template_id: z.string().describe('Template ID (from error_patterns, changes, or search_templates)'),
+      days: z.number().optional().describe('Number of days to look back (default: 90, max: 365)'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveTemplateTrend(client, args as { template_id: string; days?: number }),
+  ),
+)
+
+server.registerTool(
+  'level_distribution',
+  {
+    title: 'Log Level Distribution',
+    description:
+      'Show the DEBUG/INFO/WARN/ERROR breakdown for the system or a specific service. ' +
+      'A rising WARN percentage is a leading indicator of problems, even before errors appear.',
+    inputSchema: {
+      hours: z.number().optional().describe('Time window in hours (default: 24)'),
+      service: z.string().optional().describe('Filter to a specific service'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveLevelDistribution(client, args as { hours?: number; service?: string }),
+  ),
+)
+
+server.registerTool(
+  'template_events',
+  {
+    title: 'Template Events',
+    description:
+      'Get individual log events for a template pattern. Shows timestamp, service, route, status code, ' +
+      'duration, and trace ID for each event. Filter by status code to investigate specific error types. ' +
+      'Use trace IDs with trace_details to follow requests across services.',
+    inputSchema: {
+      template_id: z.string().describe('Template ID'),
+      status_code: z.number().optional().describe('Filter to a specific HTTP status code (e.g. 500)'),
+      hours: z.number().optional().describe('Time window in hours (default: 24)'),
+      limit: z.number().optional().describe('Max events to return (default: 20, max: 100)'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveTemplateEvents(
+      client,
+      args as { template_id: string; status_code?: number; hours?: number; limit?: number },
+    ),
   ),
 )
 

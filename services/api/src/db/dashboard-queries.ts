@@ -535,9 +535,13 @@ interface TemplateStatusCodeRow {
 export async function queryTemplateStatusCodes(
   db: DbClient,
   tenantId: string,
-  options: { hours?: number; templateId: string },
+  options: { hours?: number; templateId: string; since?: string; until?: string },
 ): Promise<TemplateStatusCodeRow[]> {
   const hours = clamp(options.hours ?? DEFAULT_HOURS, MAX_HOURS)
+
+  const timeFilter = options.since && options.until
+    ? 'AND timestamp >= {since:String} AND timestamp <= {until:String}'
+    : 'AND timestamp > now64(3) - toIntervalHour({hours:UInt32})'
 
   const query = `
 SELECT
@@ -545,15 +549,77 @@ SELECT
     count() AS count
 FROM logweave.log_metadata
 WHERE tenant_id = {tenant_id:String}
-  AND timestamp > now64(3) - toIntervalHour({hours:UInt32})
+  ${timeFilter}
   AND template_id = {template_id:String}
   AND status_code != 0
 GROUP BY status_code
 ORDER BY count DESC`
 
-  return db.query<TemplateStatusCodeRow>(
-    tenantQuery(query, tenantId, { hours, template_id: options.templateId }),
-  )
+  const params: Record<string, unknown> = { template_id: options.templateId, hours }
+  if (options.since) params.since = options.since
+  if (options.until) params.until = options.until
+
+  return db.query<TemplateStatusCodeRow>(tenantQuery(query, tenantId, params))
+}
+
+// ---------------------------------------------------------------------------
+// Template events — individual log_metadata rows for drill-down
+// ---------------------------------------------------------------------------
+
+export interface TemplateEventRow {
+  timestamp: string
+  trace_id: string
+  route: string
+  duration_ms: string
+  level: string
+  service: string
+  status_code: string
+}
+
+export async function queryTemplateEvents(
+  db: DbClient,
+  tenantId: string,
+  options: {
+    templateId: string
+    statusCode?: number
+    since?: string
+    until?: string
+    hours?: number
+    limit?: number
+  },
+): Promise<TemplateEventRow[]> {
+  const hours = clamp(options.hours ?? DEFAULT_HOURS, MAX_HOURS)
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100)
+
+  const timeFilter = options.since && options.until
+    ? 'AND timestamp >= {since:String} AND timestamp <= {until:String}'
+    : 'AND timestamp > now64(3) - toIntervalHour({hours:UInt32})'
+
+  const statusCodeFilter = options.statusCode
+    ? 'AND status_code = {status_code:UInt16}'
+    : ''
+
+  const query = `
+SELECT
+    timestamp, trace_id, route, duration_ms, level, service, status_code
+FROM logweave.log_metadata
+WHERE tenant_id = {tenant_id:String}
+  AND template_id = {template_id:String}
+  ${timeFilter}
+  ${statusCodeFilter}
+ORDER BY timestamp DESC
+LIMIT {limit:UInt32}`
+
+  const params: Record<string, unknown> = {
+    template_id: options.templateId,
+    hours,
+    limit,
+  }
+  if (options.statusCode) params.status_code = options.statusCode
+  if (options.since) params.since = options.since
+  if (options.until) params.until = options.until
+
+  return db.query<TemplateEventRow>(tenantQuery(query, tenantId, params))
 }
 
 /**

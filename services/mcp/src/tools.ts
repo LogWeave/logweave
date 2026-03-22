@@ -41,7 +41,7 @@ export async function logweaveOverview(
     text += `\n### Top Error Patterns\n\n`
     for (const p of patterns) {
       const services = (p.servicesAffected as string[]).join(', ')
-      text += `- **${p.templateText}** — ${p.occurrenceCount} occurrences (${services})\n`
+      text += `- **${p.templateText}** [id: ${p.templateId}] — ${p.occurrenceCount} occurrences (${services})\n`
     }
   }
 
@@ -70,7 +70,7 @@ export async function logweaveErrorPatterns(
   let text = `## Error Patterns (${rows.length} results)\n\n`
   for (const r of rows) {
     const badge = r.isNewToday ? ' [NEW]' : ''
-    text += `- **${r.templateText}**${badge}\n`
+    text += `- **${r.templateText}** [id: ${r.templateId}]${badge}\n`
     text += `  Service: ${r.service} | Count: ${r.occurrenceCount} | Errors: ${r.errorCount}\n`
   }
 
@@ -108,7 +108,7 @@ export async function logweaveChanges(
   if (newEvents.length > 0) {
     text += `### New Patterns (${newEvents.length})\n`
     for (const e of newEvents) {
-      text += `- **${e.templateText}** — ${e.currentCount} occurrences in ${e.service}\n`
+      text += `- **${e.templateText}** [id: ${e.templateId}] — ${e.currentCount} occurrences in ${e.service}\n`
     }
     text += '\n'
   }
@@ -116,7 +116,7 @@ export async function logweaveChanges(
   if (spikes.length > 0) {
     text += `### Spikes (${spikes.length})\n`
     for (const e of spikes) {
-      text += `- **${e.templateText}** — ${e.ratio}x normal (${e.currentCount} vs ${e.previousCount}) in ${e.service}\n`
+      text += `- **${e.templateText}** [id: ${e.templateId}] — ${e.ratio}x normal (${e.currentCount} vs ${e.previousCount}) in ${e.service}\n`
     }
     text += '\n'
   }
@@ -124,7 +124,7 @@ export async function logweaveChanges(
   if (resolved.length > 0) {
     text += `### Resolved (${resolved.length})\n`
     for (const e of resolved) {
-      text += `- **${e.templateText}** — was ${e.previousCount} occurrences in ${e.service}\n`
+      text += `- **${e.templateText}** [id: ${e.templateId}] — was ${e.previousCount} occurrences in ${e.service}\n`
     }
   }
 
@@ -257,7 +257,7 @@ export async function logweaveSearchTemplates(
   let text = `## Search Results for "${args.query}"${modeLabel} (${rows.length} matches)\n\n`
   for (const r of rows) {
     const services = (r.servicesAffected as string[]).join(', ')
-    text += `- **${r.templateText}** — ${r.occurrenceCount} occurrences (${services})\n`
+    text += `- **${r.templateText}** [id: ${r.templateId}] — ${r.occurrenceCount} occurrences (${services})\n`
   }
 
   text += formatMeta(res.meta)
@@ -527,6 +527,216 @@ export async function logweaveLiveTail(
   }
 
   text += `\nCursor: ${cursor} (use this in your next call to get only new events)`
+  text += formatMeta(res.meta)
+  return text
+}
+
+// ---------------------------------------------------------------------------
+// New tools from gap analysis (#113)
+// ---------------------------------------------------------------------------
+
+export async function logweaveListServices(
+  client: LogWeaveClient,
+  args: { hours?: number },
+): Promise<string> {
+  const res = (await client.get('/dashboard/services', { hours: args.hours })) as ApiResponse
+  const rows = (res.data as Array<Record<string, unknown>>) ?? []
+
+  if (rows.length === 0) {
+    return `No services found.${formatMeta(res.meta)}`
+  }
+
+  let text = `## Services (${rows.length})\n\n`
+  for (const r of rows) {
+    const errorRate = ((r.errorRate as number) * 100).toFixed(1)
+    text += `- **${r.service}** — ${r.logCount} logs, ${r.errorCount} errors (${errorRate}%)`
+    if ((r.newTemplateCount as number) > 0) {
+      text += ` [${r.newTemplateCount} new patterns]`
+    }
+    text += '\n'
+  }
+
+  text += formatMeta(res.meta)
+  return text
+}
+
+export async function logweaveDiagnoseService(
+  client: LogWeaveClient,
+  args: { service: string; hours?: number },
+): Promise<string> {
+  const [healthRes, outlierRes, changesRes] = await Promise.all([
+    client.getComposite(`/services/${encodeURIComponent(args.service)}/health`, {
+      hours: args.hours,
+    }) as Promise<ApiResponse>,
+    client.get(`/services/${encodeURIComponent(args.service)}/outlier`, {
+      hours: args.hours,
+    }) as Promise<ApiResponse>,
+    client.get('/dashboard/changes', {
+      hours: args.hours,
+      service: args.service,
+    }) as Promise<ApiResponse>,
+  ])
+
+  const health = healthRes.data as Record<string, unknown>
+  const outlier = outlierRes.data as Record<string, unknown>
+  const changes = changesRes.data as { new?: Array<Record<string, unknown>>; spike?: Array<Record<string, unknown>>; resolved?: Array<Record<string, unknown>> }
+
+  let text = `## Diagnostic: ${args.service}\n\n`
+
+  // Outlier status
+  text += `### Status: ${(outlier.verdict as string).toUpperCase()}`
+  if (outlier.zScore != null) {
+    text += ` (z-score: ${(outlier.zScore as number).toFixed(1)})`
+  }
+  text += '\n'
+  if (outlier.currentRate != null) {
+    text += `Current error rate: ${outlier.currentRate} (baseline: ${outlier.baselineMean}, stddev: ${outlier.baselineStddev})\n`
+  }
+
+  // Health metrics
+  text += `\n### Health\n`
+  text += `- Log volume: ${health.logCount}\n`
+  text += `- Errors: ${health.errorCount} (${((health.errorRate as number) * 100).toFixed(1)}%)\n`
+  text += `- Warnings: ${health.warnCount} (${((health.warnRate as number) * 100).toFixed(1)}%)\n`
+
+  // Top error patterns
+  const patterns = (health.topErrorPatterns as Array<Record<string, unknown>>) ?? []
+  if (patterns.length > 0) {
+    text += `\n### Top Error Patterns\n`
+    for (const p of patterns) {
+      text += `- **${p.templateText}** [id: ${p.templateId}] — ${p.occurrenceCount} occurrences\n`
+    }
+  }
+
+  // Changes
+  const newEvents = changes.new ?? []
+  const spikes = changes.spike ?? []
+  const resolved = changes.resolved ?? []
+  if (newEvents.length > 0 || spikes.length > 0 || resolved.length > 0) {
+    text += `\n### Recent Changes\n`
+    if (newEvents.length > 0) {
+      text += `New patterns (${newEvents.length}):\n`
+      for (const e of newEvents) {
+        text += `- **${e.templateText}** [id: ${e.templateId}] — ${e.currentCount} occurrences\n`
+      }
+    }
+    if (spikes.length > 0) {
+      text += `Spikes (${spikes.length}):\n`
+      for (const e of spikes) {
+        text += `- **${e.templateText}** [id: ${e.templateId}] — ${e.ratio}x normal\n`
+      }
+    }
+    if (resolved.length > 0) {
+      text += `Resolved (${resolved.length}):\n`
+      for (const e of resolved) {
+        text += `- **${e.templateText}** [id: ${e.templateId}]\n`
+      }
+    }
+  }
+
+  text += formatMeta(healthRes.meta)
+  return text
+}
+
+export async function logweaveTemplateTrend(
+  client: LogWeaveClient,
+  args: { template_id: string; days?: number },
+): Promise<string> {
+  const res = (await client.get(`/templates/${encodeURIComponent(args.template_id)}/trend`, {
+    days: args.days,
+  })) as ApiResponse
+
+  const rows = (res.data as Array<Record<string, unknown>>) ?? []
+
+  if (rows.length === 0) {
+    return `No trend data available for this template.${formatMeta(res.meta)}`
+  }
+
+  const counts = rows.map((r) => r.occurrenceCount as number)
+  const total = counts.reduce((a, b) => a + b, 0)
+  const avg = total / counts.length
+  const max = Math.max(...counts)
+  const maxDay = rows[counts.indexOf(max)]
+
+  const third = Math.max(1, Math.floor(counts.length / 3))
+  const firstAvg = counts.slice(0, third).reduce((a, b) => a + b, 0) / third
+  const lastAvg = counts.slice(-third).reduce((a, b) => a + b, 0) / third
+  const direction = lastAvg > firstAvg * 1.2 ? 'increasing' : lastAvg < firstAvg * 0.8 ? 'decreasing' : 'stable'
+
+  let text = `## Long-Term Trend (${rows.length} days)\n\n`
+  text += `- Direction: **${direction}**\n`
+  text += `- Average daily: ${avg.toFixed(0)} occurrences\n`
+  text += `- Peak: ${maxDay?.day} — ${max} occurrences\n`
+  text += `- First period avg: ${firstAvg.toFixed(0)}/day\n`
+  text += `- Recent period avg: ${lastAvg.toFixed(0)}/day`
+  if (direction !== 'stable') {
+    const pctChange = (((lastAvg - firstAvg) / firstAvg) * 100).toFixed(0)
+    text += ` (${pctChange}%)`
+  }
+  text += '\n'
+
+  text += formatMeta(res.meta)
+  return text
+}
+
+export async function logweaveLevelDistribution(
+  client: LogWeaveClient,
+  args: { hours?: number; service?: string },
+): Promise<string> {
+  const res = (await client.get('/dashboard/levels', {
+    hours: args.hours,
+    service: args.service,
+  })) as ApiResponse
+
+  const rows = (res.data as Array<Record<string, unknown>>) ?? []
+
+  if (rows.length === 0) {
+    return `No level data found.${formatMeta(res.meta)}`
+  }
+
+  const total = rows.reduce((sum, r) => sum + (r.count as number), 0)
+
+  let text = `## Level Distribution${args.service ? ` (${args.service})` : ''}\n\n`
+  for (const r of rows) {
+    const pct = (((r.count as number) / total) * 100).toFixed(1)
+    text += `- ${r.level}: ${(r.count as number).toLocaleString()} (${pct}%)\n`
+  }
+  text += `\nTotal: ${total.toLocaleString()}\n`
+
+  text += formatMeta(res.meta)
+  return text
+}
+
+export async function logweaveTemplateEvents(
+  client: LogWeaveClient,
+  args: { template_id: string; status_code?: number; hours?: number; limit?: number },
+): Promise<string> {
+  const res = (await client.get(`/templates/${encodeURIComponent(args.template_id)}/events`, {
+    hours: args.hours,
+    status_code: args.status_code,
+    limit: args.limit,
+  })) as ApiResponse
+
+  const rows = (res.data as Array<Record<string, unknown>>) ?? []
+
+  if (rows.length === 0) {
+    const filter = args.status_code ? ` with status ${args.status_code}` : ''
+    return `No events found for this template${filter}.${formatMeta(res.meta)}`
+  }
+
+  const filter = args.status_code ? ` (status ${args.status_code})` : ''
+  let text = `## Template Events${filter} (${rows.length} results)\n\n`
+  text += `| Timestamp | Service | Route | Status | Duration | Trace ID |\n`
+  text += `|-----------|---------|-------|--------|----------|----------|\n`
+  for (const r of rows) {
+    const ts = (r.timestamp as string).slice(0, 19).replace('T', ' ')
+    const route = (r.route as string) || '-'
+    const status = r.statusCode || '-'
+    const dur = r.durationMs ? `${r.durationMs}ms` : '-'
+    const trace = (r.traceId as string) || '-'
+    text += `| ${ts} | ${r.service} | ${route} | ${status} | ${dur} | ${trace} |\n`
+  }
+
   text += formatMeta(res.meta)
   return text
 }

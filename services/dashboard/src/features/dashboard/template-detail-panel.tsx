@@ -1,5 +1,5 @@
 import { Bell, BellRing, X } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/shallow'
 import {
@@ -55,6 +55,24 @@ function DetailContent({ template }: { template: TemplateRow }) {
   const unwatchMutation = useUnwatchTemplate()
   const { data: slackResponse } = useSlackSettings()
   const slackConfigured = slackResponse?.data?.configured ?? false
+  const investigatingStatusCode = useDashboardStore((s) => s.investigatingStatusCode)
+  const setInvestigatingStatusCode = useDashboardStore((s) => s.setInvestigatingStatusCode)
+  const selectedTimeRange = useDashboardStore((s) => s.selectedTimeRange)
+  const setSelectedTimeRange = useDashboardStore((s) => s.setSelectedTimeRange)
+
+  const sparklineClickHandler = useMemo(() => ({
+    click: (params: unknown) => {
+      const p = params as { dataIndex?: number }
+      const point = p.dataIndex != null ? sparklinePoints[p.dataIndex] : undefined
+      if (point) {
+        const start = point.intervalStart
+        const end = new Date(new Date(start).getTime() + 5 * 60_000).toISOString()
+        setSelectedTimeRange(
+          selectedTimeRange?.start === start ? null : { start, end },
+        )
+      }
+    },
+  }), [sparklinePoints, selectedTimeRange, setSelectedTimeRange])
 
   return (
     <div className="space-y-5">
@@ -131,7 +149,19 @@ function DetailContent({ template }: { template: TemplateRow }) {
                       ? 'bg-info'
                       : 'bg-success'
               return (
-                <div key={sc.statusCode} className="flex items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  key={sc.statusCode}
+                  className={cn(
+                    'flex items-center gap-2 text-xs w-full rounded-[var(--radius-sm)] px-1 py-0.5 -mx-1 transition-colors text-left',
+                    investigatingStatusCode === sc.statusCode
+                      ? 'bg-brand-500/20 ring-1 ring-brand-500/40'
+                      : 'hover:bg-surface-elevated/50 cursor-pointer',
+                  )}
+                  onClick={() => setInvestigatingStatusCode(
+                    investigatingStatusCode === sc.statusCode ? null : sc.statusCode,
+                  )}
+                >
                   <span className="font-mono text-text-primary w-8 text-right tabular-nums">
                     {sc.statusCode}
                   </span>
@@ -144,10 +174,37 @@ function DetailContent({ template }: { template: TemplateRow }) {
                   <span className="font-mono text-text-muted tabular-nums w-14 text-right">
                     {sc.count.toLocaleString()}
                   </span>
-                </div>
+                  <span className="text-text-muted text-[10px]">›</span>
+                </button>
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Investigation panel — shown when a status code is clicked */}
+      {investigatingStatusCode != null && (
+        <div className="bg-surface-base rounded-[var(--radius-md)] p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+              Events — {investigatingStatusCode}
+              {selectedTimeRange && (
+                <span className="text-brand-400 normal-case ml-1">
+                  ({new Date(selectedTimeRange.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                </span>
+              )}
+            </h4>
+            <button
+              type="button"
+              className="text-[10px] text-text-muted hover:text-text-primary"
+              onClick={() => setInvestigatingStatusCode(null)}
+            >
+              Close ×
+            </button>
+          </div>
+          <p className="text-[11px] text-text-muted">
+            Use MCP tool: <code className="text-brand-400">template_events</code> with template_id and status_code={investigatingStatusCode} for detailed event data with trace IDs.
+          </p>
         </div>
       )}
 
@@ -197,6 +254,15 @@ function DetailContent({ template }: { template: TemplateRow }) {
             Occurrence History ({sparklinePoints.length} points)
             <InfoTooltip content={TOOLTIPS.occurrenceHistory} />
           </h4>
+          {selectedTimeRange && (
+            <button
+              type="button"
+              className="text-[10px] text-brand-400 hover:text-brand-300 mb-1"
+              onClick={() => setSelectedTimeRange(null)}
+            >
+              Clear selection ×
+            </button>
+          )}
           <div className="bg-surface-base rounded-[var(--radius-md)] p-2">
             <Chart
               option={{
@@ -213,14 +279,20 @@ function DetailContent({ template }: { template: TemplateRow }) {
                 series: [
                   {
                     type: 'bar',
-                    data: sparklinePoints.map((p) => p.count),
-                    itemStyle: { color: 'var(--color-brand-400)', borderRadius: [2, 2, 0, 0] },
+                    data: sparklinePoints.map((p) => ({
+                      value: p.count,
+                      itemStyle: selectedTimeRange && p.intervalStart !== selectedTimeRange.start
+                        ? { color: 'var(--color-brand-400)', opacity: 0.2 }
+                        : { color: 'var(--color-brand-400)', borderRadius: [2, 2, 0, 0] },
+                    })),
+                    cursor: 'pointer',
                   },
                 ],
                 tooltip: { trigger: 'axis' },
                 animationDuration: 300,
               }}
               height={140}
+              onEvents={sparklineClickHandler}
             />
           </div>
         </div>

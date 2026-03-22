@@ -1,6 +1,6 @@
 import type { EChartsOption } from 'echarts'
 import { useRef } from 'react'
-import { useChart } from '../hooks/use-chart'
+import { type ChartEventHandlers, useChart } from '../hooks/use-chart'
 import { cn } from '../lib/cn'
 
 interface ChartProps {
@@ -8,11 +8,12 @@ interface ChartProps {
   height?: number | string
   loading?: boolean
   className?: string
+  onEvents?: ChartEventHandlers
 }
 
-export function Chart({ option, height = 300, loading, className }: ChartProps) {
+export function Chart({ option, height = 300, loading, className, onEvents }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  useChart(containerRef, option)
+  useChart(containerRef, option, onEvents)
 
   return (
     <div className={cn('relative', className)}>
