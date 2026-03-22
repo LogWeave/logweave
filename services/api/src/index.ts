@@ -10,8 +10,11 @@ import { ClusterClient } from './pipeline/cluster-client.js'
 import { RecoverySweep } from './recovery/reconcile.js'
 import { AlertEvaluator } from './watches/alert-evaluator.js'
 import { AlertDispatcher, ConsoleObserver } from './watches/alert-observer.js'
+import { HistoryObserver } from './watches/history-observer.js'
+import { RuleStore } from './watches/rule-store.js'
 import { SlackObserver } from './watches/slack-observer.js'
 import { TenantSettingsStore } from './watches/tenant-settings.js'
+import { ThresholdEvaluator } from './watches/threshold-evaluator.js'
 import { WatchStore } from './watches/watch-store.js'
 
 const config = loadConfig()
@@ -23,15 +26,23 @@ const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTim
 const anomalyScorer = new AnomalyScorer({ db, logger })
 const watchStore = new WatchStore({ db, logger })
 const settingsStore = new TenantSettingsStore({ db, logger })
+const ruleStore = new RuleStore({ db, logger })
 const alertDispatcher = new AlertDispatcher(logger)
 alertDispatcher.register(new ConsoleObserver(logger))
 alertDispatcher.register(
   new SlackObserver({ settingsStore, dashboardBaseUrl: config.dashboardBaseUrl, logger }),
 )
+alertDispatcher.register(new HistoryObserver({ db, logger }))
 const alertEvaluator = new AlertEvaluator({
   watchStore,
   anomalyScorer,
   dispatcher: alertDispatcher,
+  logger,
+})
+const thresholdEvaluator = new ThresholdEvaluator({
+  ruleStore,
+  dispatcher: alertDispatcher,
+  db,
   logger,
 })
 
@@ -39,6 +50,7 @@ try {
   await initSchema(clickhouse, logger)
   await watchStore.loadFromDb()
   await settingsStore.loadFromDb()
+  await ruleStore.loadFromDb()
 } catch (err) {
   logger.fatal({ err }, 'Failed to initialize ClickHouse schema after retries')
   process.exit(1)
@@ -85,6 +97,7 @@ const server = app.listen(config.port, () => {
   }
   anomalyScorer.start()
   alertEvaluator.start()
+  thresholdEvaluator.start()
 })
 
 let shuttingDown = false
@@ -102,8 +115,9 @@ async function shutdown(signal: string): Promise<void> {
   }, config.shutdownTimeoutMs)
   forceTimer.unref()
 
-  // Stop evaluator, scorer, and recovery sweep before closing connections
+  // Stop evaluators, scorer, and recovery sweep before closing connections
   alertEvaluator.stop()
+  thresholdEvaluator.stop()
   anomalyScorer.stop()
   await recovery.stop()
   logger.info('Recovery sweep stopped')
