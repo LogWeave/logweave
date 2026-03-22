@@ -101,8 +101,18 @@ function DetailContent({ template }: { template: TemplateRow }) {
   const investigatingStatusCode = useDashboardStore((s) => s.investigatingStatusCode)
   const setInvestigatingStatusCode = useDashboardStore((s) => s.setInvestigatingStatusCode)
 
+  const globalTimeRange = useDashboardStore((s) => s.timeRange)
   const { data: sparklineResponse } = useSparklines([template.templateId])
-  const sparklinePoints = sparklineResponse?.data?.[template.templateId] ?? []
+  const allSparklinePoints = sparklineResponse?.data?.[template.templateId] ?? []
+  // Cap sparkline to 24h max (288 x 5-min buckets) — beyond that it's unreadable
+  const MAX_SPARKLINE_POINTS = 288
+  const sparklinePoints = allSparklinePoints.length > MAX_SPARKLINE_POINTS
+    ? allSparklinePoints.slice(-MAX_SPARKLINE_POINTS)
+    : allSparklinePoints
+  const sparklineHours = Math.min(
+    { '1h': 1, '6h': 6, '24h': 24, '7d': 168 }[globalTimeRange],
+    24,
+  )
   const statusCodeTimeWindow = selectedTimeRange
     ? { since: selectedTimeRange.start, until: selectedTimeRange.end }
     : null
@@ -310,7 +320,7 @@ function DetailContent({ template }: { template: TemplateRow }) {
       {sparklinePoints.length > 0 && (
         <div>
           <h4 className="text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1">
-            Occurrence History ({sparklinePoints.length} points)
+            Occurrence History ({sparklineHours}h)
             <InfoTooltip content={TOOLTIPS.occurrenceHistory} />
           </h4>
           <div className="bg-surface-base rounded-[var(--radius-md)] p-2">
