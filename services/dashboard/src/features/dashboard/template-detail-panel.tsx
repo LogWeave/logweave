@@ -43,6 +43,53 @@ function TemplateText({ text }: { text: string }) {
   )
 }
 
+function InvestigationPrompt({
+  statusCode,
+  templateId,
+  service,
+  onClose,
+}: {
+  statusCode: number
+  templateId: string
+  service: string
+  onClose: () => void
+}) {
+  const prompt = `Show me the ${statusCode} errors for template ${templateId} on ${service}. What's causing them? Check the trace IDs and related patterns.`
+
+  return (
+    <div className="bg-surface-base rounded-[var(--radius-md)] p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+          Investigate {statusCode}s
+        </h4>
+        <button
+          type="button"
+          className="text-[10px] text-text-muted hover:text-text-primary"
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </div>
+      <p className="text-[11px] text-text-muted leading-relaxed">
+        Ask your AI assistant to investigate these errors:
+      </p>
+      <div className="bg-surface-card rounded-[var(--radius-sm)] p-2.5 text-xs font-mono text-text-primary leading-relaxed">
+        {prompt}
+      </div>
+      <Button
+        variant="secondary"
+        className="w-full text-xs"
+        onClick={() => {
+          navigator.clipboard.writeText(prompt)
+          toast.success('Copied to clipboard')
+        }}
+      >
+        Copy prompt
+      </Button>
+    </div>
+  )
+}
+
 function DetailContent({ template }: { template: TemplateRow }) {
   const { data: sparklineResponse } = useSparklines([template.templateId])
   const sparklinePoints = sparklineResponse?.data?.[template.templateId] ?? []
@@ -183,41 +230,14 @@ function DetailContent({ template }: { template: TemplateRow }) {
       )}
 
       {/* Investigation prompt — shown when a status code is clicked */}
-      {investigatingStatusCode != null && (() => {
-        const prompt = `Show me the ${investigatingStatusCode} errors for template ${template.templateId} on ${template.service}. What's causing them? Check the trace IDs and related patterns.`
-        return (
-        <div className="bg-surface-base rounded-[var(--radius-md)] p-3 space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-              Investigate {investigatingStatusCode}s
-            </h4>
-            <button
-              type="button"
-              className="text-[10px] text-text-muted hover:text-text-primary"
-              onClick={() => setInvestigatingStatusCode(null)}
-            >
-              ×
-            </button>
-          </div>
-          <p className="text-[11px] text-text-muted leading-relaxed">
-            Ask your AI assistant to investigate these errors:
-          </p>
-          <div className="bg-surface-card rounded-[var(--radius-sm)] p-2.5 text-xs font-mono text-text-primary leading-relaxed">
-            {prompt}
-          </div>
-          <Button
-            variant="secondary"
-            className="w-full text-xs"
-            onClick={() => {
-              navigator.clipboard.writeText(prompt)
-              toast.success('Copied to clipboard')
-            }}
-          >
-            Copy prompt
-          </Button>
-        </div>
-        )
-      })()}
+      {investigatingStatusCode != null && (
+        <InvestigationPrompt
+          statusCode={investigatingStatusCode}
+          templateId={template.templateId}
+          service={template.service}
+          onClose={() => setInvestigatingStatusCode(null)}
+        />
+      )}
 
       {/* Metadata */}
       <div className="space-y-2">
