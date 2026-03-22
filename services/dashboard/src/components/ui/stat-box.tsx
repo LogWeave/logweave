@@ -6,9 +6,10 @@ interface StatBoxProps {
   value: ReactNode
   valueClassName?: string
   className?: string
+  secondary?: ReactNode
 }
 
-export function StatBox({ label, value, valueClassName, className }: StatBoxProps) {
+export function StatBox({ label, value, valueClassName, className, secondary }: StatBoxProps) {
   return (
     <div className={cn('bg-surface-base rounded-[var(--radius-md)] p-3', className)}>
       <p className="text-[11px] text-text-muted mb-1">{label}</p>
@@ -17,6 +18,9 @@ export function StatBox({ label, value, valueClassName, className }: StatBoxProp
       >
         {value}
       </p>
+      {secondary && (
+        <p className="text-[10px] text-brand-400 mt-0.5">{secondary}</p>
+      )}
     </div>
   )
 }

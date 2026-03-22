@@ -147,11 +147,26 @@ function DetailContent({ template }: { template: TemplateRow }) {
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">
-        <StatBox label="Occurrences" value={template.occurrenceCount.toLocaleString()} />
+        <StatBox
+          label="Occurrences"
+          value={template.occurrenceCount.toLocaleString()}
+          secondary={selectedTimeRange ? (() => {
+            const selected = sparklinePoints
+              .filter((p) => p.intervalStart >= selectedTimeRange.start && p.intervalStart < selectedTimeRange.end)
+              .reduce((sum, p) => sum + p.count, 0)
+            return `${selected.toLocaleString()} selected`
+          })() : undefined}
+        />
         <StatBox
           label="Errors"
           value={template.errorCount.toLocaleString()}
           valueClassName={template.errorCount > 0 ? 'text-danger' : undefined}
+          secondary={selectedTimeRange ? (() => {
+            const totalStatusCodes = statusCodes.reduce((sum, sc) => sum + sc.count, 0)
+            const errorCodes = statusCodes.filter((sc) => sc.statusCode >= 500)
+            const errorCount = errorCodes.reduce((sum, sc) => sum + sc.count, 0)
+            return `${errorCount.toLocaleString()} in selection (${totalStatusCodes > 0 ? ((errorCount / totalStatusCodes) * 100).toFixed(1) : 0}%)`
+          })() : undefined}
         />
         <StatBox
           label={
