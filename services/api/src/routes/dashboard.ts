@@ -488,19 +488,18 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         queryResolvedTemplates(deps.db, tenantId, queryOpts),
       ])
 
-      const events: ChangeEvent[] = [
-        ...mapNewEvents(toRawRows(newRows)),
-        ...mapSpikeEvents(toRawRows(spikeRows)),
-        ...mapResolvedEvents(toRawRows(resolvedRows)),
-      ]
+      const newEvents = mapNewEvents(toRawRows(newRows))
+      const spikeEvents = mapSpikeEvents(toRawRows(spikeRows))
+      const resolvedEvents = mapResolvedEvents(toRawRows(resolvedRows))
 
-      // Sort by ratio descending (spikes first), then new, then resolved
-      events.sort((a, b) => b.ratio - a.ratio)
-
-      respond(res, events, {
+      respond(res, {
+        new: newEvents,
+        spike: spikeEvents,
+        resolved: resolvedEvents,
+      }, {
         hours,
         limit: params.limit,
-        count: events.length,
+        count: newEvents.length + spikeEvents.length + resolvedEvents.length,
         ...(since ? { since } : {}),
       })
     } catch (err) {

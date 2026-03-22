@@ -14,7 +14,8 @@
     "build": "tsc",
     "prepublishOnly": "tsc",
     "dev": "node --import tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "node --import tsx --test tests/e2e.test.ts"
   },
   "keywords": [
     "logweave",

@@ -151,7 +151,7 @@ export function useChanges() {
   return useQuery({
     queryKey: queryKeys.changes(hours, serviceFilter, levels),
     queryFn: () =>
-      api.get<ApiResponse<ChangeEvent[]>>('/v1/dashboard/changes', {
+      api.get<ApiResponse<import('./types').ChangesData>>('/v1/dashboard/changes', {
         hours,
         service: serviceFilter ?? undefined,
         level: levelApiParam(levelFilters),

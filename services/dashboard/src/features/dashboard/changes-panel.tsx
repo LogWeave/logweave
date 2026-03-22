@@ -78,7 +78,10 @@ const ChangeEventRow = memo(function ChangeEventRow({
 export function ChangesPanel({ className }: { className?: string }) {
   const { data: response, isLoading, isError, refetch } = useChanges()
   const { data: overviewResponse } = useOverview()
-  const events = response?.data ?? []
+  const changesData = response?.data
+  const events: ChangeEvent[] = changesData
+    ? [...changesData.new, ...changesData.spike, ...changesData.resolved]
+    : []
   const hasAnyData = (overviewResponse?.data?.totalEvents ?? 0) > 0
   const setSelectedTemplateId = useDashboardStore((s) => s.setSelectedTemplateId)
 
