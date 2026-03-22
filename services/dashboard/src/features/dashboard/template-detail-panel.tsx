@@ -418,7 +418,7 @@ export function TemplateDetailPanel() {
       {/* Panel */}
       <aside
         className={cn(
-          'fixed right-0 top-0 bottom-0 z-50 w-full md:w-[480px] bg-surface-card border-l border-border',
+          'fixed right-0 top-0 bottom-0 z-50 w-full md:w-[380px] lg:w-[440px] xl:w-[480px] bg-surface-card border-l border-border',
           'overflow-y-auto shadow-2xl',
           'transform transition-transform duration-200 ease-out',
           'md:relative md:shrink-0',

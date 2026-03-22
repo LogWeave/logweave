@@ -79,9 +79,10 @@ export function ChangesPanel({ className }: { className?: string }) {
   const { data: response, isLoading, isError, refetch } = useChanges()
   const { data: overviewResponse } = useOverview()
   const changesData = response?.data
-  const events: ChangeEvent[] = changesData
-    ? [...changesData.new, ...changesData.spike, ...changesData.resolved]
-    : []
+  const spikes = changesData?.spike ?? []
+  const newEvents = changesData?.new ?? []
+  const resolved = changesData?.resolved ?? []
+  const totalCount = spikes.length + newEvents.length + resolved.length
   const hasAnyData = (overviewResponse?.data?.totalEvents ?? 0) > 0
   const setSelectedTemplateId = useDashboardStore((s) => s.setSelectedTemplateId)
 
@@ -110,21 +111,44 @@ export function ChangesPanel({ className }: { className?: string }) {
       <CardContent>
         {isError ? (
           <QueryError onRetry={() => refetch()} />
-        ) : events.length === 0 ? (
+        ) : totalCount === 0 ? (
           <p className="text-xs text-text-muted py-4 text-center">
             {hasAnyData
               ? 'All quiet — no spikes, new patterns, or resolutions in this window.'
               : 'Waiting for log data to start detecting changes.'}
           </p>
         ) : (
-          <div className="max-h-[300px] overflow-y-auto">
-            {events.map((event) => (
-              <ChangeEventRow
-                key={`${event.type}-${event.templateId}`}
-                event={event}
-                onSelect={setSelectedTemplateId}
-              />
-            ))}
+          <div className="max-h-[300px] overflow-y-auto space-y-2">
+            {spikes.length > 0 && (
+              <div>
+                <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
+                  Spikes ({spikes.length})
+                </p>
+                {spikes.map((event) => (
+                  <ChangeEventRow key={`${event.templateId}-${event.service}`} event={event} onSelect={setSelectedTemplateId} />
+                ))}
+              </div>
+            )}
+            {newEvents.length > 0 && (
+              <div>
+                <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
+                  New Patterns ({newEvents.length})
+                </p>
+                {newEvents.map((event) => (
+                  <ChangeEventRow key={`${event.templateId}-${event.service}`} event={event} onSelect={setSelectedTemplateId} />
+                ))}
+              </div>
+            )}
+            {resolved.length > 0 && (
+              <div>
+                <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
+                  Resolved ({resolved.length})
+                </p>
+                {resolved.map((event) => (
+                  <ChangeEventRow key={`${event.templateId}-${event.service}`} event={event} onSelect={setSelectedTemplateId} />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </CardContent>

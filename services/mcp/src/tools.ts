@@ -479,6 +479,7 @@ export async function logweaveLiveTail(
   args: {
     service?: string
     level?: string
+    min_level?: string
     template_id?: string
     min_anomaly?: number
     seconds?: number
@@ -489,6 +490,7 @@ export async function logweaveLiveTail(
   const res = (await client.get('/tail/poll', {
     service: args.service,
     level: args.level,
+    min_level: args.min_level,
     template_id: args.template_id,
     min_anomaly: args.min_anomaly,
     seconds: args.seconds,
