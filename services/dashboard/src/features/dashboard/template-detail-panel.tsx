@@ -1,5 +1,5 @@
 import { Bell, BellRing, X } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/shallow'
 import {
@@ -12,7 +12,7 @@ import {
   useWatchTemplate,
 } from '../../api/queries'
 import type { TemplateRow } from '../../api/types'
-import { Chart } from '../../components/chart'
+import { SelectableSparkline } from '../../components/selectable-sparkline'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { StatBox } from '../../components/ui/stat-box'
@@ -107,19 +107,6 @@ function DetailContent({ template }: { template: TemplateRow }) {
   const selectedTimeRange = useDashboardStore((s) => s.selectedTimeRange)
   const setSelectedTimeRange = useDashboardStore((s) => s.setSelectedTimeRange)
 
-  const sparklineClickHandler = useMemo(() => ({
-    click: (params: unknown) => {
-      const p = params as { dataIndex?: number }
-      const point = p.dataIndex != null ? sparklinePoints[p.dataIndex] : undefined
-      if (point) {
-        const start = point.intervalStart
-        const end = new Date(new Date(start).getTime() + 5 * 60_000).toISOString()
-        setSelectedTimeRange(
-          selectedTimeRange?.start === start ? null : { start, end },
-        )
-      }
-    },
-  }), [sparklinePoints, selectedTimeRange, setSelectedTimeRange])
 
   return (
     <div className="space-y-5">
@@ -295,35 +282,10 @@ function DetailContent({ template }: { template: TemplateRow }) {
             </button>
           )}
           <div className="bg-surface-base rounded-[var(--radius-md)] p-2">
-            <Chart
-              option={{
-                grid: { left: 40, right: 8, top: 8, bottom: 24, containLabel: false },
-                xAxis: {
-                  type: 'category',
-                  data: sparklinePoints.map((p) => {
-                    const d = new Date(p.intervalStart)
-                    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-                  }),
-                  axisLabel: { fontSize: 10 },
-                },
-                yAxis: { type: 'value', splitNumber: 3, axisLabel: { fontSize: 10 } },
-                series: [
-                  {
-                    type: 'bar',
-                    data: sparklinePoints.map((p) => ({
-                      value: p.count,
-                      itemStyle: selectedTimeRange && p.intervalStart !== selectedTimeRange.start
-                        ? { color: 'var(--color-brand-400)', opacity: 0.2 }
-                        : { color: 'var(--color-brand-400)', borderRadius: [2, 2, 0, 0] },
-                    })),
-                    cursor: 'pointer',
-                  },
-                ],
-                tooltip: { trigger: 'axis' },
-                animationDuration: 300,
-              }}
+            <SelectableSparkline
+              points={sparklinePoints}
               height={140}
-              onEvents={sparklineClickHandler}
+              onRangeSelect={setSelectedTimeRange}
             />
           </div>
         </div>

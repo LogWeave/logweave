@@ -5,6 +5,7 @@ import {
   DataZoomComponent,
   GridComponent,
   LegendComponent,
+  ToolboxComponent,
   TooltipComponent,
 } from 'echarts/components'
 import * as echarts from 'echarts/core'
@@ -22,6 +23,7 @@ echarts.use([
   LegendComponent,
   DataZoomComponent,
   BrushComponent,
+  ToolboxComponent,
 ])
 
 export type ChartEventHandlers = Record<string, (params: unknown) => void>
@@ -34,6 +36,7 @@ export function useChart(
   const chartRef = useRef<echarts.ECharts | null>(null)
   const handlersRef = useRef(eventHandlers)
   handlersRef.current = eventHandlers
+  const brushActivated = useRef(false)
   const colorMode = useDashboardStore((s) => s.colorMode)
   const theme = colorMode === 'dark' ? 'logweave-dark' : 'logweave-light'
 
@@ -47,12 +50,13 @@ export function useChart(
 
     const chart = echarts.init(el, theme)
     chartRef.current = chart
+    brushActivated.current = false
     let disposed = false
 
     // Wire event handlers via ref (stable wrappers that delegate to latest handlers)
     const wrappers: Array<[string, (p: unknown) => void]> = []
     if (handlersRef.current) {
-      for (const [event, handler] of Object.entries(handlersRef.current)) {
+      for (const [event, _handler] of Object.entries(handlersRef.current)) {
         const wrapper = (p: unknown) => handlersRef.current?.[event]?.(p)
         wrappers.push([event, wrapper])
         chart.on(event, wrapper)
@@ -94,6 +98,17 @@ export function useChart(
         chart.off(evt)
         chart.on(evt, fn)
       }
+    }
+
+    // Activate brush cursor once if option includes brush config
+    const optionObj = option as Record<string, unknown>
+    if (optionObj.brush && !brushActivated.current) {
+      brushActivated.current = true
+      chart.dispatchAction({
+        type: 'takeGlobalCursor',
+        key: 'brush',
+        brushOption: { brushType: 'lineX', brushMode: 'single' },
+      })
     }
   }, [option])
 
