@@ -285,13 +285,15 @@ export async function queryDashboardVolume(
   AND interval_start <= now64(3) - toIntervalHour({offset:UInt32})`
       : 'AND interval_start > now64(3) - toIntervalHour({hours:UInt32})'
 
+  // Use template_stats (5-min buckets) for smoother volume charts
+  // instead of service_stats (1-hour buckets) which looks blocky
   const query = `
 SELECT
     interval_start,
     service,
-    countMerge(log_count)     AS log_count,
-    countMerge(error_count) AS error_count
-FROM logweave.service_stats
+    countMerge(occurrence_count)  AS log_count,
+    countMerge(error_count)      AS error_count
+FROM logweave.template_stats
 WHERE tenant_id = {tenant_id:String}
   ${timeFilter}
   ${serviceFilter}
