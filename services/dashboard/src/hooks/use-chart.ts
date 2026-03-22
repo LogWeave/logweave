@@ -32,15 +32,16 @@ export function useChart(
   eventHandlers?: ChartEventHandlers,
 ) {
   const chartRef = useRef<echarts.ECharts | null>(null)
+  const handlersRef = useRef(eventHandlers)
+  handlersRef.current = eventHandlers
   const colorMode = useDashboardStore((s) => s.colorMode)
   const theme = colorMode === 'dark' ? 'logweave-dark' : 'logweave-light'
 
-  // Init and dispose — theme changes require full re-init
+  // Init, dispose, and wire events — all in one effect to avoid race conditions
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
-    // Dispose any existing instance on this DOM element to prevent orphans
     const existing = echarts.getInstanceByDom(el)
     if (existing) existing.dispose()
 
@@ -48,7 +49,16 @@ export function useChart(
     chartRef.current = chart
     let disposed = false
 
-    // Debounce resize to prevent layout thrash cascades
+    // Wire event handlers via ref (stable wrappers that delegate to latest handlers)
+    const wrappers: Array<[string, (p: unknown) => void]> = []
+    if (handlersRef.current) {
+      for (const [event, handler] of Object.entries(handlersRef.current)) {
+        const wrapper = (p: unknown) => handlersRef.current?.[event]?.(p)
+        wrappers.push([event, wrapper])
+        chart.on(event, wrapper)
+      }
+    }
+
     let resizeTimer: ReturnType<typeof setTimeout> | null = null
     const observer = new ResizeObserver(() => {
       if (resizeTimer) clearTimeout(resizeTimer)
@@ -62,34 +72,30 @@ export function useChart(
       disposed = true
       if (resizeTimer) clearTimeout(resizeTimer)
       observer.disconnect()
+      for (const [event, wrapper] of wrappers) {
+        chart.off(event, wrapper)
+      }
       chart.dispose()
       chartRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme])
 
-  // Update option — use notMerge to avoid series accumulation
-  useEffect(() => {
-    if (chartRef.current && option) {
-      chartRef.current.setOption(option, { notMerge: true, lazyUpdate: true })
-    }
-  }, [option])
-
-  // Wire event handlers
+  // Update option + re-wire event handlers (chart definitely exists after setOption)
   useEffect(() => {
     const chart = chartRef.current
-    if (!chart || !eventHandlers) return
+    if (!chart || !option) return
+    chart.setOption(option, { notMerge: true, lazyUpdate: true })
 
-    for (const [event, handler] of Object.entries(eventHandlers)) {
-      chart.on(event, handler)
-    }
-
-    return () => {
-      for (const [event, handler] of Object.entries(eventHandlers)) {
-        chart.off(event, handler)
+    // Re-wire handlers on every option update (handlers may reference new data)
+    const currentHandlers = handlersRef.current
+    if (currentHandlers) {
+      for (const [evt, fn] of Object.entries(currentHandlers)) {
+        chart.off(evt)
+        chart.on(evt, fn)
       }
     }
-  }, [eventHandlers])
+  }, [option])
 
   return chartRef
 }
