@@ -242,3 +242,42 @@ and new-user agent both flagged changes panel not being clickable. Cross-referen
 perspectives produces higher-confidence prioritization.
 
 Fix: Use multi-agent review at every milestone boundary going forward.
+
+### 2026-03-22 — ClickHouse alias collision: `any(service) AS service` breaks WHERE filter
+
+**What happened:** The changes endpoint (`/dashboard/changes?service=X`) returned 500. ClickHouse
+error: "Aggregate function any(service) AS service is found in WHERE in query." The SQL had
+`any(service) AS service` in SELECT and `AND service = {service:String}` in WHERE. ClickHouse
+couldn't distinguish the aggregate alias from the raw column when both are named `service`.
+
+**Why it wasn't caught:** Unit tests use mocked DB — they check SQL string fragments, not actual
+ClickHouse execution. The service filter test passed because the SQL string contained `AND service`
+but the query was never run against ClickHouse with a service parameter.
+
+**Made worse by:** Using `replace_all` three times to rename the alias, creating inconsistent
+names (`svc` in CTEs, `service_name` in outer SELECTs). Committed without verifying the query
+actually worked.
+
+**Fix applied:** Renamed all `any(service)` aliases to `service_name` consistently, then aliased
+back to `service` in the outermost SELECT only.
+
+**Prevention rules:**
+1. NEVER alias an aggregate to the same name as the source column when that column is used in WHERE
+2. After ANY SQL change, test the actual query against ClickHouse before committing — not just typecheck
+3. NEVER use `replace_all` on SQL without reading the entire file after to verify consistency
+4. Add the service filter to e2e tests so this specific regression is caught
+
+### 2026-03-22 — Shipping broken features: chart click handler + placeholder investigation panel
+
+**What happened:** Shipped a "clickable status codes" feature where clicking showed a placeholder
+saying "use MCP tool" instead of real data. Shipped a sparkline "click to select" feature that
+didn't work because ECharts event handlers weren't wired correctly (React lifecycle race condition).
+
+**Root cause:** Moving too fast at the end of a long session. Committed code that passed typecheck
+but was never tested in a running browser. Declared features "done" based on typecheck, not
+actual user interaction.
+
+**Prevention rules:**
+1. Dashboard features MUST be tested in a running browser before committing — typecheck is not verification
+2. Never ship a placeholder component that says "use another tool" — either build the real thing or don't ship it
+3. If a feature can't be verified in the current environment, don't commit it — create an issue instead
