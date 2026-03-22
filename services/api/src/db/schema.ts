@@ -192,7 +192,65 @@ GROUP BY tenant_id, service, level, interval_start`,
   `ALTER TABLE logweave.template_registry ADD COLUMN IF NOT EXISTS embedding Array(Float32) DEFAULT []`,
   `ALTER TABLE logweave.template_registry ADD COLUMN IF NOT EXISTS embedding_model LowCardinality(String) DEFAULT ''`,
 
-  // 11. Audit log — append-only, SOC2 compliance (365-day retention)
+  // 11. Service stats 5-minute buckets — sub-hour granularity for threshold alerting
+  `CREATE TABLE IF NOT EXISTS logweave.service_stats_5m (
+    tenant_id       LowCardinality(String),
+    service         LowCardinality(String),
+    level           LowCardinality(String),
+    interval_start  DateTime64(3),
+    log_count       AggregateFunction(count),
+    error_count     AggregateFunction(countIf, UInt8),
+    warn_count      AggregateFunction(countIf, UInt8)
+  ) ENGINE = AggregatingMergeTree()
+  PARTITION BY toYYYYMM(interval_start)
+  ORDER BY (tenant_id, service, interval_start)
+  TTL toDateTime(interval_start) + toIntervalDay(7) DELETE
+  SETTINGS ttl_only_drop_parts = 1`,
+
+  `CREATE MATERIALIZED VIEW IF NOT EXISTS logweave.service_stats_5m_mv
+  TO logweave.service_stats_5m AS
+  SELECT
+      tenant_id, service, level,
+      toStartOfFiveMinutes(timestamp) AS interval_start,
+      countState()                    AS log_count,
+      countIfState(level = 'ERROR')   AS error_count,
+      countIfState(level = 'WARN')    AS warn_count
+  FROM logweave.log_metadata
+  GROUP BY tenant_id, service, level, interval_start`,
+
+  // 12. Alert rules — unified template watches + threshold rules
+  `CREATE TABLE IF NOT EXISTS logweave.alert_rules (
+    tenant_id      LowCardinality(String),
+    rule_id        String,
+    name           String,
+    rule_type      LowCardinality(String),
+    enabled        UInt8 DEFAULT 1,
+    config         String,
+    channels       String DEFAULT '[]',
+    version        UInt64,
+    is_deleted     UInt8 DEFAULT 0
+  ) ENGINE = ReplacingMergeTree(version, is_deleted)
+  ORDER BY (tenant_id, rule_id)`,
+
+  // 13. Alert history — append-only log of fired alerts (90-day retention)
+  `CREATE TABLE IF NOT EXISTS logweave.alert_history (
+    alert_id            String,
+    tenant_id           LowCardinality(String),
+    rule_id             String,
+    rule_type           LowCardinality(String),
+    rule_name           String,
+    fired_at            DateTime64(3) DEFAULT now64(3),
+    metric_value        Float64,
+    threshold_value     Float64,
+    details             String DEFAULT '',
+    channels_notified   String DEFAULT '[]'
+  ) ENGINE = MergeTree()
+  PARTITION BY toYYYYMM(fired_at)
+  ORDER BY (tenant_id, fired_at)
+  TTL toDateTime(fired_at) + toIntervalDay(90) DELETE
+  SETTINGS ttl_only_drop_parts = 1`,
+
+  // 14. Audit log — append-only, SOC2 compliance (365-day retention)
   `CREATE TABLE IF NOT EXISTS logweave.audit_log (
     timestamp          DateTime64(3) DEFAULT now64(3),
     tenant_id          LowCardinality(String),
@@ -206,7 +264,7 @@ GROUP BY tenant_id, service, level, interval_start`,
   ORDER BY (tenant_id, timestamp)
   TTL toDateTime(timestamp) + toIntervalDay(365) DELETE`,
 
-  // 12. Template daily summary — 365-day trend analysis (daily granularity)
+  // 15. Template daily summary — 365-day trend analysis (daily granularity)
   `CREATE TABLE IF NOT EXISTS logweave.template_daily_summary (
     tenant_id          LowCardinality(String),
     service            LowCardinality(String),
