@@ -98,4 +98,21 @@ describe('loadConfig', () => {
     const { loadConfig } = await import('../src/config.js')
     assert.throws(() => loadConfig())
   })
+
+  it('recoveryEnabled defaults to true', async () => {
+    Object.assign(process.env, validEnv)
+
+    const { loadConfig } = await import('../src/config.js')
+    const config = loadConfig()
+    assert.equal(config.recoveryEnabled, true)
+  })
+
+  it('recoveryEnabled=false disables recovery', async () => {
+    Object.assign(process.env, validEnv)
+    process.env.LOGWEAVE_RECOVERY_ENABLED = 'false'
+
+    const { loadConfig } = await import('../src/config.js')
+    const config = loadConfig()
+    assert.equal(config.recoveryEnabled, false)
+  })
 })
