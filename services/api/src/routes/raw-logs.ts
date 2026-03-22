@@ -3,6 +3,7 @@ import type pino from 'pino'
 import { z } from 'zod'
 import { S3Adapter } from '../connectors/s3-adapter.js'
 import type { ConnectorConfig } from '../connectors/types.js'
+import { decrypt } from '../crypto.js'
 import { SCAN_DEFAULTS } from '../connectors/types.js'
 import type { DbClient } from '../db/client.js'
 import { getConnector, listConnectors } from '../db/connector-queries.js'
@@ -19,6 +20,7 @@ import type { ApiResponse } from './dashboard-types.js'
 export interface RawLogsDeps {
   db: DbClient
   logger: pino.Logger
+  encryptionKey?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -126,13 +128,13 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
           })
           return
         }
-        connectorConfig = JSON.parse(row.config) as ConnectorConfig
+        connectorConfig = JSON.parse(decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
       } else {
         // Use first connector for tenant (default)
         const connectors = await listConnectors(deps.db, tenantId)
         const first = connectors[0]
         if (first) {
-          connectorConfig = JSON.parse(first.config) as ConnectorConfig
+          connectorConfig = JSON.parse(decrypt(first.config, deps.encryptionKey)) as ConnectorConfig
         }
       }
 

@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
+import { decrypt, encrypt } from '../crypto.js'
 import type { DbClient } from '../db/client.js'
 import {
   deleteConnector,
@@ -22,6 +23,7 @@ import { uuidv7 } from '../uuid.js'
 export interface ConnectorDeps {
   db: DbClient
   logger: pino.Logger
+  encryptionKey?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +116,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
         connectorId,
         name: body.name,
         type: body.config.type,
-        config: JSON.stringify(body.config),
+        config: encrypt(JSON.stringify(body.config), deps.encryptionKey),
       })
 
       res.status(HttpStatus.CREATED).json({
@@ -141,7 +143,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
         connectorId: r.connector_id,
         name: r.name,
         type: r.type,
-        config: redactConfig(r.config),
+        config: redactConfig(decrypt(r.config, deps.encryptionKey)),
         createdAt: r.created_at,
       }))
 
@@ -168,7 +170,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
         return
       }
 
-      const config = JSON.parse(row.config) as ConnectorConfig
+      const config = JSON.parse(decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
       const adapter = getAdapter(config.type)
       const result = await adapter.testConnection(config)
 
