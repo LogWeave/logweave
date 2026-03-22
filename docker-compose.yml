@@ -48,6 +48,8 @@ services:
       # Higher than default 500ms to account for Docker networking + container startup overhead
       LOGWEAVE_CLUSTERER_TIMEOUT_MS: 5000
       LOGWEAVE_RECOVERY_INTERVAL_MS: 10000
+      # Set to 'false' on all but one instance when running multiple API containers
+      # LOGWEAVE_RECOVERY_ENABLED: 'true'
     depends_on:
       clickhouse:
         condition: service_healthy

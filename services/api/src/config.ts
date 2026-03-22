@@ -51,6 +51,10 @@ const configSchema = z.object({
   clustererTimeoutMs: z.coerce.number().int().min(50).max(30_000).default(500),
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   shutdownTimeoutMs: z.coerce.number().int().min(1000).max(30_000).default(10_000),
+  recoveryEnabled: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
   recoveryIntervalMs: z.coerce.number().int().min(1000).max(300_000).default(60_000),
   recoveryLookbackHours: z.coerce.number().int().min(1).max(168).default(24),
   apiKeys: apiKeysSchema,
@@ -75,6 +79,7 @@ export function loadConfig(): Config {
     clustererTimeoutMs: process.env.LOGWEAVE_CLUSTERER_TIMEOUT_MS,
     logLevel: process.env.LOGWEAVE_LOG_LEVEL,
     shutdownTimeoutMs: process.env.LOGWEAVE_SHUTDOWN_TIMEOUT_MS,
+    recoveryEnabled: process.env.LOGWEAVE_RECOVERY_ENABLED,
     recoveryIntervalMs: process.env.LOGWEAVE_RECOVERY_INTERVAL_MS,
     recoveryLookbackHours: process.env.LOGWEAVE_RECOVERY_LOOKBACK_HOURS,
     apiKeys: process.env.LOGWEAVE_API_KEYS,

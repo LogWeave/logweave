@@ -69,16 +69,20 @@ const recovery = new RecoverySweep(
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'API server started')
 
-  recovery
-    .runStartupReconciliation()
-    .then((count) => {
-      if (count > 0) logger.info({ count }, 'Startup reconciliation completed')
-    })
-    .catch((err) => {
-      logger.error({ err }, 'Startup reconciliation failed')
-    })
+  if (config.recoveryEnabled) {
+    recovery
+      .runStartupReconciliation()
+      .then((count) => {
+        if (count > 0) logger.info({ count }, 'Startup reconciliation completed')
+      })
+      .catch((err) => {
+        logger.error({ err }, 'Startup reconciliation failed')
+      })
 
-  recovery.start()
+    recovery.start()
+  } else {
+    logger.info('Recovery sweep disabled (LOGWEAVE_RECOVERY_ENABLED=false)')
+  }
   anomalyScorer.start()
   alertEvaluator.start()
 })
