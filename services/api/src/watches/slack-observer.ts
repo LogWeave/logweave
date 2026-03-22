@@ -1,5 +1,11 @@
 import type pino from 'pino'
-import type { AlertEvent, AlertObserver } from './alert-observer.js'
+import {
+  type AlertEvent,
+  type AlertObserver,
+  type TemplateAlertEvent,
+  type ThresholdAlertEvent,
+  isTemplateAlert,
+} from './alert-observer.js'
 import type { TenantSettingsStore } from './tenant-settings.js'
 
 const MAX_RETRIES = 3
@@ -47,30 +53,41 @@ export class SlackObserver implements AlertObserver {
   }
 
   async notify(alert: AlertEvent): Promise<void> {
-    const webhookUrl = this.settingsStore.getSlackUrl(alert.tenantId)
-    if (!webhookUrl) {
+    // Threshold alerts may specify per-rule channels; fall back to tenant default
+    const webhookUrls: string[] = []
+    if (!isTemplateAlert(alert) && alert.channels.length > 0) {
+      webhookUrls.push(...alert.channels)
+    } else {
+      const tenantUrl = this.settingsStore.getSlackUrl(alert.tenantId)
+      if (tenantUrl) webhookUrls.push(tenantUrl)
+    }
+
+    if (webhookUrls.length === 0) {
       this.logger.debug({ tenantId: alert.tenantId }, 'Slack: no webhook configured, skipping')
       return
     }
 
+    const alertId = isTemplateAlert(alert) ? alert.templateId : alert.ruleId
     this.logger.debug(
-      { tenantId: alert.tenantId, templateId: alert.templateId, alertType: alert.type },
+      { tenantId: alert.tenantId, alertId, alertType: alert.type },
       'Slack: queuing alert delivery',
     )
 
     const payload = this.buildPayload(alert)
 
-    // Chain onto the per-URL queue — non-blocking, fire-and-forget
-    const previous = this.deliveryQueues.get(webhookUrl) ?? Promise.resolve()
-    const next = previous
-      .then(async () => {
-        await this.enforceRateLimit(webhookUrl)
-        await this.deliver(webhookUrl, payload, 0, alert)
-      })
-      .catch((err) => {
-        this.logger.error({ err, tenantId: alert.tenantId }, 'Slack delivery queue error')
-      })
-    this.deliveryQueues.set(webhookUrl, next)
+    for (const webhookUrl of webhookUrls) {
+      // Chain onto the per-URL queue — non-blocking, fire-and-forget
+      const previous = this.deliveryQueues.get(webhookUrl) ?? Promise.resolve()
+      const next = previous
+        .then(async () => {
+          await this.enforceRateLimit(webhookUrl)
+          await this.deliver(webhookUrl, payload, 0, alert)
+        })
+        .catch((err) => {
+          this.logger.error({ err, tenantId: alert.tenantId }, 'Slack delivery queue error')
+        })
+      this.deliveryQueues.set(webhookUrl, next)
+    }
   }
 
   private async enforceRateLimit(url: string): Promise<void> {
@@ -96,7 +113,8 @@ export class SlackObserver implements AlertObserver {
       'no_service',
       'action_prohibited',
     ]
-    const ctx = { attempt, templateId: alert?.templateId, tenantId: alert?.tenantId }
+    const alertId = alert ? (isTemplateAlert(alert) ? alert.templateId : alert.ruleId) : undefined
+    const ctx = { attempt, alertId, tenantId: alert?.tenantId }
 
     try {
       this.logger.debug(ctx, 'Slack: sending webhook request')
@@ -161,7 +179,14 @@ export class SlackObserver implements AlertObserver {
   }
 
   private buildPayload(alert: AlertEvent): object {
-    const emoji = alert.type === 'spike' ? '\uD83D\uDD34' : alert.type === 'new_burst' ? '\uD83D\uDFE1' : '\u26AA'
+    if (isTemplateAlert(alert)) {
+      return this.buildTemplatePayload(alert)
+    }
+    return this.buildThresholdPayload(alert)
+  }
+
+  private buildTemplatePayload(alert: TemplateAlertEvent): object {
+    const emoji = alert.type === 'spike' ? '\uD83D\uDD34' : '\uD83D\uDFE1'
     const title = alert.type === 'spike' ? 'Spike Alert' : 'New Burst Alert'
     const dashboardUrl = this.dashboardBaseUrl
       ? `${this.dashboardBaseUrl}/?template=${alert.templateId}`
@@ -183,6 +208,52 @@ export class SlackObserver implements AlertObserver {
               type: 'mrkdwn',
               text: `*Events*\n${alert.currentCount.toLocaleString()} (baseline: ${alert.baselineCount.toLocaleString()})`,
             },
+            { type: 'mrkdwn', text: `*Triggered*\n${new Date(alert.triggeredAt).toUTCString()}` },
+          ],
+        },
+        ...(dashboardUrl
+          ? [
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: { type: 'plain_text', text: 'View in Dashboard' },
+                    url: dashboardUrl,
+                  },
+                ],
+              },
+            ]
+          : []),
+        {
+          type: 'context',
+          elements: [{ type: 'mrkdwn', text: `LogWeave Alert \u2022 ${alert.tenantId} \u2022 ${alert.triggeredAt}` }],
+        },
+      ],
+    }
+  }
+
+  private buildThresholdPayload(alert: ThresholdAlertEvent): object {
+    const emoji = '\uD83D\uDD14'
+    const title = 'Threshold Alert'
+    const dashboardUrl = this.dashboardBaseUrl
+      ? `${this.dashboardBaseUrl}/?service=${alert.service}`
+      : undefined
+
+    return {
+      unfurl_links: false,
+      unfurl_media: false,
+      text: `${emoji} ${title}: "${alert.ruleName}" — ${alert.metric} ${alert.operator} ${alert.thresholdValue} (actual: ${alert.metricValue})`,
+      blocks: [
+        { type: 'header', text: { type: 'plain_text', text: `${emoji} ${title}` } },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: `*Rule*\n${truncate(alert.ruleName, 150)}` },
+            { type: 'mrkdwn', text: `*Service*\n${alert.service}` },
+            { type: 'mrkdwn', text: `*Metric*\n${alert.metric} ${alert.operator} ${alert.thresholdValue}` },
+            { type: 'mrkdwn', text: `*Actual Value*\n${alert.metricValue.toLocaleString()}` },
+            { type: 'mrkdwn', text: `*Window*\n${alert.windowMinutes}min` },
             { type: 'mrkdwn', text: `*Triggered*\n${new Date(alert.triggeredAt).toUTCString()}` },
           ],
         },

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import pino from 'pino'
 import type { DbClient } from '../../src/db/client.js'
 import { AnomalyScorer } from '../../src/pipeline/anomaly-scorer.js'
-import { AlertDispatcher, type AlertEvent } from '../../src/watches/alert-observer.js'
+import { AlertDispatcher, type AlertEvent, type TemplateAlertEvent } from '../../src/watches/alert-observer.js'
 import { AlertEvaluator } from '../../src/watches/alert-evaluator.js'
 import { WatchStore } from '../../src/watches/watch-store.js'
 
@@ -62,14 +62,15 @@ describe('AlertEvaluator', () => {
     const count = await evaluator.evaluate()
     assert.equal(count, 1, 'should fire 1 alert')
     assert.equal(alerts.length, 1)
-    assert.equal(alerts[0].type, 'spike')
-    assert.equal(alerts[0].tenantId, 't1')
-    assert.equal(alerts[0].service, 'api')
-    assert.equal(alerts[0].templateId, 'tmpl-1')
-    assert.equal(alerts[0].templateText, 'Error in {service}')
-    assert.equal(alerts[0].currentCount, 50)
-    assert.equal(alerts[0].baselineCount, 10)
-    assert.ok(alerts[0].score > 1.0)
+    const alert = alerts[0] as TemplateAlertEvent
+    assert.equal(alert.type, 'spike')
+    assert.equal(alert.tenantId, 't1')
+    assert.equal(alert.service, 'api')
+    assert.equal(alert.templateId, 'tmpl-1')
+    assert.equal(alert.templateText, 'Error in {service}')
+    assert.equal(alert.currentCount, 50)
+    assert.equal(alert.baselineCount, 10)
+    assert.ok(alert.score > 1.0)
   })
 
   it('respects 30-minute cooldown', async () => {
@@ -235,7 +236,8 @@ describe('AlertEvaluator', () => {
 
     await evaluator.evaluate()
     assert.equal(alerts.length, 1)
-    assert.equal(alerts[0].type, 'new_burst', 'should be new_burst when no baseline')
-    assert.equal(alerts[0].baselineCount, 0)
+    const alert = alerts[0] as TemplateAlertEvent
+    assert.equal(alert.type, 'new_burst', 'should be new_burst when no baseline')
+    assert.equal(alert.baselineCount, 0)
   })
 })

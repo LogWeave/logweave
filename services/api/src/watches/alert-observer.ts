@@ -1,6 +1,8 @@
 import type pino from 'pino'
 
-export interface AlertEvent {
+export type ThresholdOperator = '>' | '>=' | '<' | '<='
+
+export interface TemplateAlertEvent {
   type: 'spike' | 'new_burst'
   tenantId: string
   service: string
@@ -10,6 +12,27 @@ export interface AlertEvent {
   baselineCount: number
   score: number
   triggeredAt: string
+}
+
+export interface ThresholdAlertEvent {
+  type: 'threshold_breach'
+  tenantId: string
+  service: string
+  ruleId: string
+  ruleName: string
+  metric: string
+  metricValue: number
+  thresholdValue: number
+  operator: ThresholdOperator
+  windowMinutes: number
+  triggeredAt: string
+  channels: string[]
+}
+
+export type AlertEvent = TemplateAlertEvent | ThresholdAlertEvent
+
+export function isTemplateAlert(e: AlertEvent): e is TemplateAlertEvent {
+  return e.type === 'spike' || e.type === 'new_burst'
 }
 
 export interface AlertObserver {
@@ -38,7 +61,7 @@ export class AlertDispatcher {
     for (const observer of this.observers) {
       observer.notify(alert).catch((err) => {
         this.logger.error(
-          { err, alertType: alert.type, templateId: alert.templateId },
+          { err, alertType: alert.type, tenantId: alert.tenantId },
           'Observer failed to process alert',
         )
       })
@@ -58,17 +81,32 @@ export class ConsoleObserver implements AlertObserver {
   }
 
   async notify(alert: AlertEvent): Promise<void> {
-    this.logger.warn(
-      {
-        alertType: alert.type,
-        tenantId: alert.tenantId,
-        service: alert.service,
-        templateId: alert.templateId,
-        score: alert.score,
-        currentCount: alert.currentCount,
-        baselineCount: alert.baselineCount,
-      },
-      `ALERT: "${alert.templateText}" is at ${alert.score.toFixed(1)}x threshold in ${alert.service}`,
-    )
+    if (isTemplateAlert(alert)) {
+      this.logger.warn(
+        {
+          alertType: alert.type,
+          tenantId: alert.tenantId,
+          service: alert.service,
+          templateId: alert.templateId,
+          score: alert.score,
+          currentCount: alert.currentCount,
+          baselineCount: alert.baselineCount,
+        },
+        `ALERT: "${alert.templateText}" is at ${alert.score.toFixed(1)}x threshold in ${alert.service}`,
+      )
+    } else {
+      this.logger.warn(
+        {
+          alertType: alert.type,
+          tenantId: alert.tenantId,
+          service: alert.service,
+          ruleId: alert.ruleId,
+          metric: alert.metric,
+          metricValue: alert.metricValue,
+          thresholdValue: alert.thresholdValue,
+        },
+        `ALERT: "${alert.ruleName}" — ${alert.metric} ${alert.operator} ${alert.thresholdValue} (actual: ${alert.metricValue})`,
+      )
+    }
   }
 }
