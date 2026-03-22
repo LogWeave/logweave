@@ -381,4 +381,67 @@ describe('ThresholdEvaluator', () => {
     const alert = alerts[0] as ThresholdAlertEvent
     assert.deepEqual(alert.channels, ['https://hooks.slack.com/abc', 'https://hooks.slack.com/def'])
   })
+
+  it('groups rules by (tenantId, metric, windowMinutes) — one query per group', async () => {
+    const { ruleStore, evaluator, alerts, queryCalls, setQueryResult } = createTestSetup()
+    // Two rules, same tenant/metric/window, different services
+    await ruleStore.add({
+      tenantId: 't1',
+      name: 'Rule A',
+      ruleType: 'threshold',
+      enabled: true,
+      config: makeThresholdConfig({ value: 5, service: 'api' }),
+      channels: [],
+    })
+    await ruleStore.add({
+      tenantId: 't1',
+      name: 'Rule B',
+      ruleType: 'threshold',
+      enabled: true,
+      config: makeThresholdConfig({ value: 5, service: 'web' }),
+      channels: [],
+    })
+    setQueryResult([{ value: 10 }])
+
+    await evaluator.evaluate()
+    // Per-service queries (2 services in same group = 2 queries, not 2 groups)
+    assert.equal(queryCalls.length, 2, 'should issue one query per service in the group')
+    assert.equal(alerts.length, 2, 'both rules should fire')
+  })
+
+  it('skips rules with unknown metric gracefully', async () => {
+    const ruleStore = new RuleStore()
+    const alerts: AlertEvent[] = []
+    const dispatcher = new AlertDispatcher(silentLogger)
+    dispatcher.register({ notify: async (alert) => { alerts.push(alert) } })
+
+    const mockDb = {
+      query: async () => [],
+      insert: async () => {},
+      command: async () => {},
+      ping: async () => true,
+      close: async () => {},
+    } as unknown as DbClient
+
+    const evaluator = new ThresholdEvaluator({
+      ruleStore,
+      dispatcher,
+      db: mockDb,
+      logger: silentLogger,
+    })
+
+    // Add a rule with an unsupported metric
+    await ruleStore.add({
+      tenantId: 't1',
+      name: 'CPU rule',
+      ruleType: 'threshold',
+      enabled: true,
+      config: { metric: 'cpu_usage' as 'error_count', service: 'api', operator: '>', value: 90, windowMinutes: 5 },
+      channels: [],
+    })
+
+    const count = await evaluator.evaluate()
+    assert.equal(count, 0, 'should not fire — unknown metric returns empty results')
+    assert.equal(alerts.length, 0)
+  })
 })

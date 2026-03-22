@@ -426,7 +426,8 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
         latestAlert.type === 'spike' || latestAlert.type === 'new_burst',
         `expected spike or new_burst, got ${latestAlert.type}`,
       )
-      assert.ok(latestAlert.score > 0, `expected score > 0, got ${latestAlert.score}`)
+      const score = latestAlert.type === 'spike' || latestAlert.type === 'new_burst' ? latestAlert.score : 0
+      assert.ok(score > 0, `expected score > 0, got ${score}`)
       assert.ok(typeof latestAlert.triggeredAt === 'string')
     } else {
       // Score might not exceed threshold if the burst events landed in a

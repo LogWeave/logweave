@@ -85,14 +85,26 @@ export class RuleStore {
         )
         continue
       }
+      let config: ThresholdConfig | TemplateWatchConfig
+      let channels: string[]
+      try {
+        config = JSON.parse(row.config)
+        channels = JSON.parse(row.channels)
+      } catch (parseErr) {
+        this.logger?.error(
+          { err: parseErr, ruleId: row.rule_id, tenantId: row.tenant_id },
+          'Skipping rule with corrupted JSON config',
+        )
+        continue
+      }
       tenantMap.set(row.rule_id, {
         tenantId: row.tenant_id,
         ruleId: row.rule_id,
         name: row.name,
         ruleType: row.rule_type as AlertRule['ruleType'],
         enabled: row.enabled === 1,
-        config: JSON.parse(row.config),
-        channels: JSON.parse(row.channels),
+        config,
+        channels,
       })
     }
 
