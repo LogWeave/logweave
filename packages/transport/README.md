@@ -102,7 +102,8 @@ new LogWeaveTransport({
 | Response | Action |
 |----------|--------|
 | **2xx** | Success |
-| **4xx** | Drop immediately (client error, not retryable) |
+| **429** | Retry after `Retry-After` header (capped at 30s), or exponential backoff if absent |
+| **Other 4xx** | Drop immediately (client error, not retryable) |
 | **5xx** | Retry with exponential backoff + jitter |
 | **Network error** | Retry with exponential backoff + jitter |
 | **Timeout** | Retry (per-attempt via `AbortSignal.timeout`) |

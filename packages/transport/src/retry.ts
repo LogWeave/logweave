@@ -2,7 +2,9 @@
  * Retry logic for LogWeave transport HTTP calls.
  *
  * - Exponential backoff with full jitter: delay = random(0, 1000 * 2^attempt)
- * - 5xx responses trigger retry, 4xx responses warn once and return null
+ * - 429 responses retry with Retry-After header (capped at 30s) or exponential backoff
+ * - Other 4xx responses warn once and return null (no retry)
+ * - 5xx responses trigger retry
  * - Network errors (fetch throws) trigger retry
  * - After all retries exhausted, drops batch and warns
  * - Accepts an AbortSignal to cancel inflight retries (used by close())
@@ -84,7 +86,25 @@ export async function retryFetch(
         return response
       }
 
-      // 4xx — client error, do not retry
+      // 429 — rate limited, retry with Retry-After or exponential backoff
+      if (response.status === 429) {
+        const retryAfterHeader = response.headers.get('retry-after')
+        const retrySeconds = retryAfterHeader ? Math.min(Number(retryAfterHeader), 30) : 0
+
+        if (retrySeconds > 0) {
+          console.warn(`[LogWeave] rate limited (429), retrying after ${retrySeconds}s`)
+          await sleepFn(retrySeconds * 1000)
+        } else {
+          const delay = Math.random() * 1000 * 2 ** attempt
+          console.warn(`[LogWeave] rate limited (429), retrying with backoff ${Math.round(delay)}ms`)
+          await sleepFn(delay)
+        }
+
+        if (signal?.aborted) return null
+        continue
+      }
+
+      // Other 4xx — client error, do not retry
       if (response.status >= 400 && response.status < 500) {
         console.warn(`[LogWeave] batch rejected with status ${response.status} — not retrying`)
         return null
