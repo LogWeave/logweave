@@ -182,31 +182,42 @@ function DetailContent({ template }: { template: TemplateRow }) {
         </div>
       )}
 
-      {/* Investigation panel — shown when a status code is clicked */}
-      {investigatingStatusCode != null && (
-        <div className="bg-surface-base rounded-[var(--radius-md)] p-3 space-y-2">
+      {/* Investigation prompt — shown when a status code is clicked */}
+      {investigatingStatusCode != null && (() => {
+        const prompt = `Show me the ${investigatingStatusCode} errors for template ${template.templateId} on ${template.service}. What's causing them? Check the trace IDs and related patterns.`
+        return (
+        <div className="bg-surface-base rounded-[var(--radius-md)] p-3 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-              Events — {investigatingStatusCode}
-              {selectedTimeRange && (
-                <span className="text-brand-400 normal-case ml-1">
-                  ({new Date(selectedTimeRange.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
-                </span>
-              )}
+              Investigate {investigatingStatusCode}s
             </h4>
             <button
               type="button"
               className="text-[10px] text-text-muted hover:text-text-primary"
               onClick={() => setInvestigatingStatusCode(null)}
             >
-              Close ×
+              ×
             </button>
           </div>
-          <p className="text-[11px] text-text-muted">
-            Use MCP tool: <code className="text-brand-400">template_events</code> with template_id and status_code={investigatingStatusCode} for detailed event data with trace IDs.
+          <p className="text-[11px] text-text-muted leading-relaxed">
+            Ask your AI assistant to investigate these errors:
           </p>
+          <div className="bg-surface-card rounded-[var(--radius-sm)] p-2.5 text-xs font-mono text-text-primary leading-relaxed">
+            {prompt}
+          </div>
+          <Button
+            variant="secondary"
+            className="w-full text-xs"
+            onClick={() => {
+              navigator.clipboard.writeText(prompt)
+              toast.success('Copied to clipboard')
+            }}
+          >
+            Copy prompt
+          </Button>
         </div>
-      )}
+        )
+      })()}
 
       {/* Metadata */}
       <div className="space-y-2">
