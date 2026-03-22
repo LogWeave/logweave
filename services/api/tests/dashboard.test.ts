@@ -848,8 +848,9 @@ describe('GET /v1/dashboard/changes', () => {
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
-    assert.ok(Array.isArray(res.body.data), 'data should be an array')
-    assert.equal(res.body.data.length, 3)
+    assert.ok(res.body.data.new, 'data.new should be present')
+    assert.ok(res.body.data.spike, 'data.spike should be present')
+    assert.ok(res.body.data.resolved, 'data.resolved should be present')
     assert.ok(res.body.meta, 'meta should be present')
     assert.equal(typeof res.body.meta.hours, 'number')
     assert.equal(typeof res.body.meta.count, 'number')
@@ -865,8 +866,8 @@ describe('GET /v1/dashboard/changes', () => {
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
-    const newEvent = res.body.data.find((e: { type: string }) => e.type === 'new')
-    assert.ok(newEvent, 'should have a new event')
+    assert.equal(res.body.data.new.length, 1)
+    const newEvent = res.body.data.new[0]
     assert.equal(newEvent.templateId, 'tmpl-new-1')
     assert.equal(newEvent.templateText, 'Connection timeout in {service}')
     assert.equal(newEvent.service, 'api')
@@ -884,8 +885,8 @@ describe('GET /v1/dashboard/changes', () => {
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
-    const spikeEvent = res.body.data.find((e: { type: string }) => e.type === 'spike')
-    assert.ok(spikeEvent, 'should have a spike event')
+    assert.equal(res.body.data.spike.length, 1)
+    const spikeEvent = res.body.data.spike[0]
     assert.equal(spikeEvent.templateId, 'tmpl-spike-1')
     assert.equal(typeof spikeEvent.currentCount, 'number')
     assert.equal(spikeEvent.currentCount, 300)
@@ -903,28 +904,13 @@ describe('GET /v1/dashboard/changes', () => {
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
-    const resolvedEvent = res.body.data.find((e: { type: string }) => e.type === 'resolved')
-    assert.ok(resolvedEvent, 'should have a resolved event')
+    assert.equal(res.body.data.resolved.length, 1)
+    const resolvedEvent = res.body.data.resolved[0]
     assert.equal(resolvedEvent.templateId, 'tmpl-resolved-1')
     assert.equal(resolvedEvent.currentCount, 0)
     assert.equal(resolvedEvent.previousCount, 25)
     assert.equal(resolvedEvent.ratio, 0)
     assert.equal(resolvedEvent.lastSeen, '2026-03-16T10:00:00.000Z')
-  })
-
-  it('sorts events by ratio descending (spikes first)', async () => {
-    const app = createTestApp(changesQueryMap())
-
-    const res = await request(app)
-      .get('/v1/dashboard/changes')
-      .set('Authorization', `Bearer ${TEST_KEY}`)
-
-    assert.equal(res.status, 200)
-    const ratios = res.body.data.map((e: { ratio: number }) => e.ratio)
-    // Expected: [999 (new), 6.0 (spike), 0 (resolved)]
-    for (let i = 1; i < ratios.length; i++) {
-      assert.ok(ratios[i - 1] >= ratios[i], `ratios should be descending: ${ratios}`)
-    }
   })
 
   it('returns 401 without auth header', async () => {
@@ -966,7 +952,7 @@ describe('GET /v1/dashboard/changes', () => {
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
-    assert.ok(Array.isArray(res.body.data))
+    assert.ok(res.body.data.new, 'data.new should be present')
   })
 
   it('uses defaults: hours=24, limit=20, threshold=3', async () => {
@@ -981,7 +967,7 @@ describe('GET /v1/dashboard/changes', () => {
     assert.equal(res.body.meta.limit, 20)
   })
 
-  it('returns empty array when no changes exist', async () => {
+  it('returns empty object when no changes exist', async () => {
     const app = createTestApp()
 
     const res = await request(app)
@@ -989,7 +975,7 @@ describe('GET /v1/dashboard/changes', () => {
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
-    assert.deepEqual(res.body.data, [])
+    assert.deepEqual(res.body.data, { new: [], spike: [], resolved: [] })
     assert.equal(res.body.meta.count, 0)
   })
 })

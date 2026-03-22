@@ -226,11 +226,15 @@ describe('MCP E2E: deploys + changes', () => {
 
   it('changes: detects new or spiking patterns', async () => {
     const res = (await apiGet('/dashboard/changes', { hours: 3 })) as {
-      data: Array<{ type: string; templateText: string }>
+      data: {
+        new: Array<{ templateText: string }>
+        spike: Array<{ templateText: string }>
+        resolved: Array<{ templateText: string }>
+      }
     }
-    assert.ok(res.data.length > 0, `changes should show activity, got ${res.data.length} events`)
-    const types = new Set(res.data.map((c) => c.type))
-    assert.ok(types.has('new') || types.has('spike'), 'should have new or spike changes')
+    const total = res.data.new.length + res.data.spike.length + res.data.resolved.length
+    assert.ok(total > 0, `changes should show activity, got ${total} events`)
+    assert.ok(res.data.new.length > 0 || res.data.spike.length > 0, 'should have new or spike changes')
   })
 })
 

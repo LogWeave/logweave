@@ -78,6 +78,12 @@ export interface ChangeEvent {
   lastSeen?: string
 }
 
+export interface ChangesData {
+  new: ChangeEvent[]
+  spike: ChangeEvent[]
+  resolved: ChangeEvent[]
+}
+
 export interface ClusteringHealthData {
   totalEvents: number
   clusteredEvents: number

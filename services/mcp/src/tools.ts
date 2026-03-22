@@ -89,15 +89,19 @@ export async function logweaveChanges(
     deploy_id: args.deploy_id,
   })) as ApiResponse
 
-  const events = (res.data as Array<Record<string, unknown>>) ?? []
-
-  if (events.length === 0) {
-    return `No changes detected.${formatMeta(res.meta)}`
+  const data = res.data as {
+    new: Array<Record<string, unknown>>
+    spike: Array<Record<string, unknown>>
+    resolved: Array<Record<string, unknown>>
   }
 
-  const newEvents = events.filter((e) => e.type === 'new')
-  const spikes = events.filter((e) => e.type === 'spike')
-  const resolved = events.filter((e) => e.type === 'resolved')
+  const newEvents = data.new ?? []
+  const spikes = data.spike ?? []
+  const resolved = data.resolved ?? []
+
+  if (newEvents.length === 0 && spikes.length === 0 && resolved.length === 0) {
+    return `No changes detected.${formatMeta(res.meta)}`
+  }
 
   let text = `## Changes Detected\n\n`
 
