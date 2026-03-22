@@ -355,7 +355,8 @@ server.registerTool(
       'Use this during incident investigation to watch patterns emerge in real-time.',
     inputSchema: {
       service: z.string().optional().describe('Filter to a specific service'),
-      level: z.string().optional().describe('Filter to a log level (e.g. ERROR)'),
+      level: z.string().optional().describe('Filter to exact log level (e.g. ERROR)'),
+      min_level: z.string().optional().describe('Minimum severity threshold (e.g. WARN shows WARN+ERROR+FATAL)'),
       template_id: z.string().optional().describe('Filter to a specific template pattern'),
       min_anomaly: z.number().optional().describe('Minimum anomaly score (0-1)'),
       seconds: z.number().optional().describe('How far back on first call (default: 30, max: 60)'),
@@ -366,7 +367,7 @@ server.registerTool(
   },
   toolHandler((args) =>
     logweaveLiveTail(client, args as {
-      service?: string; level?: string; template_id?: string;
+      service?: string; level?: string; min_level?: string; template_id?: string;
       min_anomaly?: number; seconds?: number; limit?: number; cursor?: number
     }),
   ),

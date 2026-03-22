@@ -7,7 +7,7 @@ import { HttpStatus } from '../http-status.js'
 import { getTenantId, getKeyId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import type { TailBuffer } from '../tail/buffer.js'
-import type { TailEvent } from '../tail/types.js'
+import { levelMeetsSeverity, type TailEvent } from '../tail/types.js'
 import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 
 // ---------------------------------------------------------------------------
@@ -52,6 +52,7 @@ function decrementConnections(tenantId: string): void {
 const tailFilterSchema = z.object({
   service: z.string().optional(),
   level: z.string().optional(),
+  min_level: z.string().optional(),
   template_id: z.string().optional(),
   min_anomaly: z.coerce.number().min(0).max(1).optional(),
 })
@@ -135,6 +136,7 @@ export function tailRoutes(deps: TailDeps): Router {
         const replay = deps.tailBuffer.since(tenantId, afterSeq, {
           service: filters.service,
           level: filters.level,
+          minLevel: filters.min_level,
           templateId: filters.template_id,
           minAnomalyScore: filters.min_anomaly,
           limit: 200,
@@ -261,6 +263,7 @@ export function tailRoutes(deps: TailDeps): Router {
     const filterOpts = {
       service: params.service,
       level: params.level,
+      minLevel: params.min_level,
       templateId: params.template_id,
       minAnomalyScore: params.min_anomaly,
       limit: params.limit,
@@ -310,10 +313,11 @@ export function tailRoutes(deps: TailDeps): Router {
 
 function matchesFilter(
   event: TailEvent,
-  filters: { service?: string; level?: string; template_id?: string; min_anomaly?: number },
+  filters: { service?: string; level?: string; min_level?: string; template_id?: string; min_anomaly?: number },
 ): boolean {
   if (filters.service && event.service !== filters.service) return false
   if (filters.level && event.level !== filters.level) return false
+  if (filters.min_level && !levelMeetsSeverity(event.level, filters.min_level)) return false
   if (filters.template_id && event.templateId !== filters.template_id) return false
   if (filters.min_anomaly !== undefined && event.anomalyScore < filters.min_anomaly) return false
   return true

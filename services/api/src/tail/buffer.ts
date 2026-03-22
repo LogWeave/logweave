@@ -6,6 +6,7 @@ import {
   type TailEvent,
   type TailQueryOptions,
   type TailQueryResult,
+  levelMeetsSeverity,
 } from './types.js'
 
 // ---------------------------------------------------------------------------
@@ -225,6 +226,7 @@ export class TailBuffer {
     if (!options) return true
     if (options.service && event.service !== options.service) return false
     if (options.level && event.level !== options.level) return false
+    if (options.minLevel && !levelMeetsSeverity(event.level, options.minLevel)) return false
     if (options.templateId && event.templateId !== options.templateId) return false
     if (options.minAnomalyScore !== undefined && event.anomalyScore < options.minAnomalyScore) return false
     return true
