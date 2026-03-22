@@ -51,8 +51,23 @@ export function createApp(deps: AppDependencies): express.Express {
   // Request-id middleware (must be first — sets up AsyncLocalStorage context)
   app.use(requestIdMiddleware)
 
-  // Security headers — CSP disabled until Week 2 dashboard defines its requirements
-  app.use(helmet({ contentSecurityPolicy: false }))
+  // Security headers with Content Security Policy
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          connectSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:'],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
+    }),
+  )
 
   // Structured request logging (skip health probes)
   const httpLoggerOpts: PinoHttpOptions = {
@@ -160,12 +175,14 @@ export function createApp(deps: AppDependencies): express.Express {
     connectorRoutes({
       db: deps.db,
       logger: deps.logger,
+      encryptionKey: deps.config.encryptionKey,
     }),
   )
   v1.use(
     rawLogsRoutes({
       db: deps.db,
       logger: deps.logger,
+      encryptionKey: deps.config.encryptionKey,
     }),
   )
   if (deps.tailBuffer) {

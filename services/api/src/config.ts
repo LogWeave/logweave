@@ -63,6 +63,7 @@ const configSchema = z.object({
   rateLimitTenantRpm: z.coerce.number().int().min(1).max(10_000).default(120),
   rateLimitIngestRpm: z.coerce.number().int().min(1).max(10_000).default(300),
   maxConcurrentQueries: z.coerce.number().int().min(1).max(100).default(8),
+  encryptionKey: z.string().min(16).optional(),
 })
 
 export type Config = z.infer<typeof configSchema>
@@ -88,5 +89,6 @@ export function loadConfig(): Config {
     rateLimitTenantRpm: process.env.LOGWEAVE_RATE_LIMIT_TENANT_RPM,
     rateLimitIngestRpm: process.env.LOGWEAVE_RATE_LIMIT_INGEST_RPM,
     maxConcurrentQueries: process.env.LOGWEAVE_MAX_CONCURRENT_QUERIES,
+    encryptionKey: process.env.LOGWEAVE_ENCRYPTION_KEY,
   })
 }
