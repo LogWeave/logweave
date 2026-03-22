@@ -3,10 +3,12 @@
  * No API calls, hardcoded sample data. Will be wired up after approval.
  */
 
+import { useState } from 'react'
 import { Bell, BellOff, Hash, Activity, Clock, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
+import { type FilterDefinition, FilterBar } from '../../components/ui/filter-bar'
 import { cn } from '../../lib/cn'
 
 // ---------------------------------------------------------------------------
@@ -232,7 +234,43 @@ function AlertHistoryRow({ alert }: { alert: typeof SAMPLE_HISTORY[0] }) {
 // Page
 // ---------------------------------------------------------------------------
 
+const RULE_FILTER_DEFS: FilterDefinition[] = [
+  {
+    key: 'type',
+    label: 'Type',
+    options: [
+      { value: 'threshold', label: 'Threshold' },
+      { value: 'template_watch', label: 'Pattern' },
+    ],
+  },
+  {
+    key: 'service',
+    label: 'Service',
+    options: [
+      ...new Set(SAMPLE_RULES.map((r) => r.service)),
+    ].map((s) => ({ value: s, label: s })),
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    options: [
+      { value: 'enabled', label: 'Enabled' },
+      { value: 'disabled', label: 'Disabled' },
+    ],
+  },
+]
+
 export function AlertsPage() {
+  const [filters, setFilters] = useState<Record<string, string | undefined>>({})
+
+  const filteredRules = SAMPLE_RULES.filter((r) => {
+    if (filters.type && r.type !== filters.type) return false
+    if (filters.service && r.service !== filters.service) return false
+    if (filters.status === 'enabled' && !r.enabled) return false
+    if (filters.status === 'disabled' && r.enabled) return false
+    return true
+  })
+
   const enabledCount = SAMPLE_RULES.filter((r) => r.enabled).length
   const recentAlerts = SAMPLE_HISTORY.filter(
     (a) => Date.now() - new Date(a.firedAt).getTime() < 24 * 60 * 60 * 1000,
@@ -267,10 +305,23 @@ export function AlertsPage() {
             </div>
           </CardTitle>
         </CardHeader>
+        <div className="px-4 py-2 border-b border-border-subtle/50">
+          <FilterBar
+            definitions={RULE_FILTER_DEFS}
+            values={filters}
+            onChange={(key, value) => setFilters((prev) => ({ ...prev, [key]: value }))}
+          />
+        </div>
         <CardContent className="p-0">
-          {SAMPLE_RULES.map((rule) => (
-            <RuleRow key={rule.id} rule={rule} />
-          ))}
+          {filteredRules.length === 0 ? (
+            <p className="text-xs text-text-muted py-8 text-center">
+              No rules match the current filters.
+            </p>
+          ) : (
+            filteredRules.map((rule) => (
+              <RuleRow key={rule.id} rule={rule} />
+            ))
+          )}
         </CardContent>
       </Card>
 
