@@ -1,6 +1,7 @@
 import type { EChartsOption } from 'echarts'
 import { BarChart, LineChart } from 'echarts/charts'
 import {
+  BrushComponent,
   DataZoomComponent,
   GridComponent,
   LegendComponent,
@@ -20,11 +21,15 @@ echarts.use([
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
+  BrushComponent,
 ])
+
+export type ChartEventHandlers = Record<string, (params: unknown) => void>
 
 export function useChart(
   containerRef: React.RefObject<HTMLDivElement | null>,
   option: EChartsOption | null,
+  eventHandlers?: ChartEventHandlers,
 ) {
   const chartRef = useRef<echarts.ECharts | null>(null)
   const colorMode = useDashboardStore((s) => s.colorMode)
@@ -69,6 +74,22 @@ export function useChart(
       chartRef.current.setOption(option, { notMerge: true, lazyUpdate: true })
     }
   }, [option])
+
+  // Wire event handlers
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart || !eventHandlers) return
+
+    for (const [event, handler] of Object.entries(eventHandlers)) {
+      chart.on(event, handler)
+    }
+
+    return () => {
+      for (const [event, handler] of Object.entries(eventHandlers)) {
+        chart.off(event, handler)
+      }
+    }
+  }, [eventHandlers])
 
   return chartRef
 }

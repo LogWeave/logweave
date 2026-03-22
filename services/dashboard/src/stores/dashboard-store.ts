@@ -27,6 +27,10 @@ interface DashboardState {
   setLevelFilters: (levels: string[]) => void
   watchedOnly: boolean
   toggleWatchedOnly: () => void
+  selectedTimeRange: { start: string; end: string } | null
+  setSelectedTimeRange: (range: { start: string; end: string } | null) => void
+  investigatingStatusCode: number | null
+  setInvestigatingStatusCode: (code: number | null) => void
 }
 
 export const useDashboardStore = create<DashboardState>()(
@@ -68,6 +72,10 @@ export const useDashboardStore = create<DashboardState>()(
       setLevelFilters: (levelFilters) => set({ levelFilters }),
       watchedOnly: false,
       toggleWatchedOnly: () => set((state) => ({ watchedOnly: !state.watchedOnly })),
+      selectedTimeRange: null,
+      setSelectedTimeRange: (selectedTimeRange) => set({ selectedTimeRange, investigatingStatusCode: null }),
+      investigatingStatusCode: null,
+      setInvestigatingStatusCode: (investigatingStatusCode) => set({ investigatingStatusCode }),
     }),
     {
       name: 'logweave-dashboard',
