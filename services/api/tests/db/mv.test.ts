@@ -28,6 +28,12 @@ interface ServiceStatsRow {
   new_tmpls: number | string
 }
 
+interface ServiceStats5mRow {
+  total: number | string
+  errs: number | string
+  warns: number | string
+}
+
 function makeRow(tenantId: string, overrides?: Partial<LogMetadataRow>): LogMetadataRow {
   return {
     tenant_id: tenantId,
@@ -186,5 +192,38 @@ describe('materialized views', () => {
     assert.equal(Number(row.errs), 1, '1 ERROR row')
     assert.equal(Number(row.warns), 1, '1 WARN row')
     assert.equal(Number(row.new_tmpls), 1, '1 new template')
+  })
+
+  it('service_stats_5m MV aggregates 5-minute buckets', async () => {
+    const tenant = testTenantId('mv-5m')
+    // Use a recent timestamp — service_stats_5m has 7-day TTL, so OPTIMIZE would
+    // drop rows older than 7 days during the merge.
+    const recentTs = new Date(Date.now() - 3600_000).toISOString().replace('T', ' ').replace('Z', '')
+
+    await batchInsert(db, [
+      makeRow(tenant, { template_id: 'real-1', level: 'ERROR', timestamp: recentTs }),
+      makeRow(tenant, { template_id: '0', level: 'WARN', timestamp: recentTs }),
+      makeRow(tenant, { template_id: 'real-2', level: 'INFO', timestamp: recentTs }),
+    ])
+
+    await client.command({ query: 'OPTIMIZE TABLE logweave.service_stats_5m FINAL' })
+
+    const result = await client.query({
+      query: `SELECT
+                countMerge(log_count)    AS total,
+                countMerge(error_count)  AS errs,
+                countMerge(warn_count)   AS warns
+              FROM logweave.service_stats_5m
+              WHERE tenant_id = {tenant_id:String}
+              GROUP BY tenant_id`,
+      query_params: { tenant_id: tenant },
+    })
+    const rows = await jsonRows<ServiceStats5mRow>(result)
+    const row = rows[0]
+    assert.ok(row, 'Expected at least one row')
+
+    assert.equal(Number(row.total), 3, 'All 3 rows should be counted')
+    assert.equal(Number(row.errs), 1, '1 ERROR row')
+    assert.equal(Number(row.warns), 1, '1 WARN row')
   })
 })

@@ -28,6 +28,10 @@ describe('initSchema', () => {
     assert.ok(tableNames.includes('template_stats_mv'), 'template_stats_mv view should exist')
     assert.ok(tableNames.includes('service_stats'), 'service_stats table should exist')
     assert.ok(tableNames.includes('service_stats_mv'), 'service_stats_mv view should exist')
+    assert.ok(tableNames.includes('service_stats_5m'), 'service_stats_5m table should exist')
+    assert.ok(tableNames.includes('service_stats_5m_mv'), 'service_stats_5m_mv view should exist')
+    assert.ok(tableNames.includes('alert_rules'), 'alert_rules table should exist')
+    assert.ok(tableNames.includes('alert_history'), 'alert_history table should exist')
   })
 
   it('resource guardrails are attempted without crashing (best-effort)', async () => {
