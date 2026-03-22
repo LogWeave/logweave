@@ -192,7 +192,7 @@ GROUP BY tenant_id, service, level, interval_start`,
   `ALTER TABLE logweave.template_registry ADD COLUMN IF NOT EXISTS embedding Array(Float32) DEFAULT []`,
   `ALTER TABLE logweave.template_registry ADD COLUMN IF NOT EXISTS embedding_model LowCardinality(String) DEFAULT ''`,
 
-  // 13. Service stats 5-minute buckets — sub-hour granularity for threshold alerting
+  // 11. Service stats 5-minute buckets — sub-hour granularity for threshold alerting
   `CREATE TABLE IF NOT EXISTS logweave.service_stats_5m (
     tenant_id       LowCardinality(String),
     service         LowCardinality(String),
@@ -218,7 +218,7 @@ GROUP BY tenant_id, service, level, interval_start`,
   FROM logweave.log_metadata
   GROUP BY tenant_id, service, level, interval_start`,
 
-  // 14. Alert rules — unified template watches + threshold rules
+  // 12. Alert rules — unified template watches + threshold rules
   `CREATE TABLE IF NOT EXISTS logweave.alert_rules (
     tenant_id      LowCardinality(String),
     rule_id        String,
@@ -232,7 +232,7 @@ GROUP BY tenant_id, service, level, interval_start`,
   ) ENGINE = ReplacingMergeTree(version, is_deleted)
   ORDER BY (tenant_id, rule_id)`,
 
-  // 15. Alert history — append-only log of fired alerts (90-day retention)
+  // 13. Alert history — append-only log of fired alerts (90-day retention)
   `CREATE TABLE IF NOT EXISTS logweave.alert_history (
     alert_id            String,
     tenant_id           LowCardinality(String),
@@ -245,11 +245,12 @@ GROUP BY tenant_id, service, level, interval_start`,
     details             String DEFAULT '',
     channels_notified   String DEFAULT '[]'
   ) ENGINE = MergeTree()
+  PARTITION BY toYYYYMM(fired_at)
   ORDER BY (tenant_id, fired_at)
   TTL toDateTime(fired_at) + toIntervalDay(90) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
 
-  // 11. Audit log — append-only, SOC2 compliance (365-day retention)
+  // 14. Audit log — append-only, SOC2 compliance (365-day retention)
   `CREATE TABLE IF NOT EXISTS logweave.audit_log (
     timestamp          DateTime64(3) DEFAULT now64(3),
     tenant_id          LowCardinality(String),
@@ -263,7 +264,7 @@ GROUP BY tenant_id, service, level, interval_start`,
   ORDER BY (tenant_id, timestamp)
   TTL toDateTime(timestamp) + toIntervalDay(365) DELETE`,
 
-  // 12. Template daily summary — 365-day trend analysis (daily granularity)
+  // 15. Template daily summary — 365-day trend analysis (daily granularity)
   `CREATE TABLE IF NOT EXISTS logweave.template_daily_summary (
     tenant_id          LowCardinality(String),
     service            LowCardinality(String),
