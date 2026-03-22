@@ -540,7 +540,7 @@ export async function queryTemplateStatusCodes(
   const hours = clamp(options.hours ?? DEFAULT_HOURS, MAX_HOURS)
 
   const timeFilter = options.since && options.until
-    ? 'AND timestamp >= {since:String} AND timestamp <= {until:String}'
+    ? 'AND timestamp >= parseDateTimeBestEffort({since:String}) AND timestamp <= parseDateTimeBestEffort({until:String})'
     : 'AND timestamp > now64(3) - toIntervalHour({hours:UInt32})'
 
   const query = `
@@ -592,7 +592,7 @@ export async function queryTemplateEvents(
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100)
 
   const timeFilter = options.since && options.until
-    ? 'AND timestamp >= {since:String} AND timestamp <= {until:String}'
+    ? 'AND timestamp >= parseDateTimeBestEffort({since:String}) AND timestamp <= parseDateTimeBestEffort({until:String})'
     : 'AND timestamp > now64(3) - toIntervalHour({hours:UInt32})'
 
   const statusCodeFilter = options.statusCode

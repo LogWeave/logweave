@@ -89,10 +89,18 @@ export function SelectableSparkline({ points, height = 140, onRangeSelect }: Sel
       const startPoint = pts[startIdx]
       const endPoint = pts[endIdx]
       if (startPoint && endPoint) {
-        onRangeSelect?.({
-          start: startPoint.intervalStart,
-          end: new Date(new Date(endPoint.intervalStart).getTime() + 5 * 60_000).toISOString(),
-        })
+        // Use the next bucket's start time as the end, or add 5 min to the last bucket
+        const nextPoint = pts[endIdx + 1]
+        const end = nextPoint
+          ? nextPoint.intervalStart
+          : endPoint.intervalStart.replace(
+              /(\d{2}):(\d{2}):(\d{2})/,
+              (_, h, m, s) => {
+                const mins = Number(h) * 60 + Number(m) + 5
+                return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}:${s}`
+              },
+            )
+        onRangeSelect?.({ start: startPoint.intervalStart, end })
       }
     },
   }), [onRangeSelect])
