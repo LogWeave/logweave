@@ -10,7 +10,7 @@ import type { DbClient } from './db/client.js'
 import { notFound } from './errors.js'
 import type { EventBus } from './events/event-bus.js'
 import { requestContext } from './logger.js'
-import { createAuthMiddleware } from './middleware/auth.js'
+import { KeyStore, createAuthMiddleware } from './middleware/auth.js'
 import { createConcurrentQueryGuard } from './middleware/concurrent-query-guard.js'
 import { createErrorHandler } from './middleware/error-handler.js'
 import { createRateLimiter } from './middleware/rate-limit.js'
@@ -121,8 +121,8 @@ export function createApp(deps: AppDependencies): express.Express {
   )
 
   // Routes — API (authenticated, rate-limited)
-  const auth = createAuthMiddleware(deps.config.apiKeys)
-  deps.config.apiKeys.clear() // Plaintext keys no longer needed — hashed copies live in auth closure
+  const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys)
+  const auth = createAuthMiddleware(keyStore)
 
   const rateLimiter = createRateLimiter({
     keyRpm: deps.config.rateLimitRpm,

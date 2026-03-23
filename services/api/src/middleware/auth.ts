@@ -9,17 +9,64 @@ function sha256(value: string): Buffer {
   return createHash('sha256').update(value).digest()
 }
 
+interface HashedKey {
+  hash: Buffer
+  tenantId: string
+}
+
 /**
- * Create auth middleware that validates Bearer tokens against a key map.
- * Uses SHA-256 hashing + crypto.timingSafeEqual for constant-time comparison.
- * Resolved tenant_id is stored in res.locals.tenantId.
+ * Mutable key store that supports hot-reload without server restart.
+ * Auth middleware references this store on every request.
  */
-export function createAuthMiddleware(keyMap: Map<string, string>): RequestHandler {
-  // Pre-hash all keys at startup for constant-time comparison
-  const hashedKeys: Array<{ hash: Buffer; tenantId: string }> = []
-  for (const [key, tenantId] of keyMap) {
-    hashedKeys.push({ hash: sha256(key), tenantId })
+export class KeyStore {
+  private keys: HashedKey[] = []
+
+  constructor(keyMap: Map<string, string>) {
+    this.loadKeys(keyMap)
   }
+
+  /** Replace all keys with a new set. Thread-safe (atomic reference swap). */
+  loadKeys(keyMap: Map<string, string>): void {
+    const newKeys: HashedKey[] = []
+    for (const [key, tenantId] of keyMap) {
+      newKeys.push({ hash: sha256(key), tenantId })
+    }
+    this.keys = newKeys
+  }
+
+  /** Clear plaintext keys from a Map after loading (caller should discard the Map). */
+  static fromMapAndClear(keyMap: Map<string, string>): KeyStore {
+    const store = new KeyStore(keyMap)
+    keyMap.clear()
+    return store
+  }
+
+  /** Validate a token. Returns tenantId if valid, undefined if not. */
+  validate(token: string): { tenantId: string; keyId: string } | undefined {
+    const tokenHash = sha256(token)
+    for (const entry of this.keys) {
+      if (timingSafeEqual(tokenHash, entry.hash)) {
+        return {
+          tenantId: entry.tenantId,
+          keyId: tokenHash.toString('hex').slice(0, 16),
+        }
+      }
+    }
+    return undefined
+  }
+
+  get keyCount(): number {
+    return this.keys.length
+  }
+}
+
+/**
+ * Create auth middleware that validates Bearer tokens.
+ * Uses SHA-256 hashing + crypto.timingSafeEqual for constant-time comparison.
+ * Accepts either a KeyStore (hot-reloadable) or a static Map (legacy).
+ */
+export function createAuthMiddleware(source: KeyStore | Map<string, string>): RequestHandler {
+  const store = source instanceof KeyStore ? source : new KeyStore(source)
 
   return (req: Request, res: Response, next: NextFunction): void => {
     // Extract token from Authorization header or query param (for SSE/EventSource)
@@ -45,21 +92,14 @@ export function createAuthMiddleware(keyMap: Map<string, string>): RequestHandle
       return
     }
 
-    const tokenHash = sha256(token)
-    let matchedTenantId: string | undefined
-    for (const entry of hashedKeys) {
-      if (timingSafeEqual(tokenHash, entry.hash)) {
-        matchedTenantId = entry.tenantId
-      }
-    }
-
-    if (!matchedTenantId) {
+    const result = store.validate(token)
+    if (!result) {
       next(unauthorized('Invalid API key'))
       return
     }
 
-    res.locals[TENANT_ID_KEY] = matchedTenantId
-    res.locals[KEY_ID_KEY] = tokenHash.toString('hex').slice(0, 16)
+    res.locals[TENANT_ID_KEY] = result.tenantId
+    res.locals[KEY_ID_KEY] = result.keyId
     next()
   }
 }

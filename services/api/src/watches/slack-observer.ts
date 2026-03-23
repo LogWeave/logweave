@@ -4,7 +4,9 @@ import {
   type AlertObserver,
   type TemplateAlertEvent,
   type ThresholdAlertEvent,
+  isResolvedAlert,
   isTemplateAlert,
+  isThresholdBreach,
 } from './alert-observer.js'
 import type { TenantSettingsStore } from './tenant-settings.js'
 
@@ -53,6 +55,8 @@ export class SlackObserver implements AlertObserver {
   }
 
   async notify(alert: AlertEvent): Promise<void> {
+    // Resolve events are handled by WebhookObserver (PagerDuty only)
+    if (isResolvedAlert(alert)) return
     // Threshold alerts may specify per-rule channels; fall back to tenant default
     const webhookUrls: string[] = []
     if (!isTemplateAlert(alert) && alert.channels.length > 0) {
@@ -182,7 +186,10 @@ export class SlackObserver implements AlertObserver {
     if (isTemplateAlert(alert)) {
       return this.buildTemplatePayload(alert)
     }
-    return this.buildThresholdPayload(alert)
+    if (isThresholdBreach(alert)) {
+      return this.buildThresholdPayload(alert)
+    }
+    return {} // Resolved events are filtered in notify()
   }
 
   private buildTemplatePayload(alert: TemplateAlertEvent): object {

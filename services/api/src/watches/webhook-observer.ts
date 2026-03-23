@@ -1,5 +1,10 @@
 import type pino from 'pino'
-import { type AlertEvent, type AlertObserver, isTemplateAlert } from './alert-observer.js'
+import {
+  type AlertEvent,
+  type AlertObserver,
+  isResolvedAlert,
+  isTemplateAlert,
+} from './alert-observer.js'
 import type { TenantSettingsStore } from './tenant-settings.js'
 
 const PAGERDUTY_EVENTS_URL = 'https://events.pagerduty.com/v2/enqueue'
@@ -145,6 +150,18 @@ export class WebhookObserver implements AlertObserver {
           : undefined,
       }
     }
+    if (isResolvedAlert(alert)) {
+      return {
+        source: 'logweave',
+        type: 'resolved',
+        ruleId: alert.ruleId,
+        ruleName: alert.ruleName,
+        service: alert.service,
+        environment: alert.environment,
+        tenantId: alert.tenantId,
+        resolvedAt: alert.resolvedAt,
+      }
+    }
     return {
       source: 'logweave',
       timestamp: alert.triggeredAt,
@@ -168,6 +185,16 @@ export class WebhookObserver implements AlertObserver {
 
   private buildPagerDutyPayload(routingKey: string, alert: AlertEvent): object {
     const alertId = isTemplateAlert(alert) ? alert.templateId : alert.ruleId
+
+    // Resolve events — minimal payload, just routing key + dedup key
+    if (isResolvedAlert(alert)) {
+      return {
+        routing_key: routingKey,
+        event_action: 'resolve',
+        dedup_key: `logweave-${alert.ruleId}-${alert.tenantId}`,
+      }
+    }
+
     const rawSummary = isTemplateAlert(alert)
       ? `LogWeave: "${alert.templateText}" spike in ${alert.service} (${alert.score.toFixed(1)}x baseline)`
       : `LogWeave: ${alert.ruleName} — ${alert.metric} ${alert.operator} ${alert.thresholdValue} (actual: ${alert.metricValue})`

@@ -58,6 +58,8 @@ export class ThresholdEvaluator {
 
   /** Cooldown tracker: `{tenantId}:{ruleId}` → last alerted epoch ms */
   private readonly cooldowns = new Map<string, number>()
+  /** Rules currently in firing state — for resolve detection */
+  private readonly firingRules = new Set<string>()
   private intervalHandle: ReturnType<typeof setInterval> | null = null
 
   constructor(options: ThresholdEvaluatorOptions) {
@@ -138,11 +140,32 @@ export class ThresholdEvaluator {
       for (const rule of groupRules) {
         const config = rule.config as ThresholdConfig
         const metricValue = results.get(config.service) ?? 0
+        const firingKey = `${rule.tenantId}:${rule.ruleId}`
 
-        if (!evaluateThreshold(metricValue, config.operator, config.value)) continue
+        if (!evaluateThreshold(metricValue, config.operator, config.value)) {
+          // Rule not breaching — send resolve if it was previously firing
+          if (this.firingRules.has(firingKey)) {
+            this.firingRules.delete(firingKey)
+            await this.dispatcher.dispatch({
+              type: 'threshold_resolved',
+              tenantId: rule.tenantId,
+              service: config.service,
+              environment: config.environment,
+              ruleId: rule.ruleId,
+              ruleName: rule.name,
+              metric: config.metric,
+              channels: rule.channels,
+              resolvedAt: new Date(currentTime).toISOString(),
+            })
+          }
+          continue
+        }
+
+        // Mark as firing
+        this.firingRules.add(firingKey)
 
         // Check cooldown — per-rule if configured, else global default
-        const cooldownKey = `${rule.tenantId}:${rule.ruleId}`
+        const cooldownKey = firingKey
         const lastAlerted = this.cooldowns.get(cooldownKey)
         const ruleCooldownMs = rule.cooldownMinutes
           ? rule.cooldownMinutes * 60_000

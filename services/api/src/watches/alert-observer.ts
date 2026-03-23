@@ -30,10 +30,30 @@ export interface ThresholdAlertEvent {
   channels: string[]
 }
 
-export type AlertEvent = TemplateAlertEvent | ThresholdAlertEvent
+export interface ThresholdResolvedEvent {
+  type: 'threshold_resolved'
+  tenantId: string
+  service: string
+  environment?: string
+  ruleId: string
+  ruleName: string
+  metric: string
+  channels: string[]
+  resolvedAt: string
+}
+
+export type AlertEvent = TemplateAlertEvent | ThresholdAlertEvent | ThresholdResolvedEvent
 
 export function isTemplateAlert(e: AlertEvent): e is TemplateAlertEvent {
   return e.type === 'spike' || e.type === 'new_burst'
+}
+
+export function isResolvedAlert(e: AlertEvent): e is ThresholdResolvedEvent {
+  return e.type === 'threshold_resolved'
+}
+
+export function isThresholdBreach(e: AlertEvent): e is ThresholdAlertEvent {
+  return e.type === 'threshold_breach'
 }
 
 export interface AlertObserver {
@@ -82,6 +102,13 @@ export class ConsoleObserver implements AlertObserver {
   }
 
   async notify(alert: AlertEvent): Promise<void> {
+    if (isResolvedAlert(alert)) {
+      this.logger.info(
+        { alertType: 'resolved', tenantId: alert.tenantId, ruleId: alert.ruleId, service: alert.service },
+        `RESOLVED: "${alert.ruleName}" in ${alert.service}`,
+      )
+      return
+    }
     if (isTemplateAlert(alert)) {
       this.logger.warn(
         {

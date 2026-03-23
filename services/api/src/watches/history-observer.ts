@@ -1,7 +1,14 @@
 import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
 import { uuidv7 } from '../uuid.js'
-import { type AlertEvent, type AlertObserver, isTemplateAlert } from './alert-observer.js'
+import {
+  type AlertEvent,
+  type AlertObserver,
+  type TemplateAlertEvent,
+  type ThresholdAlertEvent,
+  isResolvedAlert,
+  isTemplateAlert,
+} from './alert-observer.js'
 
 export interface HistoryObserverOptions {
   db: DbClient
@@ -22,6 +29,8 @@ export class HistoryObserver implements AlertObserver {
   }
 
   async notify(alert: AlertEvent): Promise<void> {
+    // Resolve events are not logged to history — they're only for PagerDuty
+    if (isResolvedAlert(alert)) return
     const row = this.toHistoryRow(alert)
     try {
       await this.db.insert({
@@ -34,7 +43,7 @@ export class HistoryObserver implements AlertObserver {
     }
   }
 
-  private toHistoryRow(alert: AlertEvent): Record<string, unknown> {
+  private toHistoryRow(alert: TemplateAlertEvent | ThresholdAlertEvent): Record<string, unknown> {
     if (isTemplateAlert(alert)) {
       return {
         alert_id: uuidv7(),
