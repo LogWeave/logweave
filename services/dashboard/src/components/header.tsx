@@ -1,11 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Moon, RefreshCw, Sun } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
-import { useLevels, useOverview } from '../api/queries'
+import { useLevels, useOverview, useServices } from '../api/queries'
 import { cn } from '../lib/cn'
 import { type TimeRange, useDashboardStore } from '../stores/dashboard-store'
 import { Button } from './ui/button'
+import type { FilterDefinition } from './ui/filter-bar'
+import { FilterBar } from './ui/filter-bar'
 import { ToggleGroup } from './ui/toggle'
 
 const timeRangeOptions = [
@@ -14,14 +16,6 @@ const timeRangeOptions = [
   { value: '24h', label: '24H' },
   { value: '7d', label: '7D' },
 ]
-
-const levelPillColors: Record<string, string> = {
-  ERROR: 'bg-red-500/15 text-red-400 border-red-500/30',
-  WARN: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  INFO: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-  DEBUG: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
-  TRACE: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
-}
 
 export function Header() {
   const {
@@ -32,9 +26,7 @@ export function Header() {
     serviceFilter,
     setServiceFilter,
     levelFilters,
-    toggleLevelFilter,
     setLevelFilters,
-    clearLevelFilters,
   } = useDashboardStore(
     useShallow((s) => ({
       timeRange: s.timeRange,
@@ -44,15 +36,14 @@ export function Header() {
       serviceFilter: s.serviceFilter,
       setServiceFilter: s.setServiceFilter,
       levelFilters: s.levelFilters,
-      toggleLevelFilter: s.toggleLevelFilter,
       setLevelFilters: s.setLevelFilters,
-      clearLevelFilters: s.clearLevelFilters,
     })),
   )
   const queryClient = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
   const { data: levelsResponse } = useLevels()
   const levelsData = levelsResponse?.data
+  const { data: servicesResponse } = useServices()
   const { dataUpdatedAt, isError: overviewError } = useOverview()
   const [secondsAgo, setSecondsAgo] = useState(0)
 
@@ -69,70 +60,55 @@ export function Header() {
     queryClient.invalidateQueries().then(() => setRefreshing(false))
   }
 
+  // Build filter definitions from live data
+  const filterDefs: FilterDefinition[] = useMemo(() => {
+    const defs: FilterDefinition[] = []
+
+    // Level filter — multi-select, options from API with counts
+    if (levelsData && levelsData.length > 0) {
+      defs.push({
+        key: 'level',
+        label: 'Level',
+        multiSelect: true,
+        options: levelsData.map((l) => ({
+          value: l.level,
+          label: `${l.level || '(none)'} (${l.count.toLocaleString()})`,
+        })),
+      })
+    }
+
+    // Service filter — single-select, options from API
+    const services = servicesResponse?.data ?? []
+    if (services.length > 0) {
+      defs.push({
+        key: 'service',
+        label: 'Service',
+        options: services.map((s) => ({ value: s.service, label: s.service })),
+      })
+    }
+
+    return defs
+  }, [levelsData, servicesResponse?.data])
+
+  // Build values from store state
+  const filterValues: Record<string, string | undefined> = {
+    level: levelFilters.length > 0 ? levelFilters.join(',') : undefined,
+    service: serviceFilter ?? undefined,
+  }
+
+  const handleFilterChange = (key: string, value: string | undefined) => {
+    if (key === 'level') {
+      setLevelFilters(value ? value.split(',') : [])
+    } else if (key === 'service') {
+      setServiceFilter(value ?? null)
+    }
+  }
+
   return (
     <header className="h-14 flex items-center justify-between px-4 md:px-6 border-b border-border-subtle bg-surface-raised">
       <div className="flex items-center gap-3">
         <h1 className="text-sm font-semibold text-text-primary hidden sm:block">Dashboard</h1>
-        {serviceFilter && (
-          <button
-            type="button"
-            onClick={() => setServiceFilter(null)}
-            className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 hover:bg-brand-500/20 transition-colors"
-          >
-            {serviceFilter}
-            <span className="text-brand-400/60">&times;</span>
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            if (levelFilters.length === 1 && levelFilters[0] === 'ERROR') {
-              clearLevelFilters()
-            } else {
-              setLevelFilters(['ERROR'])
-            }
-          }}
-          className={cn(
-            'hidden sm:inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-[var(--radius-md)] border transition-colors',
-            levelFilters.length === 1 && levelFilters[0] === 'ERROR'
-              ? 'bg-red-500/15 text-red-400 border-red-500/30'
-              : 'text-text-muted border-border-subtle hover:text-text-secondary hover:border-border',
-          )}
-        >
-          Errors Only
-        </button>
-        {levelsData && levelsData.length > 0 && (
-          <div className="hidden md:flex items-center gap-1">
-            {levelsData.map((l) => (
-              <button
-                key={l.level}
-                type="button"
-                onClick={() => toggleLevelFilter(l.level)}
-                className={cn(
-                  'px-2 py-0.5 text-[11px] font-medium rounded-full border transition-colors',
-                  levelFilters.includes(l.level)
-                    ? (levelPillColors[l.level] ??
-                        'bg-brand-500/10 text-brand-400 border-brand-500/20')
-                    : 'text-text-muted border-border-subtle hover:text-text-secondary hover:border-border',
-                )}
-              >
-                {l.level || '(none)'} ({l.count.toLocaleString()})
-              </button>
-            ))}
-          </div>
-        )}
-        {(levelFilters.length > 0 || serviceFilter) && (
-          <button
-            type="button"
-            onClick={() => {
-              clearLevelFilters()
-              setServiceFilter(null)
-            }}
-            className="text-[11px] text-text-muted hover:text-text-secondary transition-colors"
-          >
-            Clear filters
-          </button>
-        )}
+        <FilterBar definitions={filterDefs} values={filterValues} onChange={handleFilterChange} />
       </div>
 
       <div className="flex items-center gap-2">
@@ -145,11 +121,7 @@ export function Header() {
           <span
             className={cn(
               'hidden sm:inline text-[11px] tabular-nums',
-              overviewError
-                ? 'text-danger'
-                : secondsAgo > 120
-                  ? 'text-warning'
-                  : 'text-text-muted',
+              overviewError ? 'text-danger' : secondsAgo > 120 ? 'text-warning' : 'text-text-muted',
             )}
           >
             {overviewError
@@ -159,10 +131,22 @@ export function Header() {
                 : `Updated ${secondsAgo}s ago`}
           </span>
         )}
-        <Button variant="ghost" size="sm" title="Refresh" aria-label="Refresh data" onClick={handleRefresh}>
+        <Button
+          variant="ghost"
+          size="sm"
+          title="Refresh"
+          aria-label="Refresh data"
+          onClick={handleRefresh}
+        >
           <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={toggleColorMode} title="Toggle theme" aria-label="Toggle theme">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleColorMode}
+          title="Toggle theme"
+          aria-label="Toggle theme"
+        >
           {colorMode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
         </Button>
       </div>
