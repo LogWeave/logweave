@@ -41,8 +41,8 @@ function evaluateThreshold(value: number, operator: ThresholdOperator, threshold
 
 /**
  * Background loop that evaluates threshold rules against service_stats_5m.
- * Runs every 60 seconds (configurable). Groups rules by (tenantId, metric, windowMinutes)
- * for batched ClickHouse queries.
+ * Runs every 60 seconds (configurable). Groups rules by (tenantId, metric, windowMinutes,
+ * environment) for batched ClickHouse queries.
  *
  * Shares the AlertDispatcher and cooldown pattern with AlertEvaluator.
  */
@@ -100,11 +100,12 @@ export class ThresholdEvaluator {
     const rules = this.ruleStore.getEnabledByType('threshold')
     if (rules.length === 0) return 0
 
-    // Group rules by (tenantId, metric, windowMinutes) for batched queries
+    // Group rules by (tenantId, metric, windowMinutes, environment) for batched queries
     const groups = new Map<string, AlertRule[]>()
     for (const rule of rules) {
       const config = rule.config as ThresholdConfig
-      const key = `${rule.tenantId}\0${config.metric}\0${config.windowMinutes}`
+      const env = config.environment ?? ''
+      const key = `${rule.tenantId}\0${config.metric}\0${config.windowMinutes}\0${env}`
       const group = groups.get(key)
       if (group) group.push(rule)
       else groups.set(key, [rule])
@@ -118,6 +119,7 @@ export class ThresholdEvaluator {
       const tenantId = parts[0] ?? ''
       const metric = parts[1] ?? ''
       const windowMinutes = Number(parts[2])
+      const environment = parts[3] ?? ''
 
       // Skip tenants in maintenance window
       if (this.settingsStore?.isInMaintenance(tenantId)) continue
@@ -127,7 +129,7 @@ export class ThresholdEvaluator {
 
       let results: Map<string, number>
       try {
-        results = await this.queryMetric(tenantId, metric, services, windowMinutes)
+        results = await this.queryMetric(tenantId, metric, services, windowMinutes, environment)
       } catch (err) {
         this.logger.error({ err, tenantId, metric }, 'Threshold query failed')
         continue
@@ -151,6 +153,7 @@ export class ThresholdEvaluator {
           type: 'threshold_breach',
           tenantId: rule.tenantId,
           service: config.service,
+          environment: config.environment,
           ruleId: rule.ruleId,
           ruleName: rule.name,
           metric: config.metric,
@@ -179,12 +182,14 @@ export class ThresholdEvaluator {
   /**
    * Query service_stats_5m for a specific metric across services.
    * Returns a Map of service → aggregated metric value.
+   * When environment is non-empty, filters to that specific environment.
    */
   private async queryMetric(
     tenantId: string,
     metric: string,
     services: string[],
     windowMinutes: number,
+    environment: string,
   ): Promise<Map<string, number>> {
     const column = METRIC_COLUMNS[metric]
     if (!column) {
@@ -192,20 +197,26 @@ export class ThresholdEvaluator {
       return new Map()
     }
 
+    const envFilter = environment ? '\n                  AND environment = {environment:String}' : ''
+
     // Query per-service to avoid Array param compatibility issues
     const results = new Map<string, number>()
     for (const service of services) {
+      const queryParams: Record<string, unknown> = {
+        tenant_id: tenantId,
+        service,
+        window: windowMinutes,
+      }
+      if (environment) {
+        queryParams.environment = environment
+      }
       const rows = await this.db.query<{ value: number }>({
         query: `SELECT ${column} AS value
                 FROM logweave.service_stats_5m
                 WHERE tenant_id = {tenant_id:String}
                   AND service = {service:String}
-                  AND interval_start >= now64(3) - toIntervalMinute({window:UInt32})`,
-        query_params: {
-          tenant_id: tenantId,
-          service,
-          window: windowMinutes,
-        },
+                  AND interval_start >= now64(3) - toIntervalMinute({window:UInt32})${envFilter}`,
+        query_params: queryParams,
       })
       const first = rows[0]
       if (first) {

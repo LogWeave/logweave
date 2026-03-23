@@ -62,6 +62,7 @@ export class HistoryObserver implements AlertObserver {
       threshold_value: alert.thresholdValue,
       details: JSON.stringify({
         service: alert.service,
+        environment: alert.environment,
         metric: alert.metric,
         operator: alert.operator,
         windowMinutes: alert.windowMinutes,

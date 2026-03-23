@@ -409,6 +409,88 @@ describe('ThresholdEvaluator', () => {
     assert.equal(alerts.length, 2, 'both rules should fire')
   })
 
+  it('environment-scoped rule adds environment filter to query', async () => {
+    const { ruleStore, evaluator, alerts, queryCalls, setQueryResult } = createTestSetup()
+    await ruleStore.add({
+      tenantId: 't1',
+      name: 'Prod errors',
+      ruleType: 'threshold',
+      enabled: true,
+      config: makeThresholdConfig({ value: 10, environment: 'production' }),
+      channels: [],
+    })
+    setQueryResult([{ value: 15 }])
+
+    const count = await evaluator.evaluate()
+    assert.equal(count, 1)
+    assert.equal(alerts.length, 1)
+
+    const alert = alerts[0] as ThresholdAlertEvent
+    assert.equal(alert.environment, 'production')
+
+    // Verify the query included environment filter
+    assert.equal(queryCalls.length, 1)
+    const call = queryCalls[0]
+    assert.ok(call.query.includes('environment'), 'query should include environment filter')
+    assert.equal(call.params.environment, 'production')
+  })
+
+  it('rule without environment omits environment filter from query', async () => {
+    const { ruleStore, evaluator, alerts, queryCalls, setQueryResult } = createTestSetup()
+    await ruleStore.add({
+      tenantId: 't1',
+      name: 'All env errors',
+      ruleType: 'threshold',
+      enabled: true,
+      config: makeThresholdConfig({ value: 10 }),
+      channels: [],
+    })
+    setQueryResult([{ value: 15 }])
+
+    await evaluator.evaluate()
+    assert.equal(alerts.length, 1)
+
+    const alert = alerts[0] as ThresholdAlertEvent
+    assert.equal(alert.environment, undefined)
+
+    // Verify the query did NOT include environment filter
+    assert.equal(queryCalls.length, 1)
+    const call = queryCalls[0]
+    assert.ok(!call.query.includes('environment'), 'query should not include environment filter')
+    assert.equal(call.params.environment, undefined)
+  })
+
+  it('same service different environments are evaluated independently', async () => {
+    const { ruleStore, evaluator, alerts, queryCalls, setQueryResult } = createTestSetup()
+    // Two rules for same service but different environments
+    await ruleStore.add({
+      tenantId: 't1',
+      name: 'Prod errors',
+      ruleType: 'threshold',
+      enabled: true,
+      config: makeThresholdConfig({ value: 10, service: 'api', environment: 'production' }),
+      channels: [],
+    })
+    await ruleStore.add({
+      tenantId: 't1',
+      name: 'Staging errors',
+      ruleType: 'threshold',
+      enabled: true,
+      config: makeThresholdConfig({ value: 10, service: 'api', environment: 'staging' }),
+      channels: [],
+    })
+    setQueryResult([{ value: 15 }])
+
+    const count = await evaluator.evaluate()
+    assert.equal(count, 2)
+    assert.equal(alerts.length, 2)
+
+    // They should be in separate groups (separate queries)
+    assert.equal(queryCalls.length, 2)
+    const envs = alerts.map((a) => (a as ThresholdAlertEvent).environment).sort()
+    assert.deepEqual(envs, ['production', 'staging'])
+  })
+
   it('skips rules with unknown metric gracefully', async () => {
     const ruleStore = new RuleStore()
     const alerts: AlertEvent[] = []

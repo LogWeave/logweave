@@ -54,15 +54,13 @@ export class SlackObserver implements AlertObserver {
 
   async notify(alert: AlertEvent): Promise<void> {
     // Threshold alerts may specify per-rule channels; fall back to tenant default
-    // Only process Slack URLs — WebhookObserver handles generic/PagerDuty channels
-    const allUrls: string[] = []
+    const webhookUrls: string[] = []
     if (!isTemplateAlert(alert) && alert.channels.length > 0) {
-      allUrls.push(...alert.channels)
+      webhookUrls.push(...alert.channels)
     } else {
       const tenantUrl = this.settingsStore.getSlackUrl(alert.tenantId)
-      if (tenantUrl) allUrls.push(tenantUrl)
+      if (tenantUrl) webhookUrls.push(tenantUrl)
     }
-    const webhookUrls = allUrls.filter((u) => u.includes('hooks.slack.com'))
 
     if (webhookUrls.length === 0) {
       this.logger.debug({ tenantId: alert.tenantId }, 'Slack: no webhook configured, skipping')
@@ -253,6 +251,7 @@ export class SlackObserver implements AlertObserver {
           fields: [
             { type: 'mrkdwn', text: `*Rule*\n${truncate(alert.ruleName, 150)}` },
             { type: 'mrkdwn', text: `*Service*\n${alert.service}` },
+            ...(alert.environment ? [{ type: 'mrkdwn', text: `*Environment*\n${alert.environment}` }] : []),
             { type: 'mrkdwn', text: `*Metric*\n${alert.metric} ${alert.operator} ${alert.thresholdValue}` },
             { type: 'mrkdwn', text: `*Actual Value*\n${alert.metricValue.toLocaleString()}` },
             { type: 'mrkdwn', text: `*Window*\n${alert.windowMinutes}min` },

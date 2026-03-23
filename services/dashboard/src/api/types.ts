@@ -134,6 +134,7 @@ export interface ThresholdConfig {
   operator: string
   value: number
   windowMinutes: number
+  environment?: string
 }
 
 export interface TemplateWatchConfig {

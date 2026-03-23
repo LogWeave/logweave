@@ -18,6 +18,7 @@ export interface ThresholdAlertEvent {
   type: 'threshold_breach'
   tenantId: string
   service: string
+  environment?: string
   ruleId: string
   ruleName: string
   metric: string
@@ -100,6 +101,7 @@ export class ConsoleObserver implements AlertObserver {
           alertType: alert.type,
           tenantId: alert.tenantId,
           service: alert.service,
+          environment: alert.environment,
           ruleId: alert.ruleId,
           metric: alert.metric,
           metricValue: alert.metricValue,

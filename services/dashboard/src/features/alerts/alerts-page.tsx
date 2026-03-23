@@ -99,6 +99,9 @@ function RuleRow({ rule }: { rule: AlertRule }) {
             <Activity size={10} />
             {service}
           </span>
+          {isThresholdConfig(rule) && rule.config.environment && (
+            <Badge variant="spike">{rule.config.environment}</Badge>
+          )}
           <span className="truncate">{condition}</span>
         </div>
       </div>
@@ -202,14 +205,16 @@ function CreateRuleForm({ onClose }: { onClose: () => void }) {
   const [operator, setOperator] = useState<'>' | '>=' | '<' | '<='>('>')
   const [value, setValue] = useState(10)
   const [windowMinutes, setWindowMinutes] = useState(5)
+  const [environment, setEnvironment] = useState('')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const envSuffix = environment ? ` (${environment})` : ''
     createMutation.mutate(
       {
-        name: name || `${metric.replace('_', ' ')} ${operator} ${value} — ${service}`,
+        name: name || `${metric.replace('_', ' ')} ${operator} ${value} — ${service}${envSuffix}`,
         ruleType: 'threshold',
-        config: { metric, service, operator, value, windowMinutes },
+        config: { metric, service, operator, value, windowMinutes, ...(environment ? { environment } : {}) },
       },
       {
         onSuccess: () => {
@@ -249,6 +254,15 @@ function CreateRuleForm({ onClose }: { onClose: () => void }) {
               </option>
             ))}
           </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] text-text-muted uppercase">Environment (optional)</span>
+          <input
+            className="w-full rounded-md border border-border-subtle bg-surface-card px-2 py-1.5 text-xs text-text-primary"
+            placeholder="e.g. production, staging"
+            value={environment}
+            onChange={(e) => setEnvironment(e.target.value)}
+          />
         </label>
         <label className="space-y-1">
           <span className="text-[10px] text-text-muted uppercase">Metric</span>

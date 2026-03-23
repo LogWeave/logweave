@@ -98,6 +98,40 @@ describe('HistoryObserver', () => {
     assert.equal(details.windowMinutes, 5)
   })
 
+  it('includes environment in threshold alert details when set', async () => {
+    const insertedRows: unknown[] = []
+    const db = {
+      insert: async (params: { table: string; values: unknown[] }) => {
+        insertedRows.push(...params.values)
+      },
+    } as unknown as DbClient
+
+    const observer = new HistoryObserver({ db, logger: silentLogger })
+    await observer.notify({ ...makeThresholdAlert(), environment: 'production' })
+
+    assert.equal(insertedRows.length, 1)
+    const row = insertedRows[0] as Record<string, unknown>
+    const details = JSON.parse(row.details as string)
+    assert.equal(details.environment, 'production')
+  })
+
+  it('omits environment from threshold alert details when not set', async () => {
+    const insertedRows: unknown[] = []
+    const db = {
+      insert: async (params: { table: string; values: unknown[] }) => {
+        insertedRows.push(...params.values)
+      },
+    } as unknown as DbClient
+
+    const observer = new HistoryObserver({ db, logger: silentLogger })
+    await observer.notify(makeThresholdAlert())
+
+    assert.equal(insertedRows.length, 1)
+    const row = insertedRows[0] as Record<string, unknown>
+    const details = JSON.parse(row.details as string)
+    assert.equal(details.environment, undefined)
+  })
+
   it('does not throw on DB insert failure', async () => {
     const db = {
       insert: async () => {

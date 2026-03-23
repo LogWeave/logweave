@@ -42,6 +42,7 @@ const thresholdConfigSchema = z.object({
   operator: z.enum(['>', '>=', '<', '<=']),
   value: z.number().positive(),
   windowMinutes: z.number().int().min(1).max(60),
+  environment: z.string().max(64).optional(),
 })
 
 const templateWatchConfigSchema = z.object({

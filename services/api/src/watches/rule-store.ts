@@ -11,6 +11,8 @@ export interface ThresholdConfig {
   operator: ThresholdOperator
   value: number
   windowMinutes: number
+  /** Optional environment filter. Omit to match all environments. */
+  environment?: string
 }
 
 export interface TemplateWatchConfig {
