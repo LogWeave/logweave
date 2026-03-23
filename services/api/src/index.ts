@@ -8,6 +8,7 @@ import { createLogger } from './logger.js'
 import { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import { ClusterClient } from './pipeline/cluster-client.js'
 import { RecoverySweep } from './recovery/reconcile.js'
+import { RetentionSweep } from './retention/sweep.js'
 import { AlertEvaluator } from './watches/alert-evaluator.js'
 import { AlertDispatcher, ConsoleObserver } from './watches/alert-observer.js'
 import { HistoryObserver } from './watches/history-observer.js'
@@ -79,8 +80,19 @@ const recovery = new RecoverySweep(
   },
 )
 
+const retention = new RetentionSweep(
+  { db, settingsStore, logger },
+  { intervalMs: config.retentionIntervalMs },
+)
+
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'API server started')
+
+  if (config.retentionEnabled) {
+    retention.start()
+  } else {
+    logger.info('Retention sweep disabled (LOGWEAVE_RETENTION_ENABLED=false)')
+  }
 
   if (config.recoveryEnabled) {
     recovery
@@ -121,7 +133,8 @@ async function shutdown(signal: string): Promise<void> {
   thresholdEvaluator.stop()
   anomalyScorer.stop()
   await recovery.stop()
-  logger.info('Recovery sweep stopped')
+  await retention.stop()
+  logger.info('Background sweeps stopped')
 
   // Stop accepting new connections and drain in-flight requests
   server.close(async () => {

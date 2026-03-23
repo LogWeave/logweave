@@ -8,6 +8,7 @@ export interface TenantSettings {
   lastTestStatus?: 'success' | 'failed'
   lastTestAt?: string
   tailMode?: TailMode
+  retentionDays?: number
 }
 
 interface SettingsRow {
@@ -16,7 +17,13 @@ interface SettingsRow {
   setting_value: string
 }
 
-const SETTING_KEYS: (keyof TenantSettings)[] = ['slackWebhookUrl', 'lastTestStatus', 'lastTestAt', 'tailMode']
+const SETTING_KEYS: (keyof TenantSettings)[] = [
+  'slackWebhookUrl',
+  'lastTestStatus',
+  'lastTestAt',
+  'tailMode',
+  'retentionDays',
+]
 
 export interface TenantSettingsStoreOpts {
   db?: DbClient
@@ -59,6 +66,11 @@ export class TenantSettingsStore {
         existing.lastTestAt = row.setting_value
       } else if (row.setting_key === 'tailMode') {
         existing.tailMode = row.setting_value as TailMode
+      } else if (row.setting_key === 'retentionDays') {
+        const parsed = Number(row.setting_value)
+        if (Number.isFinite(parsed) && parsed > 0) {
+          existing.retentionDays = parsed
+        }
       }
       this.settings.set(row.tenant_id, existing)
     }
@@ -113,6 +125,11 @@ export class TenantSettingsStore {
         }
       }
     }
+  }
+
+  /** Get all tenant IDs with settings. */
+  getAllTenantIds(): string[] {
+    return [...this.settings.keys()]
   }
 
   /** Get the Slack webhook URL for a tenant, or undefined if not configured. */
