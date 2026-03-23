@@ -151,6 +151,7 @@ export class WebhookObserver implements AlertObserver {
       severity: 'critical',
       title: alert.ruleName,
       service: alert.service,
+      environment: alert.environment,
       ruleId: alert.ruleId,
       ruleName: alert.ruleName,
       metric: alert.metric,
@@ -196,6 +197,7 @@ export class WebhookObserver implements AlertObserver {
               thresholdValue: alert.thresholdValue,
               operator: alert.operator,
               windowMinutes: alert.windowMinutes,
+              environment: alert.environment,
             },
       },
       ...(this.dashboardBaseUrl

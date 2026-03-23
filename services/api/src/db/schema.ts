@@ -172,6 +172,9 @@ SELECT
 FROM logweave.log_metadata
 GROUP BY tenant_id, service, environment, level, interval_start`,
 
+  // 18. Cooldown minutes column on alert_rules
+  `ALTER TABLE logweave.alert_rules ADD COLUMN IF NOT EXISTS cooldown_minutes UInt32 DEFAULT 0`,
+
   // ngram skip index on template_registry for text search (co-owned with clusterer)
   `ALTER TABLE logweave.template_registry ADD INDEX IF NOT EXISTS idx_template_text_ngram
    template_text TYPE ngrambf_v1(3, 512, 2, 0) GRANULARITY 1`,
