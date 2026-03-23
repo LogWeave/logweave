@@ -65,8 +65,11 @@ export class WebhookObserver implements AlertObserver {
           await this.deliverWebhook(channel, alert)
         }
       } catch (err) {
+        const safeChannel = isPagerDutyChannel(channel)
+          ? `pagerduty://***${channel.slice(-4)}`
+          : channel.slice(0, 50)
         this.logger.error(
-          { err, tenantId: alert.tenantId, channel: channel.slice(0, 50) },
+          { err, tenantId: alert.tenantId, channel: safeChannel },
           'Webhook delivery failed after all retries',
         )
       }
@@ -164,9 +167,10 @@ export class WebhookObserver implements AlertObserver {
 
   private buildPagerDutyPayload(routingKey: string, alert: AlertEvent): object {
     const alertId = isTemplateAlert(alert) ? alert.templateId : alert.ruleId
-    const summary = isTemplateAlert(alert)
+    const rawSummary = isTemplateAlert(alert)
       ? `LogWeave: "${alert.templateText}" spike in ${alert.service} (${alert.score.toFixed(1)}x baseline)`
       : `LogWeave: ${alert.ruleName} — ${alert.metric} ${alert.operator} ${alert.thresholdValue} (actual: ${alert.metricValue})`
+    const summary = rawSummary.slice(0, 1024)
 
     return {
       routing_key: routingKey,

@@ -28,9 +28,13 @@ export interface RuleDeps {
 const channelSchema = z
   .string()
   .min(1)
-  .refine((s) => s.startsWith('https://') || s.startsWith('http://') || s.startsWith('pagerduty://'), {
-    message: 'Channel must be a URL (https://) or PagerDuty routing key (pagerduty://)',
-  })
+  .refine(
+    (s) => {
+      if (s.startsWith('pagerduty://')) return s.length > 'pagerduty://'.length
+      return s.startsWith('https://')
+    },
+    { message: 'Channel must be an HTTPS URL or PagerDuty routing key (pagerduty://{key})' },
+  )
 
 const thresholdConfigSchema = z.object({
   metric: z.enum(['error_count', 'warn_count', 'log_count']),

@@ -54,13 +54,15 @@ export class SlackObserver implements AlertObserver {
 
   async notify(alert: AlertEvent): Promise<void> {
     // Threshold alerts may specify per-rule channels; fall back to tenant default
-    const webhookUrls: string[] = []
+    // Only process Slack URLs — WebhookObserver handles generic/PagerDuty channels
+    const allUrls: string[] = []
     if (!isTemplateAlert(alert) && alert.channels.length > 0) {
-      webhookUrls.push(...alert.channels)
+      allUrls.push(...alert.channels)
     } else {
       const tenantUrl = this.settingsStore.getSlackUrl(alert.tenantId)
-      if (tenantUrl) webhookUrls.push(tenantUrl)
+      if (tenantUrl) allUrls.push(tenantUrl)
     }
+    const webhookUrls = allUrls.filter((u) => u.includes('hooks.slack.com'))
 
     if (webhookUrls.length === 0) {
       this.logger.debug({ tenantId: alert.tenantId }, 'Slack: no webhook configured, skipping')
