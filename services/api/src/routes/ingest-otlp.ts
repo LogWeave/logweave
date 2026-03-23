@@ -36,6 +36,10 @@ async function decompressGzip(
   res: express.Response,
   next: express.NextFunction,
 ): Promise<void> {
+  if (req.body) {
+    next()
+    return
+  }
   const encoding = req.headers['content-encoding']
   if (encoding !== 'gzip') {
     next()
@@ -79,7 +83,7 @@ export function otlpIngestRoutes(deps: OtlpIngestDeps): Router {
     (req, res, next) => {
       const ct = req.headers['content-type'] ?? ''
       if (ct.includes('protobuf') || ct.includes('x-protobuf')) {
-        res.status(415).json({
+        res.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).json({
           error: {
             code: 'UNSUPPORTED_MEDIA_TYPE',
             message:

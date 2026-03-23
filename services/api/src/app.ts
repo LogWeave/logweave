@@ -105,8 +105,11 @@ export function createApp(deps: AppDependencies): express.Express {
   }
   app.use(pinoHttp(httpLoggerOpts))
 
-  // Body parsing
-  app.use(express.json({ limit: '1mb' }))
+  // Body parsing — skip for OTLP route (has its own gzip + 5MB limit middleware)
+  app.use((req, res, next) => {
+    if (req.path === '/v1/logs') return next()
+    express.json({ limit: '1mb' })(req, res, next)
+  })
 
   // Routes — health (unauthenticated)
   app.use(
