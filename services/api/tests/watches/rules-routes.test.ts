@@ -50,7 +50,6 @@ const VALID_TEMPLATE_WATCH_BODY = {
 const mockAlertRows = [
   {
     alert_id: '019abc-alert-1',
-    tenant_id: TENANT_A,
     rule_id: 'rule-1',
     rule_type: 'threshold',
     rule_name: 'High errors',
@@ -67,7 +66,6 @@ const mockAlertRows = [
   },
   {
     alert_id: '019abc-alert-2',
-    tenant_id: TENANT_A,
     rule_id: 'rule-2',
     rule_type: 'spike',
     rule_name: 'Connection timeout in <*>',
@@ -397,7 +395,7 @@ describe('PUT /v1/rules/:id', () => {
     assert.equal(res.status, 404)
   })
 
-  it('rejects config type mismatch on update', async () => {
+  it('rejects config type mismatch on update — threshold rule with template_watch config', async () => {
     const { app } = createTestApp()
     const createRes = await request(app)
       .post('/v1/rules')
@@ -411,6 +409,32 @@ describe('PUT /v1/rules/:id', () => {
       .send({ config: { templateId: 'tmpl-1', templateText: 'wrong type' } })
 
     assert.equal(res.status, 400)
+    assert.equal(res.body.error.code, 'CONFIG_TYPE_MISMATCH')
+  })
+
+  it('rejects config type mismatch on update — template_watch rule with threshold config', async () => {
+    const { app } = createTestApp()
+    const createRes = await request(app)
+      .post('/v1/rules')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(VALID_TEMPLATE_WATCH_BODY)
+    const ruleId = createRes.body.data.ruleId
+
+    const res = await request(app)
+      .put(`/v1/rules/${ruleId}`)
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send({
+        config: {
+          metric: 'error_count',
+          service: 'svc',
+          operator: '>',
+          value: 5,
+          windowMinutes: 10,
+        },
+      })
+
+    assert.equal(res.status, 400)
+    assert.equal(res.body.error.code, 'CONFIG_TYPE_MISMATCH')
   })
 
   it('returns 401 without auth', async () => {
@@ -543,6 +567,34 @@ describe('GET /v1/alerts', () => {
       .set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
+  })
+
+  it('accepts rule_id filter param', async () => {
+    const { app } = createTestApp({ queryResults: mockAlertRows })
+    const res = await request(app)
+      .get('/v1/alerts?rule_id=rule-1')
+      .set('Authorization', `Bearer ${KEY_A}`)
+
+    assert.equal(res.status, 200)
+  })
+
+  it('accepts service filter param', async () => {
+    const { app } = createTestApp({ queryResults: mockAlertRows })
+    const res = await request(app)
+      .get('/v1/alerts?service=payment-service')
+      .set('Authorization', `Bearer ${KEY_A}`)
+
+    assert.equal(res.status, 200)
+  })
+
+  it('accepts combined filter params', async () => {
+    const { app } = createTestApp({ queryResults: [] })
+    const res = await request(app)
+      .get('/v1/alerts?hours=48&rule_id=rule-1&service=payment-service&limit=50')
+      .set('Authorization', `Bearer ${KEY_A}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.meta.hours, 48)
   })
 
   it('returns 400 for hours=0', async () => {

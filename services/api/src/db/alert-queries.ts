@@ -3,7 +3,6 @@ import { tenantQuery } from './queries.js'
 
 export interface AlertHistoryRow {
   alert_id: string
-  tenant_id: string
   rule_id: string
   rule_type: string
   rule_name: string
@@ -30,7 +29,7 @@ export async function queryAlertHistory(
     : ''
 
   const query = `
-SELECT alert_id, tenant_id, rule_id, rule_type, rule_name, fired_at,
+SELECT alert_id, rule_id, rule_type, rule_name, fired_at,
        metric_value, threshold_value, details, channels_notified
 FROM logweave.alert_history
 WHERE tenant_id = {tenant_id:String}
