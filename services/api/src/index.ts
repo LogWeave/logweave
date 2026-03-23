@@ -16,6 +16,7 @@ import { RuleStore } from './watches/rule-store.js'
 import { SlackObserver } from './watches/slack-observer.js'
 import { TenantSettingsStore } from './watches/tenant-settings.js'
 import { ThresholdEvaluator } from './watches/threshold-evaluator.js'
+import { WebhookObserver } from './watches/webhook-observer.js'
 import { WatchStore } from './watches/watch-store.js'
 
 const config = loadConfig()
@@ -34,6 +35,9 @@ alertDispatcher.register(
   new SlackObserver({ settingsStore, dashboardBaseUrl: config.dashboardBaseUrl, logger }),
 )
 alertDispatcher.register(new HistoryObserver({ db, logger }))
+alertDispatcher.register(
+  new WebhookObserver({ settingsStore, dashboardBaseUrl: config.dashboardBaseUrl, logger }),
+)
 const alertEvaluator = new AlertEvaluator({
   watchStore,
   anomalyScorer,

@@ -24,6 +24,14 @@ export interface RuleDeps {
 // Validation schemas
 // ---------------------------------------------------------------------------
 
+/** Accepts webhook URLs (https://) and PagerDuty routing keys (pagerduty://). */
+const channelSchema = z
+  .string()
+  .min(1)
+  .refine((s) => s.startsWith('https://') || s.startsWith('http://') || s.startsWith('pagerduty://'), {
+    message: 'Channel must be a URL (https://) or PagerDuty routing key (pagerduty://)',
+  })
+
 const thresholdConfigSchema = z.object({
   metric: z.enum(['error_count', 'warn_count', 'log_count']),
   service: z.string().min(1).max(128),
@@ -43,14 +51,14 @@ const createRuleSchema = z.discriminatedUnion('ruleType', [
     ruleType: z.literal('threshold'),
     enabled: z.boolean().default(true),
     config: thresholdConfigSchema,
-    channels: z.array(z.string().url()).max(10).default([]),
+    channels: z.array(channelSchema).max(10).default([]),
   }),
   z.object({
     name: z.string().min(1).max(256),
     ruleType: z.literal('template_watch'),
     enabled: z.boolean().default(true),
     config: templateWatchConfigSchema,
-    channels: z.array(z.string().url()).max(10).default([]),
+    channels: z.array(channelSchema).max(10).default([]),
   }),
 ])
 
@@ -58,7 +66,7 @@ const updateRuleSchema = z.object({
   name: z.string().min(1).max(256).optional(),
   enabled: z.boolean().optional(),
   config: z.union([thresholdConfigSchema, templateWatchConfigSchema]).optional(),
-  channels: z.array(z.string().url()).max(10).optional(),
+  channels: z.array(channelSchema).max(10).optional(),
 })
 
 const alertQuerySchema = z.object({
