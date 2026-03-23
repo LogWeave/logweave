@@ -393,14 +393,19 @@ function DetailContent({ template }: { template: TemplateRow }) {
                 onError: () => toast.error('Failed to watch pattern'),
               },
             )
-            createRuleMutation.mutate({
-              name: `Watch: ${template.templateText.slice(0, 80)}`,
-              ruleType: 'template_watch',
-              config: {
-                templateId: template.templateId,
-                templateText: template.templateText,
+            createRuleMutation.mutate(
+              {
+                name: `Watch: ${template.templateText.slice(0, 80)}`,
+                ruleType: 'template_watch',
+                config: {
+                  templateId: template.templateId,
+                  templateText: template.templateText,
+                },
               },
-            })
+              {
+                onError: () => toast.error('Failed to create alert rule for watched pattern'),
+              },
+            )
           }}
           disabled={watchMutation.isPending || createRuleMutation.isPending}
         >

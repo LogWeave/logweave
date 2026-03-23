@@ -2,7 +2,8 @@ import { Bell, Server } from 'lucide-react'
 import { useMemo } from 'react'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/shallow'
-import { useCreateRule, useServices } from '../../api/queries'
+import { useCreateRule, useRules, useServices } from '../../api/queries'
+import type { ThresholdConfig } from '../../api/types'
 import { Badge } from '../../components/ui/badge'
 import { Card } from '../../components/ui/card'
 import { QueryError } from '../../components/ui/query-error'
@@ -12,6 +13,15 @@ import { useDashboardStore } from '../../stores/dashboard-store'
 
 export function ServiceHealthCards({ className }: { className?: string }) {
   const createRuleMutation = useCreateRule()
+  const { data: rulesResponse } = useRules()
+  const rulesServices = useMemo(() => {
+    const rules = rulesResponse?.data ?? []
+    return new Set(
+      rules
+        .filter((r) => r.ruleType === 'threshold')
+        .map((r) => (r.config as ThresholdConfig).service),
+    )
+  }, [rulesResponse?.data])
   const { data: response, isLoading, isError, refetch } = useServices()
   const services = useMemo(
     () =>
@@ -106,10 +116,20 @@ export function ServiceHealthCards({ className }: { className?: string }) {
               )}
               <button
                 type="button"
-                className="shrink-0 h-7 w-7 rounded-md flex items-center justify-center text-text-muted hover:text-brand-400 hover:bg-brand-500/10 transition-colors"
-                title={`Alert on ${svc.service}`}
+                className={cn(
+                  'shrink-0 h-7 w-7 rounded-md flex items-center justify-center transition-colors',
+                  rulesServices.has(svc.service)
+                    ? 'text-success cursor-default'
+                    : 'text-text-muted hover:text-brand-400 hover:bg-brand-500/10',
+                )}
+                title={
+                  rulesServices.has(svc.service)
+                    ? `Alert rule exists for ${svc.service}`
+                    : `Alert on ${svc.service}`
+                }
                 onClick={(e) => {
                   e.stopPropagation()
+                  if (rulesServices.has(svc.service)) return
                   createRuleMutation.mutate(
                     {
                       name: `High error rate — ${svc.service}`,

@@ -43,6 +43,7 @@ function RuleRow({ rule }: { rule: AlertRule }) {
   }
 
   const handleDelete = () => {
+    if (!window.confirm(`Delete rule "${rule.name}"?`)) return
     deleteMutation.mutate(rule.ruleId, {
       onSuccess: () => toast.success('Rule deleted'),
       onError: () => toast.error('Failed to delete rule'),
