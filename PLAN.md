@@ -1153,45 +1153,55 @@ re-clusters pending rows.
 - [x] Rate limiting (per-key + per-tenant + concurrent query guard)
 - [x] Deploy marker API (POST/GET /v1/deploys)
 - [x] LLM-friendly response formatting
-- [x] MCP server (`@logweave/mcp`) with 7 tools
+- [x] MCP server (`@logweave/mcp`) with 21 tools (overview, patterns, traces, alerts, rules, services, deploys, etc.)
 - [ ] Integration test: MCP server against live stack
 - [ ] Update PLAN.md (this change)
 
 ---
 
-### Week 4 — Hardening + Model C (Days 21–25)
+### Week 4 — Alarm System v2 + Hardening (COMPLETE)
 
-- [ ] Model C: raw log write to customer S3 (AWS SDK `PutObject`, behind config flag)
-- [ ] Rate limiting (in-memory, 1000 req/min per key)
-- [ ] Request validation (schema check on ingest payload)
-- [ ] `docker-compose.yml` + `.env.example` for self-hosted
-- [ ] ClickHouse startup migration runner (versioned SQL, idempotent)
+- [x] ClickHouse schema: service_stats_5m, alert_rules, alert_history tables
+- [x] RuleStore + ThresholdEvaluator + HistoryObserver
+- [x] Rules CRUD API (POST/GET/PUT/DELETE /v1/rules, GET /v1/alerts)
+- [x] MCP tools: list_rules, create_rule, list_alerts
+- [x] Dashboard alerts page wired to live API
+- [x] Per-rule channels (Slack + PagerDuty + generic webhook)
+- [x] WebhookObserver: PagerDuty Events API v2 + generic JSON webhook
+- [x] ClickHouse async_insert for part pressure reduction
+- [x] Per-tenant TTL retention sweep (30d/90d/365d tiers)
+- [x] FilterBar multi-select + header migration
+- [x] Rate limiting (in-memory, per-key + per-tenant + concurrent guard)
+- [x] Request validation (Zod schemas on all endpoints)
+- [x] ClickHouse startup migration runner (versioned SQL, idempotent)
 
-**Deliverable:** 3-container Docker Compose stack that receives logs via winston transport,
-extracts patterns, shows a dashboard, surfaces intelligence via API/MCP, and alerts on
-anomalies. Works identically as SaaS or self-hosted.
+### Week 5 — Multi-Language Ingestion (COMPLETE)
 
----
+- [x] Generic JSON HTTP endpoint (POST /v1/ingest/logs) — any language
+- [x] OTLP/HTTP JSON endpoint (POST /v1/logs) — OTel Collector compatible
+- [x] GenericLogParser: extended field search (message/msg/log/body)
+- [x] OTLP adapter: flattens resourceLogs → scopeLogs → logRecords
+- [x] Gzip decompression middleware (OTel default)
+- [x] Numeric timestamp support (Unix epoch seconds/ms)
+- [x] 415 content-type guard for protobuf with actionable error
 
-### Week 5 — Second Language (Days 26–?)
+### Pre-Release — Remaining
 
-Allow one week of buffer. Real builds always surface integration issues. Use it for:
-- Bug fixes discovered in Week 4 integration
-- First customer onboarding prep
-- CloudWatch and S3 adapter work once a real customer's log format is known
+- [ ] Auth system: API key management UI or CLI (#96)
+- [ ] MCP server: npm publish + install documentation (#99)
+- [ ] Self-hosted install guide + Docker Compose production config (#95)
+- [ ] HTTPS/TLS termination for production deployment (#97)
+- [ ] Website: landing page, demo videos, docs (#98)
+- [ ] Test with real customer logs (#100)
 
----
+### Post-Release
 
-### Week 6+ — First Customer
-
-- [ ] CloudWatchAdapter (richer explain from real log samples)
-- [ ] S3Adapter
-- [ ] Ship transport to first customer
-- [ ] Configure extraction for their log format
-- [ ] Issue API key, configure Slack webhook, walk through graduated alert behaviour
-- [ ] Monitor, fix bugs, iterate daily
-- [ ] After 30 days: Stripe invoice for $79/month
-- [ ] Onboard 2–4 more beta customers
+- [ ] Model C: raw log write to customer S3 (behind config flag)
+- [ ] CloudWatchAdapter + S3Adapter (with first customer)
+- [ ] OTLP protobuf support (requires @bufbuild/protobuf)
+- [ ] OpsGenie alert integration
+- [ ] Pricing/billing system (Stripe)
+- [ ] Azure/GCP storage adapters
 
 ---
 
@@ -1371,7 +1381,7 @@ the Drain3 experiment. Both gates must pass before Week 1a begins.
 |---|---|---|
 | SDK | Winston transport (Node.js, MIT) | Buffer + retry + failover by contract |
 | API server | Express.js (Node.js) | Ingestion, query, dashboard — one process |
-| MCP server | `@logweave/mcp` (Node.js, stdio) | 7 tools for AI assistant integration |
+| MCP server | `@logweave/mcp` (Node.js, stdio) | 21 tools for AI assistant integration |
 | Log clustering | Drain3 via `logweave-clusterer` (Python / FastAPI) | Per-tenant state, 60s checkpoint, 500ms degradation |
 | Template IDs | `template_registry` (ClickHouse, ReplacingMergeTree) | `SELECT ... FINAL`; stable IDs across restarts |
 | Unclustered recovery | `pre_processed_message` column + startup reconciliation | Closes data loss gap from clusterer outages |
@@ -1381,7 +1391,9 @@ the Drain3 experiment. Both gates must pass before Week 1a begins.
 | External LLM | User's own (via MCP or REST API) | No built-in LLM — see ADR-011 |
 | Log source read-back | `LogSourceAdapter` interface | NoneAdapter default; S3 connector designed (ADR-010) |
 | Raw log routing (Model C) | AWS SDK `PutObject` | OpenDAL added when second cloud needed |
-| Alerting | Slack webhook | Graduated threshold (10x → 3x). Daily summary 9am. |
+| Alerting | Slack + PagerDuty + generic webhook | Threshold rules, template watches, per-rule channels, alert history |
+| Ingestion | Winston transport + generic HTTP + OTLP/HTTP JSON | FluentBit, Vector, OTel Collector, curl — any language |
+| Retention | Per-tenant TTL sweep | Startup 30d / Growth 90d / Scale 365d |
 | Rate limiting | Hand-rolled sliding window | Per-key + per-tenant + concurrent query guard |
 | Billing (SaaS) | Stripe manual invoicing → Stripe Billing | Manual for first 20 |
 | Billing (self-hosted) | Stripe + signed JWT license key | Offline-capable |
