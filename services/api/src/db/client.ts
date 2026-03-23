@@ -14,7 +14,11 @@ export class DbClient {
   async insert(params: { table: string; values: unknown[]; format: DataFormat }): Promise<void> {
     await this.client.insert({
       ...params,
-      clickhouse_settings: { date_time_input_format: 'best_effort' },
+      clickhouse_settings: {
+        date_time_input_format: 'best_effort',
+        async_insert: 1,
+        wait_for_async_insert: 1,
+      },
     })
   }
 
