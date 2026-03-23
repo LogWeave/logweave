@@ -90,7 +90,7 @@ function writeSseComment(res: Response, comment: string): void {
 
 export function tailRoutes(deps: TailDeps): Router {
   const router = Router()
-  const maxConn = deps.maxConnections ?? 5
+  const maxConn = deps.maxConnections ?? 20
 
   // GET /tail — SSE stream of live events
   router.get('/tail', validateQuery(tailFilterSchema), (req: Request, res: Response) => {

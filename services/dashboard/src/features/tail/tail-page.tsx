@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useServices } from '../../api/queries'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Select } from '../../components/ui/select'
@@ -45,6 +46,7 @@ function EventRow({ event }: { event: TailEvent }) {
 export function TailPage() {
   const [filters, setFilters] = useState<TailFilters>({})
   const [paused, setPaused] = useState(false)
+  const { data: servicesResponse } = useServices()
   const scrollRef = useRef<HTMLDivElement>(null)
   const autoScrollRef = useRef(true)
 
@@ -114,7 +116,10 @@ export function TailPage() {
             setFilters((f) => ({ ...f, service: e.target.value || undefined }))
           }
           className="w-36 text-xs"
-          options={[{ value: '', label: 'All services' }]}
+          options={[
+            { value: '', label: 'All services' },
+            ...(servicesResponse?.data ?? []).map((s) => ({ value: s.service, label: s.service })),
+          ]}
         />
 
         <Select

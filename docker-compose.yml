@@ -9,6 +9,8 @@ services:
       - ./docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
     environment:
       CLICKHOUSE_DB: logweave
+      CLICKHOUSE_USER: logweave
+      CLICKHOUSE_PASSWORD: logweave-dev
     ulimits:
       nofile:
         soft: 262144
@@ -25,7 +27,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123/logweave
+      LOGWEAVE_CLICKHOUSE_URL: http://logweave:logweave-dev@clickhouse:8123/logweave
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -41,7 +43,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123
+      LOGWEAVE_CLICKHOUSE_URL: http://logweave:logweave-dev@clickhouse:8123
       LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
       LOGWEAVE_LOG_LEVEL: info
       LOGWEAVE_API_KEYS: '{"e2e-key-tenant-a":"e2e-tenant-a","e2e-key-tenant-b":"e2e-tenant-b"}'
