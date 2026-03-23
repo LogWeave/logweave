@@ -6,6 +6,7 @@ import {
   useCreateRule,
   useSlackSettings,
   useSparklines,
+  useTemplateEvents,
   useTemplateStatusCodes,
   useTemplates,
   useUnwatchTemplate,
@@ -126,6 +127,11 @@ function DetailContent({ template }: { template: TemplateRow }) {
   const watchMutation = useWatchTemplate()
   const unwatchMutation = useUnwatchTemplate()
   const createRuleMutation = useCreateRule()
+  const { data: eventsResponse } = useTemplateEvents(
+    template.templateId,
+    investigatingStatusCode ?? undefined,
+  )
+  const templateEvents = eventsResponse?.data ?? []
   const { data: slackResponse } = useSlackSettings()
   const slackConfigured = slackResponse?.data?.configured ?? false
 
@@ -352,6 +358,53 @@ function DetailContent({ template }: { template: TemplateRow }) {
               height={140}
               onRangeSelect={setSelectedTimeRange}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Recent events with trace IDs */}
+      {templateEvents.length > 0 && (
+        <div>
+          <h4 className="text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2">
+            Recent Events ({templateEvents.length})
+          </h4>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {templateEvents.map((evt, i) => (
+              <div
+                key={`${evt.timestamp}-${i}`}
+                className="flex items-center gap-2 text-[10px] py-1 px-2 rounded bg-surface-base"
+              >
+                <span className="font-mono text-text-muted shrink-0">
+                  {new Date(evt.timestamp).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                </span>
+                <span
+                  className={cn(
+                    'shrink-0',
+                    evt.level === 'ERROR' ? 'text-danger' : 'text-text-muted',
+                  )}
+                >
+                  {evt.statusCode || evt.level}
+                </span>
+                <span className="text-text-secondary truncate">{evt.route || evt.service}</span>
+                {evt.traceId && (
+                  <button
+                    type="button"
+                    className="ml-auto shrink-0 font-mono text-brand-400 hover:underline"
+                    title="Copy trace ID"
+                    onClick={() => {
+                      navigator.clipboard.writeText(evt.traceId)
+                      toast.success('Trace ID copied')
+                    }}
+                  >
+                    {evt.traceId.slice(0, 8)}...
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}

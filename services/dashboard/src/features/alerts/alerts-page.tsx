@@ -1,7 +1,14 @@
-import { Activity, Bell, BellOff, ChevronRight, Trash2 } from 'lucide-react'
+import { Activity, Bell, BellOff, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { useAlerts, useDeleteRule, useRules, useUpdateRule } from '../../api/queries'
+import {
+  useAlerts,
+  useCreateRule,
+  useDeleteRule,
+  useRules,
+  useServices,
+  useUpdateRule,
+} from '../../api/queries'
 import type {
   AlertHistoryEntry,
   AlertRule,
@@ -182,11 +189,143 @@ function AlertHistoryRow({ alert }: { alert: AlertHistoryEntry }) {
 }
 
 // ---------------------------------------------------------------------------
+// Create Rule Form
+// ---------------------------------------------------------------------------
+
+function CreateRuleForm({ onClose }: { onClose: () => void }) {
+  const createMutation = useCreateRule()
+  const { data: servicesResponse } = useServices()
+  const services = servicesResponse?.data ?? []
+  const [name, setName] = useState('')
+  const [service, setService] = useState(services[0]?.service ?? '')
+  const [metric, setMetric] = useState<'error_count' | 'warn_count' | 'log_count'>('error_count')
+  const [operator, setOperator] = useState<'>' | '>=' | '<' | '<='>('>')
+  const [value, setValue] = useState(10)
+  const [windowMinutes, setWindowMinutes] = useState(5)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    createMutation.mutate(
+      {
+        name: name || `${metric.replace('_', ' ')} ${operator} ${value} — ${service}`,
+        ruleType: 'threshold',
+        config: { metric, service, operator, value, windowMinutes },
+      },
+      {
+        onSuccess: () => {
+          toast.success('Rule created')
+          onClose()
+        },
+        onError: () => toast.error('Failed to create rule'),
+      },
+    )
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="p-4 border-b border-border-subtle/50 space-y-3 bg-surface-base/50"
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <label className="space-y-1">
+          <span className="text-[10px] text-text-muted uppercase">Name (optional)</span>
+          <input
+            className="w-full rounded-md border border-border-subtle bg-surface-card px-2 py-1.5 text-xs text-text-primary"
+            placeholder="Auto-generated if empty"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] text-text-muted uppercase">Service</span>
+          <select
+            className="w-full rounded-md border border-border-subtle bg-surface-card px-2 py-1.5 text-xs text-text-primary"
+            value={service}
+            onChange={(e) => setService(e.target.value)}
+          >
+            {services.map((s) => (
+              <option key={s.service} value={s.service}>
+                {s.service}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] text-text-muted uppercase">Metric</span>
+          <select
+            className="w-full rounded-md border border-border-subtle bg-surface-card px-2 py-1.5 text-xs text-text-primary"
+            value={metric}
+            onChange={(e) => setMetric(e.target.value as typeof metric)}
+          >
+            <option value="error_count">Error count</option>
+            <option value="warn_count">Warning count</option>
+            <option value="log_count">Log count</option>
+          </select>
+        </label>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="space-y-1">
+            <span className="text-[10px] text-text-muted uppercase">Op</span>
+            <select
+              className="w-full rounded-md border border-border-subtle bg-surface-card px-2 py-1.5 text-xs text-text-primary"
+              value={operator}
+              onChange={(e) => setOperator(e.target.value as typeof operator)}
+            >
+              <option value=">">&gt;</option>
+              <option value=">=">&gt;=</option>
+              <option value="<">&lt;</option>
+              <option value="<=">&lt;=</option>
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-[10px] text-text-muted uppercase">Value</span>
+            <input
+              type="number"
+              className="w-full rounded-md border border-border-subtle bg-surface-card px-2 py-1.5 text-xs text-text-primary"
+              value={value}
+              min={1}
+              onChange={(e) => setValue(Number(e.target.value))}
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-[10px] text-text-muted uppercase">Window</span>
+            <select
+              className="w-full rounded-md border border-border-subtle bg-surface-card px-2 py-1.5 text-xs text-text-primary"
+              value={windowMinutes}
+              onChange={(e) => setWindowMinutes(Number(e.target.value))}
+            >
+              <option value={1}>1min</option>
+              <option value={5}>5min</option>
+              <option value={15}>15min</option>
+              <option value={30}>30min</option>
+              <option value={60}>60min</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          type="submit"
+          variant="primary"
+          className="text-xs"
+          disabled={createMutation.isPending}
+        >
+          Create Rule
+        </Button>
+        <Button type="button" variant="ghost" className="text-xs" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export function AlertsPage() {
   const [filters, setFilters] = useState<Record<string, string | undefined>>({})
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const {
     data: rulesResponse,
     isLoading: rulesLoading,
@@ -268,6 +407,14 @@ export function AlertsPage() {
             {recentAlerts.length !== 1 ? 's' : ''} in the last 24h
           </p>
         </div>
+        <Button
+          variant="primary"
+          className="text-xs"
+          onClick={() => setShowCreateForm(!showCreateForm)}
+        >
+          <Plus size={14} className="mr-1" />
+          Create Rule
+        </Button>
       </div>
 
       {/* Active Rules */}
@@ -287,6 +434,7 @@ export function AlertsPage() {
             </div>
           </CardTitle>
         </CardHeader>
+        {showCreateForm && <CreateRuleForm onClose={() => setShowCreateForm(false)} />}
         <div className="px-4 py-2 border-b border-border-subtle/50">
           <FilterBar
             definitions={filterDefs}

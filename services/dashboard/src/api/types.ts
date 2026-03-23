@@ -113,6 +113,16 @@ export interface SlackSettings {
   lastTestAt: string | null
 }
 
+export interface TemplateEvent {
+  timestamp: string
+  traceId: string
+  route: string
+  durationMs: number
+  level: string
+  service: string
+  statusCode: number
+}
+
 export interface SlackTestResult {
   success: boolean
   error?: string

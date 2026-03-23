@@ -15,6 +15,7 @@ import type {
   SlackTestResult,
   SparklineData,
   StatusCodeCount,
+  TemplateEvent,
   TemplateRow,
   VolumeData,
   WatchEntry,
@@ -198,6 +199,22 @@ export function useTemplateStatusCodes(
         template_id: templateId ?? undefined,
         since: timeWindow?.since,
         until: timeWindow?.until,
+      }),
+    enabled: templateId !== null,
+    staleTime: config.staleTimeMs,
+  })
+}
+
+export function useTemplateEvents(templateId: string | null, statusCode?: number) {
+  const timeRange = useDashboardStore((s) => s.timeRange)
+  const hours = timeRangeToHours(timeRange)
+  return useQuery({
+    queryKey: queryKeys.templateEvents(templateId ?? '', hours, statusCode),
+    queryFn: () =>
+      api.get<ApiResponse<TemplateEvent[]>>(`/v1/dashboard/templates/${templateId}/events`, {
+        hours,
+        status_code: statusCode,
+        limit: 20,
       }),
     enabled: templateId !== null,
     staleTime: config.staleTimeMs,
