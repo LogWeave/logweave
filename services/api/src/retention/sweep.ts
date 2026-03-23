@@ -73,6 +73,7 @@ export class RetentionSweep {
         this.running = false
       }
     }, this.intervalMs)
+    this.intervalHandle.unref()
     this.logger.info({ intervalMs: this.intervalMs }, 'Retention sweep started')
   }
 

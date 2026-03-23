@@ -211,7 +211,7 @@ export function useTemplateEvents(templateId: string | null, statusCode?: number
   return useQuery({
     queryKey: queryKeys.templateEvents(templateId ?? '', hours, statusCode),
     queryFn: () =>
-      api.get<ApiResponse<TemplateEvent[]>>(`/v1/dashboard/templates/${templateId}/events`, {
+      api.get<ApiResponse<TemplateEvent[]>>(`/v1/templates/${templateId}/events`, {
         hours,
         status_code: statusCode,
         limit: 20,
