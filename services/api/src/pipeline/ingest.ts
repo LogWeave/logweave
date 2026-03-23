@@ -35,19 +35,23 @@ interface ParsedItem {
 
 /**
  * Extract timestamp from a raw event object.
- * Checks timestamp, @timestamp, time fields for ISO 8601 strings.
+ * Checks timestamp, @timestamp, time, date fields.
+ * Handles ISO 8601 strings and numeric Unix epoch (seconds or milliseconds).
  */
 export function extractTimestamp(event: unknown): string | undefined {
   if (typeof event !== 'object' || event === null) return undefined
   const obj = event as Record<string, unknown>
 
-  for (const key of ['timestamp', '@timestamp', 'time']) {
+  for (const key of ['timestamp', '@timestamp', 'time', 'date']) {
     const val = obj[key]
     if (typeof val === 'string' && val.length > 0) {
-      // Validate with Date.parse — invalid dates return NaN
-      // Prevents malformed strings from killing the entire ClickHouse batch INSERT
       const parsed = Date.parse(val)
       if (!Number.isNaN(parsed)) return val
+    }
+    if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+      // Distinguish seconds (< 1e12) from milliseconds (>= 1e12)
+      const ms = val < 1e12 ? val * 1000 : val
+      return new Date(ms).toISOString()
     }
   }
   return undefined
@@ -98,6 +102,7 @@ export async function ingestBatch(
   tenantId: string,
   events: unknown[],
   options: ParseOptions,
+  parser?: import('./types.js').LogParser,
 ): Promise<IngestResult> {
   const ingestTime = new Date().toISOString()
 
@@ -106,7 +111,7 @@ export async function ingestBatch(
   let parseErrors = 0
 
   for (let i = 0; i < events.length; i++) {
-    const result = parseEvent(events[i], i, options)
+    const result = parseEvent(events[i], i, options, parser)
     if (!result.ok) {
       parseErrors++
       deps.logger.debug(

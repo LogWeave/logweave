@@ -32,8 +32,16 @@ describe('extractTimestamp', () => {
     assert.equal(extractTimestamp({ timestamp: '' }), undefined)
   })
 
-  it('returns undefined for numeric timestamps (not string)', () => {
-    assert.equal(extractTimestamp({ timestamp: 1710000000000 }), undefined)
+  it('handles numeric timestamps — milliseconds', () => {
+    const result = extractTimestamp({ timestamp: 1710000000000 })
+    assert.ok(result, 'should return a timestamp')
+    assert.ok(result.startsWith('2024-03-09'))
+  })
+
+  it('handles numeric timestamps — seconds (FluentBit)', () => {
+    const result = extractTimestamp({ date: 1679000000.123456 })
+    assert.ok(result, 'should return a timestamp')
+    assert.ok(result.startsWith('2023-03-1'), `expected 2023-03-1x, got ${result}`)
   })
 
   it('returns undefined for non-object events', () => {

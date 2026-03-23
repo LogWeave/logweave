@@ -58,7 +58,7 @@ export function createRateLimiter(options: RateLimitOptions): RequestHandler {
     const now = Date.now()
 
     // Determine per-key limit based on route
-    const isIngest = req.path.startsWith('/ingest/')
+    const isIngest = req.path.startsWith('/ingest/') || req.path === '/logs'
     const isRawLogs = req.path.includes('/raw-logs')
     const keyRpm = isIngest
       ? options.ingestKeyRpm

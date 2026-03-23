@@ -23,6 +23,8 @@ import { dashboardRoutes } from './routes/dashboard.js'
 import { deployRoutes } from './routes/deploys.js'
 import { healthRoutes } from './routes/health.js'
 import { ingestRoutes } from './routes/ingest.js'
+import { genericIngestRoutes } from './routes/ingest-generic.js'
+import { otlpIngestRoutes } from './routes/ingest-otlp.js'
 import { rawLogsRoutes } from './routes/raw-logs.js'
 import { ruleRoutes } from './routes/rules.js'
 import { settingsRoutes } from './routes/settings.js'
@@ -132,17 +134,18 @@ export function createApp(deps: AppDependencies): express.Express {
   v1.use(auth)
   v1.use(rateLimiter)
   v1.use(queryGuard)
-  v1.use(
-    ingestRoutes({
-      clusterClient: deps.clusterClient,
-      db: deps.db,
-      logger: deps.logger,
-      anomalyScorer: deps.anomalyScorer,
-      tailBuffer: deps.tailBuffer,
-      settingsStore: deps.settingsStore,
-      eventBus: deps.eventBus,
-    }),
-  )
+  const ingestDeps = {
+    clusterClient: deps.clusterClient,
+    db: deps.db,
+    logger: deps.logger,
+    anomalyScorer: deps.anomalyScorer,
+    tailBuffer: deps.tailBuffer,
+    settingsStore: deps.settingsStore,
+    eventBus: deps.eventBus,
+  }
+  v1.use(ingestRoutes(ingestDeps))
+  v1.use(genericIngestRoutes(ingestDeps))
+  v1.use(otlpIngestRoutes(ingestDeps))
   v1.use(
     dashboardRoutes({
       db: deps.db,
