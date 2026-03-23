@@ -8,6 +8,7 @@ import type { ClustererHealthChecker } from './clients/clusterer.js'
 import type { Config } from './config.js'
 import type { DbClient } from './db/client.js'
 import { notFound } from './errors.js'
+import type { EventBus } from './events/event-bus.js'
 import { requestContext } from './logger.js'
 import { createAuthMiddleware } from './middleware/auth.js'
 import { createConcurrentQueryGuard } from './middleware/concurrent-query-guard.js'
@@ -17,17 +18,18 @@ import { requestIdMiddleware } from './middleware/request-id.js'
 import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
 import { connectorRoutes } from './routes/connectors.js'
-import { rawLogsRoutes } from './routes/raw-logs.js'
-import { tailRoutes } from './routes/tail.js'
 import { correlationRoutes } from './routes/correlation.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { deployRoutes } from './routes/deploys.js'
 import { healthRoutes } from './routes/health.js'
 import { ingestRoutes } from './routes/ingest.js'
+import { rawLogsRoutes } from './routes/raw-logs.js'
+import { ruleRoutes } from './routes/rules.js'
 import { settingsRoutes } from './routes/settings.js'
+import { tailRoutes } from './routes/tail.js'
 import { watchRoutes } from './routes/watches.js'
 import type { TailBuffer } from './tail/buffer.js'
-import type { EventBus } from './events/event-bus.js'
+import type { RuleStore } from './watches/rule-store.js'
 import type { TenantSettingsStore } from './watches/tenant-settings.js'
 import type { WatchStore } from './watches/watch-store.js'
 
@@ -38,6 +40,7 @@ export interface AppDependencies {
   clustererHealth: ClustererHealthChecker
   clusterClient: ClusterClient
   anomalyScorer: AnomalyScorer
+  ruleStore: RuleStore
   watchStore: WatchStore
   settingsStore: TenantSettingsStore
   tailBuffer?: TailBuffer
@@ -150,6 +153,13 @@ export function createApp(deps: AppDependencies): express.Express {
   v1.use(
     watchRoutes({
       watchStore: deps.watchStore,
+      logger: deps.logger,
+    }),
+  )
+  v1.use(
+    ruleRoutes({
+      ruleStore: deps.ruleStore,
+      db: deps.db,
       logger: deps.logger,
     }),
   )

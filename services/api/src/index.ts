@@ -63,6 +63,7 @@ const app = createApp({
   clustererHealth,
   clusterClient,
   anomalyScorer,
+  ruleStore,
   watchStore,
   settingsStore,
 })
