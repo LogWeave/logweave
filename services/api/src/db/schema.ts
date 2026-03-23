@@ -299,6 +299,9 @@ GROUP BY tenant_id, service, level, interval_start`,
   FROM logweave.log_metadata
   WHERE template_id != '0'
   GROUP BY tenant_id, service, template_id, day`,
+
+  // 17. Cooldown minutes column on alert_rules
+  `ALTER TABLE logweave.alert_rules ADD COLUMN IF NOT EXISTS cooldown_minutes UInt32 DEFAULT 0`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS

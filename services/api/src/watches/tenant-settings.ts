@@ -9,6 +9,7 @@ export interface TenantSettings {
   lastTestAt?: string
   tailMode?: TailMode
   retentionDays?: number
+  maintenanceUntil?: string
 }
 
 interface SettingsRow {
@@ -23,6 +24,7 @@ const SETTING_KEYS: (keyof TenantSettings)[] = [
   'lastTestAt',
   'tailMode',
   'retentionDays',
+  'maintenanceUntil',
 ]
 
 export interface TenantSettingsStoreOpts {
@@ -66,6 +68,8 @@ export class TenantSettingsStore {
         existing.lastTestAt = row.setting_value
       } else if (row.setting_key === 'tailMode') {
         existing.tailMode = row.setting_value as TailMode
+      } else if (row.setting_key === 'maintenanceUntil') {
+        existing.maintenanceUntil = row.setting_value
       } else if (row.setting_key === 'retentionDays') {
         const parsed = Number(row.setting_value)
         if (Number.isFinite(parsed) && parsed > 0) {
@@ -130,6 +134,13 @@ export class TenantSettingsStore {
         }
       }
     }
+  }
+
+  /** Check if tenant is currently in a maintenance window. */
+  isInMaintenance(tenantId: string): boolean {
+    const until = this.settings.get(tenantId)?.maintenanceUntil
+    if (!until) return false
+    return new Date(until).getTime() > Date.now()
   }
 
   /** Get all tenant IDs with settings. */

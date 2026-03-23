@@ -56,6 +56,7 @@ const createRuleSchema = z.discriminatedUnion('ruleType', [
     enabled: z.boolean().default(true),
     config: thresholdConfigSchema,
     channels: z.array(channelSchema).max(10).default([]),
+    cooldownMinutes: z.number().int().min(1).max(1440).optional(),
   }),
   z.object({
     name: z.string().min(1).max(256),
@@ -63,6 +64,7 @@ const createRuleSchema = z.discriminatedUnion('ruleType', [
     enabled: z.boolean().default(true),
     config: templateWatchConfigSchema,
     channels: z.array(channelSchema).max(10).default([]),
+    cooldownMinutes: z.number().int().min(1).max(1440).optional(),
   }),
 ])
 
@@ -71,6 +73,7 @@ const updateRuleSchema = z.object({
   enabled: z.boolean().optional(),
   config: z.union([thresholdConfigSchema, templateWatchConfigSchema]).optional(),
   channels: z.array(channelSchema).max(10).optional(),
+  cooldownMinutes: z.number().int().min(1).max(1440).optional(),
 })
 
 const alertQuerySchema = z.object({
@@ -96,6 +99,7 @@ function serializeRule(rule: AlertRule) {
     enabled: rule.enabled,
     config: rule.config,
     channels: rule.channels,
+    cooldownMinutes: rule.cooldownMinutes ?? null,
   }
 }
 
@@ -148,6 +152,7 @@ export function ruleRoutes(deps: RuleDeps): Router {
         enabled: body.enabled,
         config: body.config,
         channels: body.channels,
+        cooldownMinutes: body.cooldownMinutes,
       })
 
       if (result === 'limit_exceeded') {

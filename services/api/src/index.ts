@@ -49,6 +49,7 @@ const thresholdEvaluator = new ThresholdEvaluator({
   dispatcher: alertDispatcher,
   db,
   logger,
+  settingsStore,
 })
 
 try {

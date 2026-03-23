@@ -26,6 +26,7 @@ export interface AlertRule {
   enabled: boolean
   config: ThresholdConfig | TemplateWatchConfig
   channels: string[]
+  cooldownMinutes?: number
 }
 
 interface AlertRuleRow {
@@ -36,6 +37,7 @@ interface AlertRuleRow {
   enabled: number
   config: string
   channels: string
+  cooldown_minutes: number
 }
 
 export interface RuleStoreOpts {
@@ -67,7 +69,7 @@ export class RuleStore {
     if (!this.db) return { ruleCount: 0, tenantCount: 0 }
 
     const rows = await this.db.query<AlertRuleRow>({
-      query: `SELECT tenant_id, rule_id, name, rule_type, enabled, config, channels
+      query: `SELECT tenant_id, rule_id, name, rule_type, enabled, config, channels, cooldown_minutes
               FROM logweave.alert_rules FINAL
               WHERE is_deleted = 0`,
     })
@@ -105,6 +107,7 @@ export class RuleStore {
         enabled: row.enabled === 1,
         config,
         channels,
+        cooldownMinutes: row.cooldown_minutes > 0 ? row.cooldown_minutes : undefined,
       })
     }
 
@@ -149,7 +152,7 @@ export class RuleStore {
   async update(
     tenantId: string,
     ruleId: string,
-    updates: Partial<Pick<AlertRule, 'name' | 'enabled' | 'config' | 'channels'>>,
+    updates: Partial<Pick<AlertRule, 'name' | 'enabled' | 'config' | 'channels' | 'cooldownMinutes'>>,
   ): Promise<AlertRule | undefined> {
     const tenantMap = this.rules.get(tenantId)
     if (!tenantMap) return undefined
@@ -257,6 +260,7 @@ export class RuleStore {
           enabled: rule.enabled ? 1 : 0,
           config: JSON.stringify(rule.config),
           channels: JSON.stringify(rule.channels),
+          cooldown_minutes: rule.cooldownMinutes ?? 0,
           version: Date.now(),
           is_deleted: isDeleted,
         },

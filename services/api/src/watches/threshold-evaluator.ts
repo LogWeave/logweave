@@ -3,6 +3,7 @@ import type { DbClient } from '../db/client.js'
 import type { AlertDispatcher, ThresholdOperator } from './alert-observer.js'
 import type { AlertRule, ThresholdConfig } from './rule-store.js'
 import type { RuleStore } from './rule-store.js'
+import type { TenantSettingsStore } from './tenant-settings.js'
 
 const DEFAULT_EVALUATION_INTERVAL_MS = 60_000
 const DEFAULT_COOLDOWN_MS = 30 * 60 * 1000
@@ -19,6 +20,7 @@ export interface ThresholdEvaluatorOptions {
   dispatcher: AlertDispatcher
   db: DbClient
   logger: pino.Logger
+  settingsStore?: TenantSettingsStore
   evaluationIntervalMs?: number
   cooldownMs?: number
   now?: () => number
@@ -49,6 +51,7 @@ export class ThresholdEvaluator {
   private readonly dispatcher: AlertDispatcher
   private readonly db: DbClient
   private readonly logger: pino.Logger
+  private readonly settingsStore?: TenantSettingsStore
   private readonly evaluationIntervalMs: number
   private readonly cooldownMs: number
   private readonly now: () => number
@@ -62,6 +65,7 @@ export class ThresholdEvaluator {
     this.dispatcher = options.dispatcher
     this.db = options.db
     this.logger = options.logger
+    this.settingsStore = options.settingsStore
     this.evaluationIntervalMs = options.evaluationIntervalMs ?? DEFAULT_EVALUATION_INTERVAL_MS
     this.cooldownMs = options.cooldownMs ?? DEFAULT_COOLDOWN_MS
     this.now = options.now ?? Date.now
@@ -115,6 +119,9 @@ export class ThresholdEvaluator {
       const metric = parts[1] ?? ''
       const windowMinutes = Number(parts[2])
 
+      // Skip tenants in maintenance window
+      if (this.settingsStore?.isInMaintenance(tenantId)) continue
+
       // Collect distinct services for this group
       const services = [...new Set(groupRules.map((r) => (r.config as ThresholdConfig).service))]
 
@@ -132,10 +139,13 @@ export class ThresholdEvaluator {
 
         if (!evaluateThreshold(metricValue, config.operator, config.value)) continue
 
-        // Check cooldown
+        // Check cooldown — per-rule if configured, else global default
         const cooldownKey = `${rule.tenantId}:${rule.ruleId}`
         const lastAlerted = this.cooldowns.get(cooldownKey)
-        if (lastAlerted !== undefined && currentTime - lastAlerted < this.cooldownMs) continue
+        const ruleCooldownMs = rule.cooldownMinutes
+          ? rule.cooldownMinutes * 60_000
+          : this.cooldownMs
+        if (lastAlerted !== undefined && currentTime - lastAlerted < ruleCooldownMs) continue
 
         await this.dispatcher.dispatch({
           type: 'threshold_breach',
