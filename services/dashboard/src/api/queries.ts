@@ -4,6 +4,8 @@ import { api } from '../lib/api-client'
 import { timeRangeToHours, useDashboardStore } from '../stores/dashboard-store'
 import { levelApiParam, levelParam, queryKeys } from './query-keys'
 import type {
+  AlertHistoryEntry,
+  AlertRule,
   ApiResponse,
   ClusteringHealthData,
   LevelCount,
@@ -184,7 +186,12 @@ export function useTemplateStatusCodes(
   const timeRange = useDashboardStore((s) => s.timeRange)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: queryKeys.templateStatusCodes(hours, templateId, timeWindow?.since, timeWindow?.until),
+    queryKey: queryKeys.templateStatusCodes(
+      hours,
+      templateId,
+      timeWindow?.since,
+      timeWindow?.until,
+    ),
     queryFn: () =>
       api.get<ApiResponse<StatusCodeCount[]>>('/v1/dashboard/template-status-codes', {
         hours,
@@ -225,6 +232,75 @@ export function useUnwatchTemplate() {
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Alert rules + history
+// ---------------------------------------------------------------------------
+
+export function useRules() {
+  return useQuery({
+    queryKey: queryKeys.rules(),
+    queryFn: () => api.get<ApiResponse<AlertRule[]>>('/v1/rules'),
+    refetchInterval: pollUnlessError,
+    staleTime: config.staleTimeMs,
+  })
+}
+
+export function useAlerts(hours = 168) {
+  return useQuery({
+    queryKey: queryKeys.alerts(hours),
+    queryFn: () => api.get<ApiResponse<AlertHistoryEntry[]>>('/v1/alerts', { hours }),
+    refetchInterval: pollUnlessError,
+    staleTime: config.staleTimeMs,
+  })
+}
+
+export function useCreateRule() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      name: string
+      ruleType: 'threshold' | 'template_watch'
+      config: Record<string, unknown>
+      channels?: string[]
+    }) => api.post<ApiResponse<AlertRule>>('/v1/rules', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rules() })
+    },
+  })
+}
+
+export function useUpdateRule() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      ruleId,
+      ...updates
+    }: {
+      ruleId: string
+      enabled?: boolean
+      name?: string
+      channels?: string[]
+    }) => api.put<ApiResponse<AlertRule>>(`/v1/rules/${ruleId}`, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rules() })
+    },
+  })
+}
+
+export function useDeleteRule() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ruleId: string) => api.del(`/v1/rules/${ruleId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rules() })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Slack settings
+// ---------------------------------------------------------------------------
 
 export function useSlackSettings() {
   return useQuery({

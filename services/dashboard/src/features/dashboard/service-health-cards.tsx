@@ -1,15 +1,17 @@
-import { Server } from 'lucide-react'
+import { Bell, Server } from 'lucide-react'
 import { useMemo } from 'react'
+import { toast } from 'sonner'
 import { useShallow } from 'zustand/shallow'
-import { useServices } from '../../api/queries'
-import { QueryError } from '../../components/ui/query-error'
+import { useCreateRule, useServices } from '../../api/queries'
 import { Badge } from '../../components/ui/badge'
 import { Card } from '../../components/ui/card'
+import { QueryError } from '../../components/ui/query-error'
 import { Skeleton } from '../../components/ui/skeleton'
 import { cn } from '../../lib/cn'
 import { useDashboardStore } from '../../stores/dashboard-store'
 
 export function ServiceHealthCards({ className }: { className?: string }) {
+  const createRuleMutation = useCreateRule()
   const { data: response, isLoading, isError, refetch } = useServices()
   const services = useMemo(
     () =>
@@ -40,7 +42,9 @@ export function ServiceHealthCards({ className }: { className?: string }) {
   if (isError) {
     return (
       <div className={cn('space-y-3', className)}>
-        <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">Services</h3>
+        <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">
+          Services
+        </h3>
         <QueryError onRetry={() => refetch()} />
       </div>
     )
@@ -52,7 +56,9 @@ export function ServiceHealthCards({ className }: { className?: string }) {
         <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">
           Services
         </h3>
-        <p className="text-xs text-text-muted">No services reporting yet. Install the @logweave/transport SDK to start sending logs.</p>
+        <p className="text-xs text-text-muted">
+          No services reporting yet. Install the @logweave/transport SDK to start sending logs.
+        </p>
       </div>
     )
   }
@@ -98,6 +104,34 @@ export function ServiceHealthCards({ className }: { className?: string }) {
                   {svc.newTemplateCount} new
                 </Badge>
               )}
+              <button
+                type="button"
+                className="shrink-0 h-7 w-7 rounded-md flex items-center justify-center text-text-muted hover:text-brand-400 hover:bg-brand-500/10 transition-colors"
+                title={`Alert on ${svc.service}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  createRuleMutation.mutate(
+                    {
+                      name: `High error rate — ${svc.service}`,
+                      ruleType: 'threshold',
+                      config: {
+                        metric: 'error_count',
+                        service: svc.service,
+                        operator: '>',
+                        value: 10,
+                        windowMinutes: 5,
+                      },
+                    },
+                    {
+                      onSuccess: () => toast.success(`Alert rule created for ${svc.service}`),
+                      onError: () => toast.error('Failed to create alert rule'),
+                    },
+                  )
+                }}
+                disabled={createRuleMutation.isPending}
+              >
+                <Bell size={14} />
+              </button>
             </div>
           </Card>
         )

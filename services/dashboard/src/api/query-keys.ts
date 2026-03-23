@@ -20,6 +20,8 @@ export const queryKeys = {
   templateStatusCodes: (hours: number, templateId: string | null, since?: string, until?: string) =>
     ['dashboard', 'template-status-codes', hours, templateId, since, until] as const,
   watches: () => ['watches'] as const,
+  rules: () => ['rules'] as const,
+  alerts: (hours: number) => ['alerts', hours] as const,
   slackSettings: () => ['settings', 'slack'] as const,
 } as const
 

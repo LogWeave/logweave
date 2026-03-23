@@ -117,3 +117,37 @@ export interface SlackTestResult {
   success: boolean
   error?: string
 }
+
+export interface ThresholdConfig {
+  metric: 'error_count' | 'warn_count' | 'log_count'
+  service: string
+  operator: string
+  value: number
+  windowMinutes: number
+}
+
+export interface TemplateWatchConfig {
+  templateId: string
+  templateText: string
+}
+
+export interface AlertRule {
+  ruleId: string
+  name: string
+  ruleType: 'threshold' | 'template_watch'
+  enabled: boolean
+  config: ThresholdConfig | TemplateWatchConfig
+  channels: string[]
+}
+
+export interface AlertHistoryEntry {
+  alertId: string
+  ruleId: string
+  ruleType: string
+  ruleName: string
+  firedAt: string
+  metricValue: number
+  thresholdValue: number
+  details: Record<string, unknown>
+  channelsNotified: string[]
+}

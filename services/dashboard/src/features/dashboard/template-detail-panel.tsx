@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/shallow'
 import {
+  useCreateRule,
   useSlackSettings,
   useSparklines,
   useTemplateStatusCodes,
@@ -106,26 +107,27 @@ function DetailContent({ template }: { template: TemplateRow }) {
   const allSparklinePoints = sparklineResponse?.data?.[template.templateId] ?? []
   // Cap sparkline to 24h max (288 x 5-min buckets) — beyond that it's unreadable
   const MAX_SPARKLINE_POINTS = 288
-  const sparklinePoints = allSparklinePoints.length > MAX_SPARKLINE_POINTS
-    ? allSparklinePoints.slice(-MAX_SPARKLINE_POINTS)
-    : allSparklinePoints
-  const sparklineHours = Math.min(
-    { '1h': 1, '6h': 6, '24h': 24, '7d': 168 }[globalTimeRange],
-    24,
-  )
+  const sparklinePoints =
+    allSparklinePoints.length > MAX_SPARKLINE_POINTS
+      ? allSparklinePoints.slice(-MAX_SPARKLINE_POINTS)
+      : allSparklinePoints
+  const sparklineHours = Math.min({ '1h': 1, '6h': 6, '24h': 24, '7d': 168 }[globalTimeRange], 24)
   const statusCodeTimeWindow = selectedTimeRange
     ? { since: selectedTimeRange.start, until: selectedTimeRange.end }
     : null
-  const { data: statusCodeResponse } = useTemplateStatusCodes(template.templateId, statusCodeTimeWindow)
+  const { data: statusCodeResponse } = useTemplateStatusCodes(
+    template.templateId,
+    statusCodeTimeWindow,
+  )
   const statusCodes = statusCodeResponse?.data ?? []
   const { data: watchesResponse } = useWatches()
   const watchedIds = watchesResponse?.data ?? []
   const isWatched = watchedIds.some((w) => w.templateId === template.templateId)
   const watchMutation = useWatchTemplate()
   const unwatchMutation = useUnwatchTemplate()
+  const createRuleMutation = useCreateRule()
   const { data: slackResponse } = useSlackSettings()
   const slackConfigured = slackResponse?.data?.configured ?? false
-
 
   return (
     <div className="space-y-5">
@@ -143,9 +145,16 @@ function DetailContent({ template }: { template: TemplateRow }) {
       {selectedTimeRange && (
         <div className="text-[10px] text-brand-400 flex items-center gap-2">
           <span>
-            Selected: {new Date(selectedTimeRange.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            Selected:{' '}
+            {new Date(selectedTimeRange.start).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
             {' – '}
-            {new Date(selectedTimeRange.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {new Date(selectedTimeRange.end).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
           </span>
           <button
             type="button"
@@ -160,23 +169,35 @@ function DetailContent({ template }: { template: TemplateRow }) {
         <StatBox
           label="Occurrences"
           value={template.occurrenceCount.toLocaleString()}
-          secondary={selectedTimeRange ? (() => {
-            const selected = sparklinePoints
-              .filter((p) => p.intervalStart >= selectedTimeRange.start && p.intervalStart < selectedTimeRange.end)
-              .reduce((sum, p) => sum + p.count, 0)
-            return `${selected.toLocaleString()} selected`
-          })() : undefined}
+          secondary={
+            selectedTimeRange
+              ? (() => {
+                  const selected = sparklinePoints
+                    .filter(
+                      (p) =>
+                        p.intervalStart >= selectedTimeRange.start &&
+                        p.intervalStart < selectedTimeRange.end,
+                    )
+                    .reduce((sum, p) => sum + p.count, 0)
+                  return `${selected.toLocaleString()} selected`
+                })()
+              : undefined
+          }
         />
         <StatBox
           label="Errors"
           value={template.errorCount.toLocaleString()}
           valueClassName={template.errorCount > 0 ? 'text-danger' : undefined}
-          secondary={selectedTimeRange ? (() => {
-            const totalStatusCodes = statusCodes.reduce((sum, sc) => sum + sc.count, 0)
-            const errorCodes = statusCodes.filter((sc) => sc.statusCode >= 500)
-            const errorCount = errorCodes.reduce((sum, sc) => sum + sc.count, 0)
-            return `${errorCount.toLocaleString()} in selection (${totalStatusCodes > 0 ? ((errorCount / totalStatusCodes) * 100).toFixed(1) : 0}%)`
-          })() : undefined}
+          secondary={
+            selectedTimeRange
+              ? (() => {
+                  const totalStatusCodes = statusCodes.reduce((sum, sc) => sum + sc.count, 0)
+                  const errorCodes = statusCodes.filter((sc) => sc.statusCode >= 500)
+                  const errorCount = errorCodes.reduce((sum, sc) => sum + sc.count, 0)
+                  return `${errorCount.toLocaleString()} in selection (${totalStatusCodes > 0 ? ((errorCount / totalStatusCodes) * 100).toFixed(1) : 0}%)`
+                })()
+              : undefined
+          }
         />
         <StatBox
           label={
@@ -242,9 +263,11 @@ function DetailContent({ template }: { template: TemplateRow }) {
                       ? 'bg-brand-500/20 ring-1 ring-brand-500/40'
                       : 'hover:bg-surface-elevated/50 cursor-pointer',
                   )}
-                  onClick={() => setInvestigatingStatusCode(
-                    investigatingStatusCode === sc.statusCode ? null : sc.statusCode,
-                  )}
+                  onClick={() =>
+                    setInvestigatingStatusCode(
+                      investigatingStatusCode === sc.statusCode ? null : sc.statusCode,
+                    )
+                  }
                 >
                   <span className="font-mono text-text-primary w-8 text-right tabular-nums">
                     {sc.statusCode}
@@ -370,8 +393,16 @@ function DetailContent({ template }: { template: TemplateRow }) {
                 onError: () => toast.error('Failed to watch pattern'),
               },
             )
+            createRuleMutation.mutate({
+              name: `Watch: ${template.templateText.slice(0, 80)}`,
+              ruleType: 'template_watch',
+              config: {
+                templateId: template.templateId,
+                templateText: template.templateText,
+              },
+            })
           }}
-          disabled={watchMutation.isPending}
+          disabled={watchMutation.isPending || createRuleMutation.isPending}
         >
           <Bell size={16} className="mr-1.5" />
           Watch Pattern

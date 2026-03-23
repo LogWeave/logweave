@@ -57,6 +57,26 @@ class ApiClient {
     return res.json() as Promise<T>
   }
 
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    const base = config.apiUrl || window.location.origin
+    const url = new URL(path, base)
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+        Accept: 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(config.fetchTimeoutMs),
+    })
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}))
+      throw new ApiError(res.status, errBody?.error?.message ?? res.statusText)
+    }
+    return res.json() as Promise<T>
+  }
+
   async del<T>(path: string): Promise<T> {
     const base = config.apiUrl || window.location.origin
     const url = new URL(path, base)
