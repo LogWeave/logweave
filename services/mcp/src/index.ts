@@ -23,6 +23,9 @@ import {
   logweaveTemplateTrend,
   logweaveLevelDistribution,
   logweaveTemplateEvents,
+  logweaveListRules,
+  logweaveCreateRule,
+  logweaveListAlerts,
 } from './tools.js'
 
 // ---------------------------------------------------------------------------
@@ -469,6 +472,85 @@ server.registerTool(
     logweaveTemplateEvents(
       client,
       args as { template_id: string; status_code?: number; hours?: number; limit?: number },
+    ),
+  ),
+)
+
+// ---------------------------------------------------------------------------
+// Alert rules + history tools
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  'list_rules',
+  {
+    title: 'List Alert Rules',
+    description:
+      'Show all alert rules for this tenant with their configs, status, and channel assignments. ' +
+      'Use this to see what alerting is configured before creating new rules.',
+    inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  toolHandler(() => logweaveListRules(client)),
+)
+
+server.registerTool(
+  'create_rule',
+  {
+    title: 'Create Alert Rule',
+    description:
+      'Create a threshold alert rule. Example: "alert if payments has >10 errors in 5 minutes." ' +
+      'The rule will be evaluated every 60 seconds. Use list_rules to verify creation.',
+    inputSchema: {
+      name: z.string().describe('Human-readable rule name (e.g. "High error rate on payments")'),
+      metric: z
+        .enum(['error_count', 'warn_count', 'log_count'])
+        .describe('Metric to monitor'),
+      service: z.string().describe('Service name to monitor'),
+      operator: z.enum(['>', '>=', '<', '<=']).describe('Comparison operator'),
+      value: z.number().describe('Threshold value'),
+      window_minutes: z.number().describe('Evaluation window in minutes (1-60)'),
+      channels: z
+        .array(z.string())
+        .optional()
+        .describe('Slack webhook URLs for notifications (empty = tenant default)'),
+    },
+    annotations: WRITE_OP,
+  },
+  toolHandler((args) =>
+    logweaveCreateRule(
+      client,
+      args as {
+        name: string
+        metric: string
+        service: string
+        operator: string
+        value: number
+        window_minutes: number
+        channels?: string[]
+      },
+    ),
+  ),
+)
+
+server.registerTool(
+  'list_alerts',
+  {
+    title: 'Alert History',
+    description:
+      'Query recent alert history — what rules fired, when, and what triggered them. ' +
+      'Filter by service or rule_id. Use this to investigate alert activity.',
+    inputSchema: {
+      hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
+      rule_id: z.string().optional().describe('Filter to a specific rule ID'),
+      service: z.string().optional().describe('Filter to alerts from a specific service'),
+      limit: z.number().optional().describe('Max results (default: 100, max: 500)'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveListAlerts(
+      client,
+      args as { hours?: number; rule_id?: string; service?: string; limit?: number },
     ),
   ),
 )

@@ -742,3 +742,127 @@ export async function logweaveTemplateEvents(
   text += formatMeta(res.meta)
   return text
 }
+
+// ---------------------------------------------------------------------------
+// Alert rules + history tools
+// ---------------------------------------------------------------------------
+
+export async function logweaveListRules(client: LogWeaveClient): Promise<string> {
+  const res = (await client.get('/rules')) as ApiResponse
+  const rules = (res.data as Array<Record<string, unknown>>) ?? []
+
+  if (rules.length === 0) {
+    return 'No alert rules configured.'
+  }
+
+  let text = `## Alert Rules (${rules.length})\n\n`
+  for (const r of rules) {
+    const status = r.enabled ? 'enabled' : 'disabled'
+    const type = r.ruleType === 'threshold' ? 'threshold' : 'template_watch'
+    text += `### ${r.name} [${status}]\n`
+    text += `- Type: ${type}\n`
+    text += `- Rule ID: ${r.ruleId}\n`
+
+    const config = r.config as Record<string, unknown>
+    if (r.ruleType === 'threshold') {
+      text += `- Condition: ${config.service} ${config.metric} ${config.operator} ${config.value} (${config.windowMinutes}min window)\n`
+    } else {
+      text += `- Template: ${config.templateText} [id: ${config.templateId}]\n`
+    }
+
+    const channels = (r.channels as string[]) ?? []
+    if (channels.length > 0) {
+      text += `- Channels: ${channels.length} webhook(s)\n`
+    } else {
+      text += `- Channels: tenant default\n`
+    }
+    text += '\n'
+  }
+
+  return text
+}
+
+export async function logweaveCreateRule(
+  client: LogWeaveClient,
+  args: {
+    name: string
+    metric: string
+    service: string
+    operator: string
+    value: number
+    window_minutes: number
+    channels?: string[]
+  },
+): Promise<string> {
+  const body = {
+    name: args.name,
+    ruleType: 'threshold',
+    config: {
+      metric: args.metric,
+      service: args.service,
+      operator: args.operator,
+      value: args.value,
+      windowMinutes: args.window_minutes,
+    },
+    channels: args.channels ?? [],
+  }
+
+  const res = (await client.post('/rules', body)) as ApiResponse
+  const rule = res.data as Record<string, unknown>
+
+  let text = `## Rule Created\n\n`
+  text += `- Name: ${rule.name}\n`
+  text += `- Rule ID: ${rule.ruleId}\n`
+  text += `- Condition: ${args.service} ${args.metric} ${args.operator} ${args.value} (${args.window_minutes}min window)\n`
+  text += `- Enabled: ${rule.enabled}\n`
+
+  const channels = (rule.channels as string[]) ?? []
+  text += `- Channels: ${channels.length > 0 ? `${channels.length} webhook(s)` : 'tenant default'}\n`
+
+  return text
+}
+
+export async function logweaveListAlerts(
+  client: LogWeaveClient,
+  args: { hours?: number; rule_id?: string; service?: string; limit?: number },
+): Promise<string> {
+  const res = (await client.get('/alerts', {
+    hours: args.hours,
+    rule_id: args.rule_id,
+    service: args.service,
+    limit: args.limit,
+  })) as ApiResponse
+
+  const alerts = (res.data as Array<Record<string, unknown>>) ?? []
+  const hours = (res.meta.hours as number) ?? args.hours ?? 24
+
+  if (alerts.length === 0) {
+    return `No alerts fired in the last ${hours} hours.`
+  }
+
+  let text = `## Alert History (${alerts.length} alerts, last ${hours}h)\n\n`
+  for (const a of alerts) {
+    const ts = (a.firedAt as string).slice(0, 19).replace('T', ' ')
+    const details = (a.details as Record<string, unknown>) ?? {}
+    const service = (details.service as string) ?? 'unknown'
+
+    text += `### ${a.ruleName} — ${ts}\n`
+    text += `- Type: ${a.ruleType}\n`
+    text += `- Service: ${service}\n`
+
+    if (a.ruleType === 'threshold' || a.ruleType === 'threshold_breach') {
+      text += `- Value: ${a.metricValue} (threshold: ${a.thresholdValue})\n`
+      if (details.metric) text += `- Metric: ${details.metric} ${details.operator} ${a.thresholdValue} (${details.windowMinutes}min)\n`
+    } else {
+      text += `- Anomaly score: ${a.metricValue}\n`
+    }
+
+    const channels = (a.channelsNotified as string[]) ?? []
+    if (channels.length > 0) {
+      text += `- Notified: ${channels.length} channel(s)\n`
+    }
+    text += '\n'
+  }
+
+  return text
+}
