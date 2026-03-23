@@ -3,11 +3,13 @@ import type { DbClient } from '../db/client.js'
 import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 
 const DEFAULT_RETENTION_DAYS = 30
+const MAX_RETENTION_DAYS = 365
 
 /**
  * Tables with their timestamp column for retention DELETE.
- * Excludes service_stats_5m (7-day TTL, too short-lived to matter)
- * and tables whose TTL already exceeds max retention (template_daily, deploy_correlation at 365d).
+ * Excludes service_stats_5m (7-day TTL, too short-lived to matter).
+ * Table-level TTLs are set to 365d (max tier). The sweep enforces
+ * shorter retention for Startup (30d) and Growth (90d) tenants.
  */
 const RETENTION_TABLES: Array<{ table: string; timestampColumn: string }> = [
   { table: 'logweave.log_metadata', timestampColumn: 'timestamp' },
@@ -31,16 +33,15 @@ export interface RetentionSweepDeps {
 
 export interface RetentionSweepConfig {
   intervalMs?: number
-  enabled?: boolean
 }
 
 /**
  * Background job that enforces per-tenant data retention.
  *
- * Table-level TTLs (30d) serve as a safety net for all tenants.
- * This sweep handles tenants whose retention period differs from
- * the table default — deleting data older than their configured
- * retentionDays using ClickHouse lightweight DELETE.
+ * Table-level TTLs are set to the maximum tier (365d) so Scale
+ * customers keep their data. This sweep DELETEs data for tenants
+ * with shorter retention (Startup=30d, Growth=90d) using
+ * ClickHouse lightweight DELETE.
  */
 export class RetentionSweep {
   private readonly db: DbClient
@@ -90,8 +91,8 @@ export class RetentionSweep {
       const settings = this.settingsStore.get(tenantId)
       const retentionDays = settings.retentionDays ?? DEFAULT_RETENTION_DAYS
 
-      // Skip tenants at default retention — table-level TTL handles them
-      if (retentionDays <= DEFAULT_RETENTION_DAYS) continue
+      // Skip tenants at max retention — table-level TTL (365d) handles them
+      if (retentionDays >= MAX_RETENTION_DAYS) continue
 
       result.tenantsProcessed++
 

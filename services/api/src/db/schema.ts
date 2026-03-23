@@ -31,7 +31,7 @@ const DDL_STATEMENTS = [
   ) ENGINE = MergeTree()
   PARTITION BY toYYYYMM(timestamp)
   ORDER BY (tenant_id, service, timestamp, level)
-  TTL toDateTime(timestamp) + toIntervalDay(30) DELETE
+  TTL toDateTime(timestamp) + toIntervalDay(365) DELETE
   SETTINGS
       index_granularity = 8192,
       ttl_only_drop_parts = 1`,
@@ -51,7 +51,7 @@ const DDL_STATEMENTS = [
   ) ENGINE = AggregatingMergeTree()
   PARTITION BY toYYYYMM(interval_start)
   ORDER BY (tenant_id, service, template_id, interval_start)
-  TTL toDateTime(interval_start) + toIntervalDay(30) DELETE
+  TTL toDateTime(interval_start) + toIntervalDay(365) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
 
   // 4. Template stats MV — excludes unclustered rows
@@ -83,7 +83,7 @@ const DDL_STATEMENTS = [
   ) ENGINE = AggregatingMergeTree()
   PARTITION BY toYYYYMM(interval_start)
   ORDER BY (tenant_id, service, interval_start)
-  TTL toDateTime(interval_start) + toIntervalDay(30) DELETE
+  TTL toDateTime(interval_start) + toIntervalDay(365) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
 
   // 6. Service stats MV — all rows including unclustered
@@ -172,7 +172,7 @@ GROUP BY tenant_id, service, level, interval_start`,
     timestamp       DateTime64(3) DEFAULT now64(3)
   ) ENGINE = MergeTree()
   ORDER BY (tenant_id, service, timestamp)
-  TTL toDateTime(timestamp) + toIntervalDay(90) DELETE
+  TTL toDateTime(timestamp) + toIntervalDay(365) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
 
   // 10. Connector config — stores log source connection settings per tenant
@@ -247,7 +247,7 @@ GROUP BY tenant_id, service, level, interval_start`,
   ) ENGINE = MergeTree()
   PARTITION BY toYYYYMM(fired_at)
   ORDER BY (tenant_id, fired_at)
-  TTL toDateTime(fired_at) + toIntervalDay(90) DELETE
+  TTL toDateTime(fired_at) + toIntervalDay(365) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
 
   // 14. Audit log — append-only, SOC2 compliance (365-day retention)
@@ -279,6 +279,13 @@ GROUP BY tenant_id, service, level, interval_start`,
   ORDER BY (tenant_id, service, template_id, day)
   TTL day + toIntervalDay(365) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
+
+  // 16. Raise table TTLs to 365d — per-tenant retention sweep handles shorter tiers
+  `ALTER TABLE logweave.log_metadata MODIFY TTL toDateTime(timestamp) + toIntervalDay(365) DELETE`,
+  `ALTER TABLE logweave.template_stats MODIFY TTL toDateTime(interval_start) + toIntervalDay(365) DELETE`,
+  `ALTER TABLE logweave.service_stats MODIFY TTL toDateTime(interval_start) + toIntervalDay(365) DELETE`,
+  `ALTER TABLE logweave.deploys MODIFY TTL toDateTime(timestamp) + toIntervalDay(365) DELETE`,
+  `ALTER TABLE logweave.alert_history MODIFY TTL toDateTime(fired_at) + toIntervalDay(365) DELETE`,
 
   `CREATE MATERIALIZED VIEW IF NOT EXISTS logweave.template_daily_summary_mv
   TO logweave.template_daily_summary AS

@@ -26,7 +26,6 @@ function createMockDb() {
 function createSettingsStore(tenants: Record<string, { retentionDays?: number }>) {
   const store = new TenantSettingsStore()
   for (const [tenantId, settings] of Object.entries(tenants)) {
-    // Use internal method — set() is async and needs DB, so we populate directly
     store.set(tenantId, settings)
   }
   return store
@@ -39,7 +38,23 @@ const logger = pino({ level: 'silent' })
 // ---------------------------------------------------------------------------
 
 describe('RetentionSweep', () => {
-  it('issues DELETE for tenant with retentionDays > 30', async () => {
+  it('issues DELETE for tenant with default 30d retention', async () => {
+    const { db, commands } = createMockDb()
+    const store = createSettingsStore({ 'tenant-startup': {} })
+    const sweep = new RetentionSweep({ db, settingsStore: store, logger })
+
+    const result = await sweep.sweep()
+
+    assert.equal(result.tenantsProcessed, 1)
+    assert.ok(commands.length > 0, 'should issue DELETE commands')
+    for (const cmd of commands) {
+      assert.ok(cmd.query.includes('ALTER TABLE'), `should use ALTER TABLE DELETE: ${cmd.query}`)
+      assert.equal(cmd.query_params?.tenant_id, 'tenant-startup')
+      assert.equal(cmd.query_params?.retention_days, 30)
+    }
+  })
+
+  it('issues DELETE for tenant with retentionDays=90 (Growth tier)', async () => {
     const { db, commands } = createMockDb()
     const store = createSettingsStore({ 'tenant-growth': { retentionDays: 90 } })
     const sweep = new RetentionSweep({ db, settingsStore: store, logger })
@@ -47,28 +62,14 @@ describe('RetentionSweep', () => {
     const result = await sweep.sweep()
 
     assert.equal(result.tenantsProcessed, 1)
-    assert.ok(commands.length > 0, 'should issue DELETE commands')
-    // Every command should reference the tenant
     for (const cmd of commands) {
-      assert.ok(cmd.query.includes('ALTER TABLE'), `should use ALTER TABLE DELETE: ${cmd.query}`)
-      assert.equal(cmd.query_params?.tenant_id, 'tenant-growth')
+      assert.equal(cmd.query_params?.retention_days, 90)
     }
   })
 
-  it('skips tenant with default 30d retention (table TTL handles it)', async () => {
+  it('skips tenant with retentionDays=365 (Scale tier — table TTL handles it)', async () => {
     const { db, commands } = createMockDb()
-    const store = createSettingsStore({ 'tenant-startup': {} })
-    const sweep = new RetentionSweep({ db, settingsStore: store, logger })
-
-    const result = await sweep.sweep()
-
-    assert.equal(result.tenantsProcessed, 0)
-    assert.equal(commands.length, 0)
-  })
-
-  it('skips tenant with explicit retentionDays=30', async () => {
-    const { db, commands } = createMockDb()
-    const store = createSettingsStore({ 'tenant-startup': { retentionDays: 30 } })
+    const store = createSettingsStore({ 'tenant-scale': { retentionDays: 365 } })
     const sweep = new RetentionSweep({ db, settingsStore: store, logger })
 
     const result = await sweep.sweep()
@@ -88,12 +89,12 @@ describe('RetentionSweep', () => {
 
     const result = await sweep.sweep()
 
-    // Only growth and scale should be processed (startup = 30d, skipped)
+    // Startup and Growth processed, Scale skipped (365d = max, table TTL handles it)
     assert.equal(result.tenantsProcessed, 2)
     const tenantIds = commands.map((c) => c.query_params?.tenant_id)
+    assert.ok(tenantIds.includes('tenant-startup'))
     assert.ok(tenantIds.includes('tenant-growth'))
-    assert.ok(tenantIds.includes('tenant-scale'))
-    assert.ok(!tenantIds.includes('tenant-startup'))
+    assert.ok(!tenantIds.includes('tenant-scale'))
   })
 
   it('targets the correct tables', async () => {
@@ -115,6 +116,20 @@ describe('RetentionSweep', () => {
     assert.ok(tables.includes('logweave.deploys'))
   })
 
+  it('does not delete from short-lived tables (service_stats_5m)', async () => {
+    const { db, commands } = createMockDb()
+    const store = createSettingsStore({ 'tenant-growth': { retentionDays: 90 } })
+    const sweep = new RetentionSweep({ db, settingsStore: store, logger })
+
+    await sweep.sweep()
+
+    const tables = commands.map((c) => {
+      const match = c.query.match(/ALTER TABLE (\S+)/)
+      return match ? match[1] : null
+    })
+    assert.ok(!tables.includes('logweave.service_stats_5m'), 'should skip service_stats_5m')
+  })
+
   it('handles DB error gracefully without crashing', async () => {
     const db = {
       query: async () => [],
@@ -128,7 +143,6 @@ describe('RetentionSweep', () => {
     const store = createSettingsStore({ 'tenant-growth': { retentionDays: 90 } })
     const sweep = new RetentionSweep({ db, settingsStore: store, logger })
 
-    // Should not throw — errors logged per table, sweep continues
     const result = await sweep.sweep()
     assert.equal(result.errors, 5, 'one error per table (5 tables)')
     assert.equal(result.tenantsProcessed, 1)
@@ -144,19 +158,5 @@ describe('RetentionSweep', () => {
     for (const cmd of commands) {
       assert.equal(cmd.query_params?.retention_days, 90, 'should pass retentionDays as param')
     }
-  })
-
-  it('does not delete from short-lived tables (service_stats_5m)', async () => {
-    const { db, commands } = createMockDb()
-    const store = createSettingsStore({ 'tenant-growth': { retentionDays: 90 } })
-    const sweep = new RetentionSweep({ db, settingsStore: store, logger })
-
-    await sweep.sweep()
-
-    const tables = commands.map((c) => {
-      const match = c.query.match(/ALTER TABLE (\S+)/)
-      return match ? match[1] : null
-    })
-    assert.ok(!tables.includes('logweave.service_stats_5m'), 'should skip service_stats_5m')
   })
 })

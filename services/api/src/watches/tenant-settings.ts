@@ -88,6 +88,11 @@ export class TenantSettingsStore {
 
   /** Merge partial updates into a tenant's settings. */
   async set(tenantId: string, updates: Partial<TenantSettings>): Promise<void> {
+    if (updates.retentionDays !== undefined) {
+      if (!Number.isFinite(updates.retentionDays) || updates.retentionDays <= 0) {
+        throw new Error('retentionDays must be a positive number')
+      }
+    }
     const existing = this.settings.get(tenantId) ?? {}
     const previous = { ...existing }
     this.settings.set(tenantId, { ...existing, ...updates })
@@ -152,7 +157,8 @@ export class TenantSettingsStore {
 
     if (this.db) {
       const now = Date.now()
-      const rows = SETTING_KEYS.map((key) => ({
+      const slackKeys: (keyof TenantSettings)[] = ['slackWebhookUrl', 'lastTestStatus', 'lastTestAt']
+      const rows = slackKeys.map((key) => ({
         tenant_id: tenantId,
         setting_key: key,
         setting_value: '',
