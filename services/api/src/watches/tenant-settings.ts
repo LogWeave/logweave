@@ -126,7 +126,7 @@ export class TenantSettingsStore {
           rows.push({
             tenant_id: tenantId,
             setting_key: key,
-            setting_value: String(updates[key]),
+            setting_value: Array.isArray(updates[key]) ? JSON.stringify(updates[key]) : String(updates[key]),
             version: now,
             is_deleted: 0,
           })

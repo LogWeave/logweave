@@ -55,3 +55,6 @@ experiments/**/results/
 
 # Session prompts and scratch docs
 docs/prompts/
+
+# QA reports and screenshots (local-only)
+docs/qa/reports/

@@ -90,9 +90,17 @@ export function settingsRoutes(deps: SettingsDeps): Router {
   })
 
   // PUT /settings/tags -- update tag extraction keys
+  const BLOCKED_TAG_KEYS = new Set(['message', 'msg', 'log', 'body', 'raw', 'text', 'content'])
   const extractTagsSchema = z.object({
     extractTags: z
-      .array(z.string().min(1).max(64).regex(/^[a-zA-Z0-9_.-]+$/, 'Tag keys must be alphanumeric with _ . -'))
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(64)
+          .regex(/^[a-zA-Z0-9_.-]+$/, 'Tag keys must be alphanumeric with _ . -')
+          .refine((k) => !BLOCKED_TAG_KEYS.has(k.toLowerCase()), 'This field name is reserved and cannot be used as a tag key'),
+      )
       .max(20, 'Maximum 20 tag keys'),
   })
 
