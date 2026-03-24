@@ -59,9 +59,9 @@ const configSchema = z.object({
   recoveryLookbackHours: z.coerce.number().int().min(1).max(168).default(24),
   apiKeys: apiKeysSchema,
   dashboardBaseUrl: z.string().url().optional(),
-  rateLimitRpm: z.coerce.number().int().min(1).max(10_000).default(60),
-  rateLimitTenantRpm: z.coerce.number().int().min(1).max(10_000).default(120),
-  rateLimitIngestRpm: z.coerce.number().int().min(1).max(10_000).default(300),
+  rateLimitRpm: z.coerce.number().int().min(1).max(10_000).default(300),
+  rateLimitTenantRpm: z.coerce.number().int().min(1).max(10_000).default(600),
+  rateLimitIngestRpm: z.coerce.number().int().min(1).max(10_000).default(600),
   maxConcurrentQueries: z.coerce.number().int().min(1).max(100).default(8),
   encryptionKey: z.string().min(16).optional(),
   retentionEnabled: z
