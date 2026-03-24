@@ -7,8 +7,10 @@ import { initSchema } from './db/schema.js'
 import { createLogger } from './logger.js'
 import { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import { ClusterClient } from './pipeline/cluster-client.js'
+import { LocalEventBus } from './events/local-bus.js'
 import { RecoverySweep } from './recovery/reconcile.js'
 import { RetentionSweep } from './retention/sweep.js'
+import { TailBuffer } from './tail/buffer.js'
 import { AlertEvaluator } from './watches/alert-evaluator.js'
 import { AlertDispatcher, ConsoleObserver } from './watches/alert-observer.js'
 import { HistoryObserver } from './watches/history-observer.js'
@@ -62,6 +64,10 @@ try {
   process.exit(1)
 }
 
+const tailBuffer = new TailBuffer()
+tailBuffer.start()
+const eventBus = new LocalEventBus(tailBuffer, settingsStore)
+
 const app = createApp({
   config,
   logger,
@@ -72,6 +78,8 @@ const app = createApp({
   ruleStore,
   watchStore,
   settingsStore,
+  tailBuffer,
+  eventBus,
 })
 
 const recovery = new RecoverySweep(
