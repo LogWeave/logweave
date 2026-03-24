@@ -120,7 +120,7 @@ export function TemplateTable({ className }: { className?: string }) {
               <BellRing size={12} className="text-brand-400 shrink-0" />
             )}
             <span className="font-mono text-xs text-text-primary truncate">{info.getValue()}</span>
-            {info.row.original.isNewToday && <Badge variant="new">new</Badge>}
+            {info.row.original.isNewToday && <Badge variant="new" className="shrink-0">new</Badge>}
           </div>
         ),
       }),
