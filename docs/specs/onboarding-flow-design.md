@@ -1,7 +1,7 @@
-# Onboarding Flow Design Spec
+# Onboarding Flow Design Spec (v2)
 
 **Date:** 2026-03-24
-**Status:** Approved
+**Status:** Approved (revised after UX specialist + 2 persona reviews)
 **Issue:** #93
 
 ## Goal
@@ -10,176 +10,180 @@ Get new users from "just deployed" to "seeing the value of LogWeave" in under 5 
 
 ## Approach
 
-Inline dashboard checklist card (not a modal wizard). Derives completion state from actual system state, not a boolean. Three steps: Send Logs → Tune Clustering → Connect AI. Desktop-only.
+Inline dashboard checklist card (not a modal wizard). Three steps: Send Logs → Connect AI → Tune Clustering. State derived from system, not booleans. Desktop-only.
+
+## Key Decisions (from review feedback)
+
+- **No demo tenant / sample data** — too complex, adds tenant-switching auth headaches. Instead show a short animation/GIF of the dashboard in action (5 seconds, looping). Full demos live on the website.
+- **MCP before clustering** — the AI connection is the wow moment. Clustering tuning is optimization that comes after.
+- **Value proposition first** — one-line explanation of what LogWeave is above the checklist.
+- **Language-neutral framing** — HTTP API works for any language, not just Node.js.
+- **Sensitivity = plain English** — "More specific ← → More general", no numbers, no `sim_th`.
+- **MCP completion = server-side** — track `last_mcp_connection_at` in tenant_settings. Per-user dismissal in localStorage.
+- **Animations** — pulsing while waiting, checkmark on success, smooth transitions. Product should feel alive.
 
 ## Scope
 
 **In scope:**
-- Onboarding checklist card on dashboard (prominent when empty, corner card when data exists)
-- Step 1: Send logs — choose method (Winston/curl/OTel/sample data), pre-filled API key, live polling for first event
-- Step 2: Tune clustering — 3 preset cards (Conservative/Balanced/Aggressive) with real data examples using preview endpoint (#135)
-- Step 3: Connect AI — pre-filled MCP config snippet with copy button, optional Test Connection
-- "Try with sample data" option — runs simulator against isolated demo-tenant
-- Sidebar "Setup" item with badge showing incomplete step count
-- Skip/dismiss at any level (individual steps or entire checklist)
-- Auto-detect completed steps from system state
+- Onboarding checklist card on dashboard (full-width when empty, dismissible card when data exists)
+- Value proposition line above checklist
+- Animated preview of dashboard in action (5-second GIF/loop, dismissible)
+- Step 1: Send logs — language-neutral tabs (SDK/HTTP API/OpenTelemetry), pre-filled API key, live polling for first event with pulsing animation
+- Step 2: Connect AI — explain what MCP is in one sentence, show the payoff (what AI can answer), then the config snippet. REST API fallback for non-MCP users.
+- Step 3: Tune clustering — "More specific ← → More general" simple toggle with plain English descriptions. Uses preview endpoint (#135) if available, static examples as fallback.
+- Sidebar "Setup" item with badge until complete
+- Skip/dismiss at every level
+- Celebration moment on completion
+- Time estimates per step (~2min, ~1min, ~1min)
 
-**Out of scope / deferred:**
-- Mobile responsive wizard (desktop-only)
-- Guided walkthrough of dashboard features (tooltips/tour — separate issue)
-- Per-service clustering sensitivity
-- Full wizard with page transitions (checklist is simpler, build wizard if data shows drop-off)
-- Onboarding analytics/funnel tracking
+**Out of scope:**
+- Demo tenant / sample data mode (dropped — too complex for the value)
+- Mobile responsive (desktop-only)
+- Team invitation flow (separate feature)
+- S3 connector setup (separate flow in Settings after onboarding)
+- Onboarding analytics / funnel tracking
+- Full wizard with page transitions
 
 ## Design
 
-### 1. State Detection (no booleans)
-
-Completion is derived from actual system state, not stored flags:
+### 1. State Detection
 
 | Step | Complete when | Source |
 |------|--------------|--------|
-| Send Logs | `totalEvents > 0` for the tenant | `GET /v1/dashboard/overview` |
-| Tune Clustering | `clusteringSensitivity` has been explicitly set | `tenant_settings` |
-| Connect AI | User has dismissed this step (localStorage) | Browser only |
+| Send Logs | `totalEvents > 0` | API overview endpoint |
+| Connect AI | `last_mcp_connection_at` set | tenant_settings (server-side) |
+| Tune Clustering | `clusteringSensitivity` explicitly set | tenant_settings |
 
-One stored flag: `onboarding_dismissed_at` in tenant_settings — set when user clicks "Skip setup" or closes the checklist. Second team members see the dashboard (not the checklist) if data exists.
+Additional: `onboarding_dismissed_at` in tenant_settings for "Skip setup". Second team members see dashboard (not checklist) if `totalEvents > 0`.
 
 ### 2. Checklist Card
 
-**When `totalEvents === 0`:** Full-width centered card on the dashboard, empty dashboard visible but dimmed behind it.
+When `totalEvents === 0` — full-width centered, dashboard dimmed behind:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Get started with LogWeave                  [Close] │
-│                                                     │
-│  ○  Send your first logs                   [Start]  │
-│  ○  Tune clustering sensitivity            [Start]  │
-│  ○  Connect your AI assistant              [Start]  │
-│                                                     │
-│  [Skip setup — go to dashboard]                     │
-└─────────────────────────────────────────────────────┘
+LogWeave extracts patterns from your logs.
+Your AI queries the patterns. Raw logs stay in your infrastructure.
+
+[5-second animated preview of dashboard in action]
+
+Get started                                    [I'll set this up later]
+
+  ○  Send your first logs          ~2 min                      [Start]
+  ○  Connect your AI assistant     ~1 min                      [Start]
+  ○  Tune clustering sensitivity   ~1 min                      [Start]
 ```
 
-**When `totalEvents > 0` but steps incomplete:** Small card in dashboard, collapsible.
-
-**When all steps done or dismissed:** Card disappears. "Setup" sidebar item removed.
-
-Clicking "Start" expands that item inline — no page transitions.
+When `totalEvents > 0` but steps incomplete — small collapsible card.
+When all done or dismissed — gone. "Setup" sidebar item removed.
 
 ### 3. Step 1 — Send Logs
 
-**Choose your method:**
+**Language-neutral tabs:**
 
 ```
 How do you want to send logs?
 
-[Node.js App]     [Any HTTP Client]     [OpenTelemetry]     [Try Sample Data]
-   Winston SDK        curl / fetch       OTel Collector      See it instantly
+  [SDK (Node.js)]    [HTTP API]         [OpenTelemetry]
+   Winston / Pino     Any language        OTel Collector
 ```
 
-Each option expands to show a pre-filled code snippet with the tenant's real API key and a copy button.
+**SDK tab:** Sub-options for Winston and Pino with pre-filled snippets.
 
-**"Try Sample Data":**
-- Adds `demo-key` → `demo-tenant` to API keys (pre-configured)
-- Starts the built-in simulator against demo-tenant for 60 seconds
-- Dashboard temporarily switches to viewing demo-tenant data
-- Banner: "Viewing sample data. [Connect your real logs] to switch to your account."
-- When user connects real logs (real tenant gets events), auto-switch back
+**HTTP API tab:** Language-specific snippets:
+- curl (universal, shown first)
+- Go (http.Post)
+- Python (requests.post)
+- Java (HttpClient)
+
+All snippets pre-filled with the tenant's real API key and endpoint URL.
+
+**OTel tab:** Collector config YAML with exporter pointing at `/v1/logs`.
 
 **Live detection:**
-- Poll `GET /v1/dashboard/overview` every 3 seconds
-- Pulsing animation: "Waiting for first log..."
-- On first event: green checkmark, "First log received!" with 1-second pause
-- After 10 minutes with no data: "Haven't received data yet. [Troubleshooting guide] [Skip]"
+- Poll every 5 seconds for first minute, then every 10 seconds
+- Pulsing animation: "Waiting for your first log..."
+- On first event: green checkmark animation, "First log received!" (1-second pause)
+- After 2 minutes: "Haven't received data yet. Check that your service is sending to the right URL. [Troubleshooting]"
+- After 5 minutes: stop polling, static message
 
-### 4. Step 2 — Tune Clustering
+### 4. Step 2 — Connect AI (The Payoff)
 
-Requires Step 1 complete (needs data to preview).
-
-Auto-runs the clustering preview endpoint (#135) at three preset levels:
-
-```
-┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-│   Conservative   │ │    Balanced ✓    │ │    Aggressive    │
-│    sim_th: 0.3   │ │   sim_th: 0.4    │ │   sim_th: 0.6   │
-│                  │ │                  │ │                  │
-│  245 patterns    │ │  120 patterns    │ │  35 patterns     │
-│  4:1 compression │ │  8:1 compression │ │  28:1 compression│
-│                  │ │                  │ │                  │
-│  "Login failed   │ │  "Login failed   │ │  "Login <*>"     │
-│   for user X"    │ │   for user <*>"  │ │                  │
-│  "Login failed   │ │                  │ │                  │
-│   for user Y"    │ │                  │ │                  │
-│  → 2 templates   │ │  → 1 template    │ │  → 1 template    │
-│                  │ │                  │ │                  │
-│     [Select]     │ │   [Selected]     │ │     [Select]     │
-└──────────────────┘ └──────────────────┘ └──────────────────┘
-
-                    [Apply & Continue]
-```
-
-Shows real examples from their actual log data. "Balanced" pre-selected as default.
-
-If fewer than 20 events: "We need a bit more data to show meaningful groupings. You can tune this anytime in Settings. [Skip for now]"
-
-### 5. Step 3 — Connect AI (The Payoff)
-
-Pre-filled MCP config with copy button:
+**Lead with the value, not the config:**
 
 ```
-Connect LogWeave to your AI assistant
+Ask your AI about your production logs
 
-Paste this into your .mcp.json (Claude Code, Cursor, Windsurf):
+LogWeave connects to AI coding assistants via MCP (Model Context Protocol).
+Once connected, your AI can answer questions like:
+
+  "What new error patterns appeared after my last deploy?"
+  "Is my payment-service error rate abnormal right now?"
+  "What other services are affected when auth times out?"
+
+[Animated mockup showing AI conversation with real-looking responses]
+
+Paste into your editor's MCP config (Claude Code, Cursor, Windsurf, VS Code):
 
 ┌──────────────────────────────────────────────┐
 │ {                                            │
 │   "mcpServers": {                            │
-│     "logweave": {                            │
-│       "command": "npx",                      │
-│       "args": ["@logweave/mcp"],             │
-│       "env": {                               │
-│         "LOGWEAVE_API_KEY": "lw_xxx...",      │
-│         "LOGWEAVE_API_URL": "http://..."      │
-│       }                                      │
-│     }                                        │
+│     "logweave": { ... }                      │
 │   }                                          │
 │ }                                    [Copy]  │
 └──────────────────────────────────────────────┘
 
-Then try asking your AI:
-  "What errors are happening in my app?"
-  "What changed after the last deploy?"
-  "Which service has the highest error rate?"
+[Done]
 
-[Test Connection]  [Done — show me the dashboard]
-
-Using a different AI tool? LogWeave also has a REST API. →
+Using a different AI tool? LogWeave also has a full REST API. →
 ```
 
-"Test Connection" hits a health endpoint through the MCP path and shows success/error.
+**MCP completion detection:** When the MCP server makes its first API call, the `User-Agent` header identifies it as `@logweave/mcp`. Set `last_mcp_connection_at` in tenant_settings on first such request.
 
-### 6. Re-entry
+### 5. Step 3 — Tune Clustering
 
-- **Sidebar:** "Setup" item with badge (e.g., "1/3") visible until all steps complete or dismissed
-- **Settings page:** Clustering sensitivity and MCP config available permanently (not onboarding-specific)
-- **No wizard re-launch** — the checklist format means items are always accessible inline
+Simple choice, no numbers:
 
-### 7. Demo Tenant Isolation
+```
+How should LogWeave group your log patterns?
 
-Pre-configured in API keys:
-```json
-{
-  "dev-key": "dev-tenant",
-  "demo-key": "demo-tenant"
-}
+  ○ More specific   — treats small differences as separate patterns
+                       "Login failed for user alice" ≠ "Login failed for user bob"
+
+  ● Balanced         — groups similar messages, keeps meaningful differences
+                       "Login failed for user <*>" (recommended)
+
+  ○ More general    — maximum compression, may lose important distinctions
+                       "Login <*>"
+
+                    [Apply]   [Skip — use default]
 ```
 
-- Simulator sends to `demo-tenant` when "Try Sample Data" is clicked
-- Dashboard reads from `demo-tenant` during sample mode
-- Real tenant data is never mixed with demo data
-- Demo tenant has its own TTL / can be cleaned up on demand
-- Banner clearly indicates "Viewing sample data"
+Uses clustering preview endpoint (#135) to show real examples from their data if available. Falls back to static examples if preview endpoint isn't built yet or insufficient data.
+
+"You can change this anytime in Settings."
+
+### 6. Completion
+
+When all three steps are done:
+
+```
+┌─────────────────────────────────────────────┐
+│  ✓  You're all set!                         │
+│                                             │
+│  LogWeave is monitoring your services.      │
+│  Ask your AI assistant about your logs.     │
+│                                             │
+│           [Go to Dashboard]                 │
+└─────────────────────────────────────────────┘
+```
+
+Brief celebration animation (checkmark, subtle confetti or glow). Card fades after 5 seconds or on click.
+
+### 7. Re-entry
+
+- Sidebar "Setup" item with badge (e.g., "1/3") until all steps done or dismissed
+- Settings page has clustering sensitivity and MCP config permanently
+- No wizard re-launch — just the settings pages
 
 ## Open Questions
 
@@ -188,10 +192,10 @@ None.
 ## Test Strategy
 
 - Checklist renders when `totalEvents === 0`
-- Checklist hides when `totalEvents > 0` and all steps dismissed
-- Step 1: polling detects first event and marks complete
-- Step 2: preview endpoint returns comparison data at 3 sensitivity levels
-- Step 3: MCP config snippet is pre-filled with correct API key
-- Sample data mode: simulator starts, dashboard shows demo-tenant data, banner visible
+- Checklist hides when data exists and all steps complete/dismissed
+- Step 1: polling detects first event, animation plays
+- Step 2: MCP config pre-filled, completion detected server-side via User-Agent
+- Step 3: clustering choice persists to tenant_settings
 - Skip/dismiss persists correctly
-- Second team member sees dashboard (not checklist) when data exists
+- Second team member sees dashboard, not checklist, when data exists
+- Animated preview displays and dismisses correctly
