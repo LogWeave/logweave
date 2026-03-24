@@ -63,7 +63,7 @@ export function KpiStrip({ className }: { className?: string }) {
   return (
     <div className={cn('space-y-3', className)}>
       {/* Primary row — hero metrics that matter for triage */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <KpiCard
           label="Spikes Active"
           value={spikeCount}
@@ -93,13 +93,6 @@ export function KpiStrip({ className }: { className?: string }) {
           trendPolarity="positive"
           loading={isLoading}
         />
-        <KpiCard
-          label="Services"
-          value={overview?.serviceCount ?? 0}
-          icon={Server}
-          trendPolarity="neutral"
-          loading={isLoading}
-        />
       </div>
 
       {/* Secondary row — compact pills for lower-priority metrics */}
@@ -115,6 +108,12 @@ export function KpiStrip({ className }: { className?: string }) {
           label="New Today"
           value={overview?.newTemplatesToday ?? 0}
           variant={overview?.newTemplatesToday && overview.newTemplatesToday > 0 ? 'warning' : undefined}
+          loading={isLoading}
+        />
+        <SecondaryPill
+          icon={Server}
+          label="Services"
+          value={overview?.serviceCount ?? 0}
           loading={isLoading}
         />
         <SecondaryPill
