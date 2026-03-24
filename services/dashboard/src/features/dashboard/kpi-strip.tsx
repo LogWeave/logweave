@@ -97,13 +97,13 @@ export function KpiStrip({ className }: { className?: string }) {
       />
       <KpiCard
         label="Error Rate"
-        value={overview ? `${overview.errorRate.toFixed(1)}%` : '0%'}
+        value={overview ? `${(overview.errorRate * 100).toFixed(1)}%` : '0%'}
         icon={AlertTriangle}
         tooltip={TOOLTIPS.errorRate}
         trend={trendPercent(overview?.errorRate ?? 0, prev?.errorRate)}
         trendSuffix="pp"
         trendLabel={trendLabel}
-        variant={overview?.errorRate && overview.errorRate > 5 ? 'danger' : 'default'}
+        variant={overview?.errorRate && overview.errorRate > 0.05 ? 'danger' : 'default'}
         loading={isLoading}
       />
       <KpiCard

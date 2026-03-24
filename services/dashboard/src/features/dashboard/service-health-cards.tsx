@@ -26,8 +26,8 @@ export function ServiceHealthCards({ className }: { className?: string }) {
   const services = useMemo(
     () =>
       [...(response?.data ?? [])].sort((a, b) => {
-        const aErrors = Math.round((a.logCount * a.errorRate) / 100)
-        const bErrors = Math.round((b.logCount * b.errorRate) / 100)
+        const aErrors = Math.round(a.logCount * a.errorRate)
+        const bErrors = Math.round(b.logCount * b.errorRate)
         return bErrors - aErrors || b.errorRate - a.errorRate
       }),
     [response?.data],
@@ -89,7 +89,7 @@ export function ServiceHealthCards({ className }: { className?: string }) {
               <div
                 className={cn(
                   'h-8 w-8 rounded-[var(--radius-md)] flex items-center justify-center shrink-0',
-                  svc.errorRate > 5
+                  svc.errorRate > 0.05
                     ? 'bg-red-500/10 text-danger'
                     : 'bg-brand-500/10 text-brand-400',
                 )}
@@ -104,7 +104,7 @@ export function ServiceHealthCards({ className }: { className?: string }) {
                   </span>
                   {svc.errorRate > 0 && (
                     <span className="text-xs text-danger font-mono tabular-nums">
-                      {svc.errorRate.toFixed(1)}% err
+                      {(svc.errorRate * 100).toFixed(1)}% err
                     </span>
                   )}
                 </div>

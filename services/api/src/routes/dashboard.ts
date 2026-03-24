@@ -150,8 +150,8 @@ function mapServiceRows(rows: RawRow[]): ServiceRow[] {
       logCount,
       errorCount,
       warnCount,
-      errorRate: logCount > 0 ? (errorCount / logCount) * 100 : 0,
-      warnRate: logCount > 0 ? (warnCount / logCount) * 100 : 0,
+      errorRate: logCount > 0 ? Math.round((errorCount / logCount) * 10000) / 10000 : 0,
+      warnRate: logCount > 0 ? Math.round((warnCount / logCount) * 10000) / 10000 : 0,
       newTemplateCount: Number(r.new_template_count),
       avgAnomalyScore: Number(r.avg_anomaly_score),
     }
@@ -347,7 +347,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         totalTemplates: Number(counts.unique_templates),
         newTemplatesToday: Number(agg.new_template_count),
         unclusteredCount: Number(counts.unclustered_count),
-        errorRate: totalEvents > 0 ? (errorCount / totalEvents) * 100 : 0,
+        errorRate: totalEvents > 0 ? Math.round((errorCount / totalEvents) * 10000) / 10000 : 0,
         serviceCount: Number(counts.service_count),
       }
 
@@ -362,7 +362,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
           totalTemplates: Number(prevCounts.unique_templates),
           newTemplatesToday: Number(prevAgg.new_template_count),
           unclusteredCount: Number(prevCounts.unclustered_count),
-          errorRate: prevTotalEvents > 0 ? (prevErrorCount / prevTotalEvents) * 100 : 0,
+          errorRate: prevTotalEvents > 0 ? Math.round((prevErrorCount / prevTotalEvents) * 10000) / 10000 : 0,
           serviceCount: Number(prevCounts.service_count),
         }
       }
@@ -758,8 +758,8 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         logCount,
         errorCount,
         warnCount,
-        errorRate: logCount > 0 ? errorCount / logCount : 0,
-        warnRate: logCount > 0 ? warnCount / logCount : 0,
+        errorRate: logCount > 0 ? Math.round((errorCount / logCount) * 10000) / 10000 : 0,
+        warnRate: logCount > 0 ? Math.round((warnCount / logCount) * 10000) / 10000 : 0,
         topErrorPatterns: mapCrossServiceTemplates(toRawRows(templateRows)),
         volumeTrend: toRawRows(volumeRows).map((r) => ({
           intervalStart: r.interval_start as string,
@@ -807,7 +807,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         totalTemplates: Number(rawCounts.unique_templates ?? 0),
         newTemplatesToday: Number(rawAgg.new_template_count ?? 0),
         unclusteredCount: Number(rawCounts.unclustered_count ?? 0),
-        errorRate: totalEvents > 0 ? errorCount / totalEvents : 0,
+        errorRate: totalEvents > 0 ? Math.round((errorCount / totalEvents) * 10000) / 10000 : 0,
         serviceCount: Number(rawCounts.service_count ?? 0),
         topErrorPatterns: mapCrossServiceTemplates(toRawRows(topPatterns)),
       }

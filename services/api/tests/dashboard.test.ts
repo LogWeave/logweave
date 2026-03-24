@@ -388,10 +388,10 @@ describe('GET /v1/dashboard/services', () => {
     assert.equal(apiRow.logCount, 1000)
     assert.equal(apiRow.errorCount, 50)
     assert.equal(apiRow.warnCount, 100)
-    // errorRate = (50/1000) * 100 = 5.0
-    assert.equal(apiRow.errorRate, 5.0)
-    // warnRate = (100/1000) * 100 = 10.0
-    assert.equal(apiRow.warnRate, 10.0)
+    // errorRate = 50/1000 = 0.05 (fraction, rounded to 4dp)
+    assert.equal(apiRow.errorRate, 0.05)
+    // warnRate = 100/1000 = 0.1
+    assert.equal(apiRow.warnRate, 0.1)
     assert.equal(apiRow.newTemplateCount, 3)
     assert.equal(apiRow.avgAnomalyScore, 0.3)
   })
@@ -523,8 +523,8 @@ describe('GET /v1/dashboard/overview', () => {
     assert.equal(typeof data.unclusteredCount, 'number')
     assert.equal(data.unclusteredCount, 15)
     assert.equal(typeof data.errorRate, 'number')
-    // errorRate = (200/5000) * 100 = 4.0
-    assert.equal(data.errorRate, 4.0)
+    // errorRate = 200/5000 = 0.04 (fraction, rounded to 4dp)
+    assert.equal(data.errorRate, 0.04)
     assert.equal(typeof data.serviceCount, 'number')
     assert.equal(data.serviceCount, 5)
   })

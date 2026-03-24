@@ -550,7 +550,7 @@ export async function logweaveListServices(
 
   let text = `## Services (${rows.length})\n\n`
   for (const r of rows) {
-    const errorRate = (r.errorRate as number).toFixed(1)
+    const errorRate = ((r.errorRate as number) * 100).toFixed(1)
     text += `- **${r.service}** — ${r.logCount} logs, ${r.errorCount} errors (${errorRate}%)`
     if ((r.newTemplateCount as number) > 0) {
       text += ` [${r.newTemplateCount} new patterns]`
