@@ -243,6 +243,31 @@ perspectives produces higher-confidence prioritization.
 
 Fix: Use multi-agent review at every milestone boundary going forward.
 
+### 2026-03-24 — Schema migration ordering broke startup, ruined live demo
+
+**What happened:** After merging #127 (environment dimension) via worktree agent, ALTER TABLE
+migrations were placed BEFORE the CREATE TABLE statements they depend on. On a fresh database
+(`docker compose down -v`), the API server crashed on startup: "Could not find table:
+service_stats_5m" then "Could not find table: alert_rules". This happened during a live VC demo.
+
+**Root causes:**
+1. Worktree agent based on an older commit — its schema.ts was merged onto main that had
+   different migration ordering. Manual reconciliation was error-prone.
+2. Unit tests mock the DB — they NEVER run actual migrations against ClickHouse
+3. The reviewer verified migration EXISTENCE but not ORDERING
+4. CLAUDE.md says "verify e2e before done" but this was violated — only typecheck + unit tests ran
+5. ClickHouse auth change (#132) was also untested against the actual dev workflow
+
+**Fixes:**
+- Rule: ANY change to schema.ts requires `docker compose down -v && docker compose up` verification
+- Rule: ALTER TABLE migrations MUST come after ALL CREATE TABLE statements in the MIGRATIONS array
+- Rule: Worktree merges require extra scrutiny — the agent works on a stale snapshot
+- Rule: Infrastructure config changes (docker-compose env vars, .env files) must be tested
+  against the full `pnpm env:start && pnpm dev` workflow, not just unit tests
+- Added comment block in schema.ts marking the ALTER section boundary
+
+**Impact:** Lost a VC demo opportunity. This is the most consequential bug in the project's history.
+
 ### 2026-03-22 — ClickHouse alias collision: `any(service) AS service` breaks WHERE filter
 
 **What happened:** The changes endpoint (`/dashboard/changes?service=X`) returned 500. ClickHouse
