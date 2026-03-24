@@ -159,8 +159,6 @@ FROM logweave.log_metadata
 GROUP BY tenant_id, service, level, interval_start`,
 
 
-  // 18. Cooldown minutes column on alert_rules
-  `ALTER TABLE logweave.alert_rules ADD COLUMN IF NOT EXISTS cooldown_minutes UInt32 DEFAULT 0`,
 
   // ngram skip index on template_registry for text search (co-owned with clusterer)
   `ALTER TABLE logweave.template_registry ADD INDEX IF NOT EXISTS idx_template_text_ngram
@@ -310,6 +308,13 @@ GROUP BY tenant_id, service, environment, level, interval_start`,
   FROM logweave.log_metadata
   WHERE template_id != '0'
   GROUP BY tenant_id, service, template_id, day`,
+
+  // ---------------------------------------------------------------------------
+  // ALTER migrations — MUST come after all CREATE TABLE statements above
+  // ---------------------------------------------------------------------------
+
+  // Cooldown minutes on alert_rules (depends on alert_rules table)
+  `ALTER TABLE logweave.alert_rules ADD COLUMN IF NOT EXISTS cooldown_minutes UInt32 DEFAULT 0`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS
