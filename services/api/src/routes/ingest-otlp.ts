@@ -2,27 +2,11 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createGunzip } from 'node:zlib'
 import express, { Router } from 'express'
-import type pino from 'pino'
-import type { DbClient } from '../db/client.js'
-import type { EventBus } from '../events/event-bus.js'
 import { HttpStatus } from '../http-status.js'
+import type { IngestDeps } from '../lib/ingest-deps.js'
 import { getTenantId } from '../middleware/auth.js'
-import type { AnomalyScorer } from '../pipeline/anomaly-scorer.js'
-import type { ClusterClient } from '../pipeline/cluster-client.js'
 import { ingestBatch } from '../pipeline/ingest.js'
 import { otlpToEvents } from '../pipeline/parse-otlp.js'
-import type { TailBuffer } from '../tail/buffer.js'
-import type { TenantSettingsStore } from '../watches/tenant-settings.js'
-
-export interface OtlpIngestDeps {
-  clusterClient: ClusterClient
-  db: DbClient
-  logger: pino.Logger
-  anomalyScorer: AnomalyScorer
-  tailBuffer?: TailBuffer
-  settingsStore?: TenantSettingsStore
-  eventBus?: EventBus
-}
 
 import { MAX_BATCH_SIZE } from '../lib/constants.js'
 
@@ -75,7 +59,7 @@ async function decompressGzip(
   }
 }
 
-export function otlpIngestRoutes(deps: OtlpIngestDeps): Router {
+export function otlpIngestRoutes(deps: IngestDeps): Router {
   const router = Router()
 
   router.post(

@@ -90,6 +90,12 @@ export class SlackObserver implements AlertObserver {
         })
       this.deliveryQueues.set(webhookUrl, next)
     }
+
+    // Prune stale entries from lastSendTime (unused for > 1 hour)
+    const pruneThreshold = Date.now() - 3_600_000
+    for (const [url, ts] of this.lastSendTime) {
+      if (ts < pruneThreshold) this.lastSendTime.delete(url)
+    }
   }
 
   private async enforceRateLimit(url: string): Promise<void> {

@@ -1,25 +1,10 @@
 import { Router } from 'express'
-import type pino from 'pino'
 import { z } from 'zod'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { ingestBatch } from '../pipeline/ingest.js'
-import type { DbClient } from '../db/client.js'
-import type { AnomalyScorer } from '../pipeline/anomaly-scorer.js'
-import type { ClusterClient } from '../pipeline/cluster-client.js'
-import type { TailBuffer } from '../tail/buffer.js'
-import type { TenantSettingsStore } from '../watches/tenant-settings.js'
-
-export interface IngestDeps {
-  clusterClient: ClusterClient
-  db: DbClient
-  logger: pino.Logger
-  anomalyScorer: AnomalyScorer
-  tailBuffer?: TailBuffer
-  settingsStore?: TenantSettingsStore
-  eventBus?: import('../events/event-bus.js').EventBus
-}
+import type { IngestDeps } from '../lib/ingest-deps.js'
 
 const ingestBatchSchema = z.object({
   events: z.array(z.unknown()).min(1).max(1000),

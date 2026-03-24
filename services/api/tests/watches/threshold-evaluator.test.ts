@@ -26,7 +26,7 @@ function createTestSetup(options: { clock?: number; cooldownMs?: number } = {}) 
     },
   })
 
-  let queryResult: Array<{ value: number }> = []
+  let queryResult: Array<{ service: string; value: number }> = []
 
   const mockDb = {
     query: async (params: { query: string; query_params: Record<string, unknown> }) => {
@@ -57,7 +57,7 @@ function createTestSetup(options: { clock?: number; cooldownMs?: number } = {}) 
     setClock: (t: number) => {
       clock = t
     },
-    setQueryResult: (rows: Array<{ value: number }>) => {
+    setQueryResult: (rows: Array<{ service: string; value: number }>) => {
       queryResult = rows
     },
   }
@@ -85,7 +85,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10 }),
       channels: [],
     })
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'payments', value: 15 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 1)
@@ -113,7 +113,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10 }),
       channels: [],
     })
-    setQueryResult([{ value: 5 }])
+    setQueryResult([{ service: 'payments', value: 5 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 0)
@@ -130,7 +130,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10, operator: '>' }),
       channels: [],
     })
-    setQueryResult([{ value: 10 }])
+    setQueryResult([{ service: 'payments', value: 10 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 0)
@@ -147,7 +147,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10, operator: '>=' }),
       channels: [],
     })
-    setQueryResult([{ value: 10 }])
+    setQueryResult([{ service: 'payments', value: 10 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 1)
@@ -163,7 +163,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ metric: 'log_count', value: 100, operator: '<' }),
       channels: [],
     })
-    setQueryResult([{ value: 50 }])
+    setQueryResult([{ service: 'payments', value: 50 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 1)
@@ -180,7 +180,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ metric: 'warn_count', value: 5, operator: '<=' }),
       channels: [],
     })
-    setQueryResult([{ value: 5 }])
+    setQueryResult([{ service: 'payments', value: 5 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 1)
@@ -196,7 +196,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10 }),
       channels: [],
     })
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'payments', value: 15 }])
 
     await evaluator.evaluate()
     assert.equal(alerts.length, 1)
@@ -218,7 +218,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10 }),
       channels: [],
     })
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'payments', value: 15 }])
 
     await evaluator.evaluate()
     assert.equal(alerts.length, 1)
@@ -246,7 +246,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10 }),
       channels: [],
     })
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'payments', value: 15 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 0)
@@ -327,7 +327,8 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10, service: 'web' }),
       channels: [],
     })
-    setQueryResult([{ value: 15 }])
+    // Mock returns matching service for each tenant's query
+    setQueryResult([{ service: 'api', value: 15 }, { service: 'web', value: 15 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 2)
@@ -349,18 +350,18 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10 }),
       channels: [],
     })
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'payments', value: 15 }])
 
     await evaluator.evaluate()
 
     // Advance clock well past 2x cooldown
     setClock(getClock() + 10_000)
     // Set value below threshold so no new alert — just prune
-    setQueryResult([{ value: 5 }])
+    setQueryResult([{ service: 'payments', value: 5 }])
     await evaluator.evaluate()
 
     // Now set above threshold again — should fire since cooldown was pruned
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'payments', value: 15 }])
     await evaluator.evaluate()
     // If cooldown wasn't pruned, this would be blocked
   })
@@ -375,7 +376,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10 }),
       channels: ['https://hooks.slack.com/abc', 'https://hooks.slack.com/def'],
     })
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'payments', value: 15 }])
 
     await evaluator.evaluate()
     const alert = alerts[0] as ThresholdAlertEvent
@@ -401,11 +402,11 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 5, service: 'web' }),
       channels: [],
     })
-    setQueryResult([{ value: 10 }])
+    setQueryResult([{ service: 'api', value: 10 }, { service: 'web', value: 10 }])
 
     await evaluator.evaluate()
-    // Per-service queries (2 services in same group = 2 queries, not 2 groups)
-    assert.equal(queryCalls.length, 2, 'should issue one query per service in the group')
+    // Batched query — one query for all services in the group
+    assert.equal(queryCalls.length, 1, 'should issue one batched query per group')
     assert.equal(alerts.length, 2, 'both rules should fire')
   })
 
@@ -419,7 +420,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10, environment: 'production' }),
       channels: [],
     })
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'payments', value: 15 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 1)
@@ -445,7 +446,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10 }),
       channels: [],
     })
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'payments', value: 15 }])
 
     await evaluator.evaluate()
     assert.equal(alerts.length, 1)
@@ -479,7 +480,7 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 10, service: 'api', environment: 'staging' }),
       channels: [],
     })
-    setQueryResult([{ value: 15 }])
+    setQueryResult([{ service: 'api', value: 15 }])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 2)

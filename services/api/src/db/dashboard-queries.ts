@@ -80,6 +80,7 @@ interface ClusteringHealthTrendRow {
 interface DashboardTemplateOptions extends PaginationOptions {
   service?: string
   level?: string[]
+  templateId?: string
 }
 
 interface DashboardVolumeOptions extends PaginationOptions {
@@ -121,9 +122,11 @@ export async function queryTemplatesAcrossServices(
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
   const service = options?.service
   const levels = options?.level
+  const templateId = options?.templateId
 
   const serviceFilter = service ? 'AND service = {service:String}' : ''
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
+  const templateFilter = templateId ? 'AND template_id = {template_id:String}' : ''
 
   const query = `
 SELECT
@@ -141,12 +144,14 @@ WHERE tenant_id = {tenant_id:String}
   AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
   ${serviceFilter}
   ${levelFilter}
+  ${templateFilter}
 GROUP BY template_id, template_text
 ORDER BY occurrence_count DESC
 LIMIT {limit:UInt32}`
 
   const params: Record<string, unknown> = { limit, hours }
   if (service) params.service = service
+  if (templateId) params.template_id = templateId
   if (levels?.length) params.levels = levels
 
   return db.query<CrossServiceTemplateRow>(tenantQuery(query, tenantId, params))

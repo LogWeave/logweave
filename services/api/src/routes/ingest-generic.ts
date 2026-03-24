@@ -1,31 +1,15 @@
 import { Router } from 'express'
-import type pino from 'pino'
-import type { DbClient } from '../db/client.js'
-import type { EventBus } from '../events/event-bus.js'
 import { HttpStatus } from '../http-status.js'
+import type { IngestDeps } from '../lib/ingest-deps.js'
 import { getTenantId } from '../middleware/auth.js'
-import type { AnomalyScorer } from '../pipeline/anomaly-scorer.js'
-import type { ClusterClient } from '../pipeline/cluster-client.js'
 import { ingestBatch } from '../pipeline/ingest.js'
 import { GenericLogParser } from '../pipeline/parse-generic.js'
-import type { TailBuffer } from '../tail/buffer.js'
-import type { TenantSettingsStore } from '../watches/tenant-settings.js'
-
-export interface GenericIngestDeps {
-  clusterClient: ClusterClient
-  db: DbClient
-  logger: pino.Logger
-  anomalyScorer: AnomalyScorer
-  tailBuffer?: TailBuffer
-  settingsStore?: TenantSettingsStore
-  eventBus?: EventBus
-}
 
 import { MAX_BATCH_SIZE } from '../lib/constants.js'
 
 const genericParser = new GenericLogParser()
 
-export function genericIngestRoutes(deps: GenericIngestDeps): Router {
+export function genericIngestRoutes(deps: IngestDeps): Router {
   const router = Router()
 
   router.post('/ingest/logs', async (req, res, next) => {

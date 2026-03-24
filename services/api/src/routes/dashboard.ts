@@ -1,4 +1,4 @@
-import { type Response, Router } from 'express'
+import { Router } from 'express'
 import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
 import {
@@ -7,7 +7,8 @@ import {
   queryTemplateSpikes,
 } from '../db/dashboard-changes-queries.js'
 import { queryDeployById } from '../db/deploy-queries.js'
-import { DATA_RETENTION, formatTimeRange, truncateTemplateText } from '../format.js'
+import { truncateTemplateText } from '../format.js'
+import { respond } from '../lib/respond.js'
 import {
   queryClusteringHealthSnapshot,
   queryClusteringHealthTrend,
@@ -30,7 +31,6 @@ import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import {
-  type ApiResponse,
   type ChangeEvent,
   type ChangesQuery,
   type ClusteringHealthData,
@@ -81,24 +81,6 @@ export interface DashboardDeps {
   db: DbClient
   logger: pino.Logger
   clusterClient?: import('../pipeline/cluster-client.js').ClusterClient
-}
-
-// ---------------------------------------------------------------------------
-// Response helper
-// ---------------------------------------------------------------------------
-
-function respond<T>(res: Response, data: T, meta: Omit<ApiResponse<T>['meta'], 'fetchedAt' | 'timeRange' | 'dataRetention'>): void {
-  const hours = meta.hours
-  const body: ApiResponse<T> = {
-    data,
-    meta: {
-      ...meta,
-      fetchedAt: new Date().toISOString(),
-      timeRange: formatTimeRange(hours),
-      dataRetention: DATA_RETENTION,
-    },
-  }
-  res.status(HttpStatus.OK).json(body)
 }
 
 // ---------------------------------------------------------------------------
@@ -678,7 +660,8 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         queryTemplatesAcrossServices(deps.db, tenantId, {
           hours: params.hours,
           level: levels,
-          limit: 1000,
+          templateId,
+          limit: 1,
         }),
         queryTemplateSparklines(deps.db, tenantId, {
           hours: params.hours,

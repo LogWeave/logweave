@@ -1,4 +1,4 @@
-import { type Response, Router } from 'express'
+import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
 import type { DbClient } from '../db/client.js'
@@ -8,11 +8,10 @@ import {
   queryServiceOutlier,
   queryTraceDetails,
 } from '../db/correlation-queries.js'
-import { DATA_RETENTION, formatTimeRange } from '../format.js'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
+import { respond } from '../lib/respond.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
-import type { ApiResponse } from './dashboard-types.js'
 
 // ---------------------------------------------------------------------------
 // Dependencies
@@ -86,27 +85,6 @@ export interface ServiceOutlier {
   verdict: 'normal' | 'elevated' | 'outlier'
   dataPoints: number
   warning?: string
-}
-
-// ---------------------------------------------------------------------------
-// Response helper
-// ---------------------------------------------------------------------------
-
-function respond<T>(
-  res: Response,
-  data: T,
-  meta: Omit<ApiResponse<T>['meta'], 'fetchedAt' | 'timeRange' | 'dataRetention'>,
-): void {
-  const body: ApiResponse<T> = {
-    data,
-    meta: {
-      ...meta,
-      fetchedAt: new Date().toISOString(),
-      timeRange: formatTimeRange(meta.hours),
-      dataRetention: DATA_RETENTION,
-    },
-  }
-  res.status(HttpStatus.OK).json(body)
 }
 
 // ---------------------------------------------------------------------------

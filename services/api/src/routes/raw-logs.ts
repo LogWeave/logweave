@@ -1,4 +1,4 @@
-import { type Response, Router } from 'express'
+import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
 import { S3Adapter } from '../connectors/s3-adapter.js'
@@ -7,11 +7,10 @@ import { decrypt } from '../crypto.js'
 import { SCAN_DEFAULTS } from '../connectors/types.js'
 import type { DbClient } from '../db/client.js'
 import { getConnector, listConnectors } from '../db/connector-queries.js'
-import { DATA_RETENTION, formatTimeRange } from '../format.js'
 import { HttpStatus } from '../http-status.js'
+import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
-import type { ApiResponse } from './dashboard-types.js'
 
 // ---------------------------------------------------------------------------
 // Dependencies
@@ -53,26 +52,6 @@ interface RawLogsData {
   truncatedReason?: string
 }
 
-// ---------------------------------------------------------------------------
-// Response helper
-// ---------------------------------------------------------------------------
-
-function respond<T>(
-  res: Response,
-  data: T,
-  meta: Omit<ApiResponse<T>['meta'], 'fetchedAt' | 'timeRange' | 'dataRetention'>,
-): void {
-  const body: ApiResponse<T> = {
-    data,
-    meta: {
-      ...meta,
-      fetchedAt: new Date().toISOString(),
-      timeRange: formatTimeRange(meta.hours),
-      dataRetention: DATA_RETENTION,
-    },
-  }
-  res.status(HttpStatus.OK).json(body)
-}
 
 // ---------------------------------------------------------------------------
 // Adapter registry
@@ -182,7 +161,7 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
         truncatedReason: result.truncatedReason,
       }
 
-      const meta: Omit<ApiResponse<RawLogsData>['meta'], 'fetchedAt' | 'timeRange' | 'dataRetention'> = {
+      const meta: Record<string, unknown> & { hours: number } = {
         hours: params.hours,
         limit: params.limit,
         count: result.lines.length,

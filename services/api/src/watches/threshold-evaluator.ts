@@ -228,29 +228,27 @@ export class ThresholdEvaluator {
 
     const envFilter = environment ? '\n                  AND environment = {environment:String}' : ''
 
-    // Query per-service to avoid Array param compatibility issues
+    // Single query for all services using Array param
     const results = new Map<string, number>()
-    for (const service of services) {
-      const queryParams: Record<string, unknown> = {
-        tenant_id: tenantId,
-        service,
-        window: windowMinutes,
-      }
-      if (environment) {
-        queryParams.environment = environment
-      }
-      const rows = await this.db.query<{ value: number }>({
-        query: `SELECT ${column} AS value
-                FROM logweave.service_stats_5m
-                WHERE tenant_id = {tenant_id:String}
-                  AND service = {service:String}
-                  AND interval_start >= now64(3) - toIntervalMinute({window:UInt32})${envFilter}`,
-        query_params: queryParams,
-      })
-      const first = rows[0]
-      if (first) {
-        results.set(service, Number(first.value))
-      }
+    const queryParams: Record<string, unknown> = {
+      tenant_id: tenantId,
+      services,
+      window: windowMinutes,
+    }
+    if (environment) {
+      queryParams.environment = environment
+    }
+    const rows = await this.db.query<{ service: string; value: number }>({
+      query: `SELECT service, ${column} AS value
+              FROM logweave.service_stats_5m
+              WHERE tenant_id = {tenant_id:String}
+                AND service IN ({services:Array(String)})
+                AND interval_start >= now64(3) - toIntervalMinute({window:UInt32})${envFilter}
+              GROUP BY service`,
+      query_params: queryParams,
+    })
+    for (const row of rows) {
+      results.set(row.service, Number(row.value))
     }
     return results
   }
