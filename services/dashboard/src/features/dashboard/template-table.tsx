@@ -126,12 +126,12 @@ export function TemplateTable({ className }: { className?: string }) {
       }),
       columnHelper.accessor('service', {
         header: 'Service',
-        size: 140,
+        size: 110,
         cell: (info) => <span className="text-xs text-text-secondary">{info.getValue()}</span>,
       }),
       columnHelper.accessor('occurrenceCount', {
         header: 'Count',
-        size: 100,
+        size: 70,
         cell: (info) => (
           <span className="font-mono text-xs tabular-nums text-text-primary">
             {info.getValue().toLocaleString()}
@@ -140,7 +140,7 @@ export function TemplateTable({ className }: { className?: string }) {
       }),
       columnHelper.accessor('errorCount', {
         header: 'Errors',
-        size: 80,
+        size: 60,
         cell: (info) => {
           const val = info.getValue()
           return (
@@ -162,7 +162,7 @@ export function TemplateTable({ className }: { className?: string }) {
             Trend <InfoTooltip content={TOOLTIPS.trendColumn} />
           </span>
         ),
-        size: 100,
+        size: 80,
         cell: (info) => {
           const points = getSparklinePoints(info.row.original.templateId)
           return <MiniSparkline points={points} />
@@ -351,7 +351,7 @@ export function TemplateTable({ className }: { className?: string }) {
         </div>
 
         {/* Table view for large screens */}
-        <div className="hidden xl:block">
+        <div className="hidden xl:block overflow-x-auto">
         {/* Table header */}
         <div className="flex items-center border-b border-border-subtle pb-2 mb-1">
           {table.getHeaderGroups().map((headerGroup) =>
