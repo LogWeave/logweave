@@ -20,8 +20,8 @@ export class LocalEventBus implements EventBus {
   }
 
   publishTailEvent(tenantId: string, event: Omit<TailEvent, 'seq'>): void {
-    const tailMode = this.settingsStore.get(tenantId).tailMode
-    if (!tailMode || tailMode === 'disabled') return
+    const tailMode = this.settingsStore.get(tenantId).tailMode ?? 'metadata'
+    if (tailMode === 'disabled') return
 
     const filtered =
       tailMode === 'preprocessed' ? event : { ...event, preProcessedMessage: undefined }
