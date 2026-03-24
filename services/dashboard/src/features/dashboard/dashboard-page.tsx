@@ -29,9 +29,9 @@ export function DashboardPage() {
       </ErrorBoundary>
 
       {/* Row 4: Template table + Service cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <ErrorBoundary name="Template Table" key={`tpl-${location.key}`}>
-          <TemplateTable className="lg:col-span-2" />
+          <TemplateTable className="xl:col-span-2" />
         </ErrorBoundary>
         <ErrorBoundary name="Service Health" key={`svc-${location.key}`}>
           <ServiceHealthCards />

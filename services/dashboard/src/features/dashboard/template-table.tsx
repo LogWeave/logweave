@@ -113,7 +113,7 @@ export function TemplateTable({ className }: { className?: string }) {
     () => [
       columnHelper.accessor('templateText', {
         header: 'Pattern',
-        size: 400,
+        size: 300,
         cell: (info) => (
           <div className="flex items-center gap-2 min-w-0">
             {watchedIdsRef.current.has(info.row.original.templateId) && (
@@ -318,7 +318,7 @@ export function TemplateTable({ className }: { className?: string }) {
       </CardHeader>
       <CardContent>
         {/* Card view for small screens */}
-        <div className="lg:hidden space-y-2">
+        <div className="xl:hidden space-y-2">
           {rows.length === 0 && (
             <p className="py-8 text-center text-text-muted text-sm">
               {globalFilter ? 'No patterns match your search.' : 'No pattern data yet.'}
@@ -351,7 +351,7 @@ export function TemplateTable({ className }: { className?: string }) {
         </div>
 
         {/* Table view for large screens */}
-        <div className="hidden lg:block">
+        <div className="hidden xl:block">
         {/* Table header */}
         <div className="flex items-center border-b border-border-subtle pb-2 mb-1">
           {table.getHeaderGroups().map((headerGroup) =>

@@ -96,7 +96,7 @@ export function KpiStrip({ className }: { className?: string }) {
       </div>
 
       {/* Secondary row — compact pills for lower-priority metrics */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
         <SecondaryPill
           icon={Layers}
           label="Patterns"
