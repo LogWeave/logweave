@@ -151,6 +151,18 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
     }
   }, [disconnect])
 
+  // Reconnect when filters change while connected
+  const filtersKey = `${filters.service ?? ''}|${filters.level ?? ''}|${filters.templateId ?? ''}`
+  const prevFiltersRef = useRef(filtersKey)
+  useEffect(() => {
+    if (prevFiltersRef.current !== filtersKey && status === 'connected') {
+      prevFiltersRef.current = filtersKey
+      connect()
+    } else {
+      prevFiltersRef.current = filtersKey
+    }
+  }, [filtersKey, status, connect])
+
   return {
     events,
     status,

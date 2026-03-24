@@ -185,13 +185,7 @@ export function TailPage() {
             Waiting for events...
           </div>
         )}
-        {!paused && events
-          .filter((e) => {
-            if (filters.service && e.service !== filters.service) return false
-            if (filters.level && e.level !== filters.level) return false
-            return true
-          })
-          .map((e) => <EventRow key={e.seq} event={e} />)}
+        {!paused && events.map((e) => <EventRow key={e.seq} event={e} />)}
         {paused && (
           <div className="p-3 text-center text-text-muted text-xs">
             Paused — {events.length} events buffered
