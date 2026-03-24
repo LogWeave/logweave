@@ -130,7 +130,7 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
         es.close()
         eventSourceRef.current = null
         setStatus('error')
-        setError('Connection failed — check that Live Tail is enabled in Settings')
+        setError('Connection failed — the API server may be unreachable')
       } else {
         setStatus('connecting') // auto-reconnecting
       }
