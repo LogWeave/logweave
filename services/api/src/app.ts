@@ -19,6 +19,7 @@ import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
 import { connectorRoutes } from './routes/connectors.js'
 import { correlationRoutes } from './routes/correlation.js'
+import { compositeRoutes } from './routes/composite.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { deployRoutes } from './routes/deploys.js'
 import { healthRoutes } from './routes/health.js'
@@ -154,6 +155,12 @@ export function createApp(deps: AppDependencies): express.Express {
       db: deps.db,
       logger: deps.logger,
       clusterClient: deps.clusterClient,
+    }),
+  )
+  v1.use(
+    compositeRoutes({
+      db: deps.db,
+      logger: deps.logger,
     }),
   )
   v1.use(

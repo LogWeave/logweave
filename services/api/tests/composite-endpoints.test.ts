@@ -6,6 +6,7 @@ import request from 'supertest'
 import type { DbClient } from '../src/db/client.js'
 import { createAuthMiddleware } from '../src/middleware/auth.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
+import { compositeRoutes } from '../src/routes/composite.js'
 import { dashboardRoutes } from '../src/routes/dashboard.js'
 
 // ---------------------------------------------------------------------------
@@ -111,7 +112,7 @@ function createTestApp(queryResults?: Map<string, unknown>) {
   const app = express()
   app.use(express.json())
   const auth = createAuthMiddleware(keyMap)
-  app.use('/v1', auth, dashboardRoutes({ db, logger }))
+  app.use('/v1', auth, dashboardRoutes({ db, logger }), compositeRoutes({ db, logger }))
   app.use(createErrorHandler(logger))
   return app
 }
