@@ -19,7 +19,9 @@ function EventRow({ event }: { event: TailEvent }) {
   const ts = event.timestamp.split('T')[1]?.split('.')[0] ?? event.timestamp
 
   return (
-    <div className="flex items-start gap-2 py-1 px-3 hover:bg-surface-elevated text-xs font-mono">
+    <div
+      className={`flex items-start gap-2 py-1 px-3 hover:bg-surface-elevated text-xs font-mono ${event.level === 'ERROR' ? 'bg-red-500/5' : event.level === 'WARN' ? 'bg-amber-500/5' : ''}`}
+    >
       <span className="text-text-muted shrink-0 w-16">{ts}</span>
       <span className={`shrink-0 w-12 font-semibold ${levelColor}`}>{event.level}</span>
       <span className="text-brand-400 shrink-0 w-28 truncate" title={event.service}>
@@ -50,7 +52,8 @@ export function TailPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const autoScrollRef = useRef(true)
 
-  const { events, status, error, eventRate, connect, disconnect, isConnected, clear } = useTail(filters)
+  const { events, status, error, eventRate, connect, disconnect, isConnected, clear } =
+    useTail(filters)
 
   // Auto-scroll to bottom when new events arrive
   useEffect(() => {
@@ -112,9 +115,7 @@ export function TailPage() {
         {/* Filters */}
         <Select
           value={filters.service ?? ''}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, service: e.target.value || undefined }))
-          }
+          onChange={(e) => setFilters((f) => ({ ...f, service: e.target.value || undefined }))}
           className="w-36 text-xs"
           options={[
             { value: '', label: 'All services' },
@@ -124,9 +125,7 @@ export function TailPage() {
 
         <Select
           value={filters.level ?? ''}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, level: e.target.value || undefined }))
-          }
+          onChange={(e) => setFilters((f) => ({ ...f, level: e.target.value || undefined }))}
           className="w-24 text-xs"
           options={[
             { value: '', label: 'All levels' },
@@ -173,8 +172,7 @@ export function TailPage() {
             Waiting for events...
           </div>
         )}
-        {!paused &&
-          events.map((e) => <EventRow key={e.seq} event={e} />)}
+        {!paused && events.map((e) => <EventRow key={e.seq} event={e} />)}
         {paused && (
           <div className="p-3 text-center text-text-muted text-xs">
             Paused — {events.length} events buffered

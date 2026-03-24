@@ -1,5 +1,6 @@
 import { Activity, Bell, BellOff, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   useAlerts,
@@ -36,6 +37,7 @@ function isThresholdConfig(rule: AlertRule): rule is AlertRule & { config: Thres
 // ---------------------------------------------------------------------------
 
 function RuleRow({ rule }: { rule: AlertRule }) {
+  const navigate = useNavigate()
   const updateMutation = useUpdateRule()
   const deleteMutation = useDeleteRule()
 
@@ -127,7 +129,17 @@ function RuleRow({ rule }: { rule: AlertRule }) {
         >
           <Trash2 size={12} />
         </Button>
-        <ChevronRight size={14} className="text-text-muted" />
+        <button
+          type="button"
+          className="text-text-muted hover:text-text-primary transition-colors"
+          title="Investigate on dashboard"
+          onClick={() => {
+            const service = isThresholdConfig(rule) ? rule.config.service : undefined
+            navigate(`/?service=${service ?? ''}&range=24h`)
+          }}
+        >
+          <ChevronRight size={14} />
+        </button>
       </div>
     </div>
   )
@@ -214,7 +226,14 @@ function CreateRuleForm({ onClose }: { onClose: () => void }) {
       {
         name: name || `${metric.replace('_', ' ')} ${operator} ${value} — ${service}${envSuffix}`,
         ruleType: 'threshold',
-        config: { metric, service, operator, value, windowMinutes, ...(environment ? { environment } : {}) },
+        config: {
+          metric,
+          service,
+          operator,
+          value,
+          windowMinutes,
+          ...(environment ? { environment } : {}),
+        },
       },
       {
         onSuccess: () => {

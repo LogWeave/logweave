@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Moon, RefreshCw, Sun } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useShallow } from 'zustand/shallow'
 import { useLevels, useOverview, useServices } from '../api/queries'
 import { cn } from '../lib/cn'
@@ -10,6 +11,13 @@ import type { FilterDefinition } from './ui/filter-bar'
 import { FilterBar } from './ui/filter-bar'
 import { ToggleGroup } from './ui/toggle'
 
+const PAGE_TITLES: Record<string, string> = {
+  '/': 'Dashboard',
+  '/alerts': 'Alerts',
+  '/tail': 'Live Tail',
+  '/settings': 'Settings',
+}
+
 const timeRangeOptions = [
   { value: '1h', label: '1H' },
   { value: '6h', label: '6H' },
@@ -18,6 +26,8 @@ const timeRangeOptions = [
 ]
 
 export function Header() {
+  const location = useLocation()
+  const pageTitle = PAGE_TITLES[location.pathname] ?? 'LogWeave'
   const {
     timeRange,
     setTimeRange,
@@ -107,7 +117,7 @@ export function Header() {
   return (
     <header className="h-14 flex items-center justify-between px-4 md:px-6 border-b border-border-subtle bg-surface-raised">
       <div className="flex items-center gap-3">
-        <h1 className="text-sm font-semibold text-text-primary hidden sm:block">Dashboard</h1>
+        <h1 className="text-sm font-semibold text-text-primary hidden sm:block">{pageTitle}</h1>
         <FilterBar definitions={filterDefs} values={filterValues} onChange={handleFilterChange} />
       </div>
 

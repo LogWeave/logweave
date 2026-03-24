@@ -1,5 +1,7 @@
-import { Bell, BellRing, X } from 'lucide-react'
+import { Bell, BellRing, Radio, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/shallow'
 import {
@@ -121,6 +123,7 @@ function DetailContent({ template }: { template: TemplateRow }) {
     statusCodeTimeWindow,
   )
   const statusCodes = statusCodeResponse?.data ?? []
+  const navigate = useNavigate()
   const { data: watchesResponse } = useWatches()
   const watchedIds = watchesResponse?.data ?? []
   const isWatched = watchedIds.some((w) => w.templateId === template.templateId)
@@ -359,6 +362,7 @@ function DetailContent({ template }: { template: TemplateRow }) {
               onRangeSelect={setSelectedTimeRange}
             />
           </div>
+          <p className="text-[9px] text-text-muted mt-1 text-center">Drag to select a time range</p>
         </div>
       )}
 
@@ -408,6 +412,18 @@ function DetailContent({ template }: { template: TemplateRow }) {
           </div>
         </div>
       )}
+
+      {/* Quick actions */}
+      <Button
+        variant="secondary"
+        className="w-full text-xs"
+        onClick={() =>
+          navigate(`/tail?template_id=${template.templateId}&service=${template.service}`)
+        }
+      >
+        <Radio size={14} className="mr-1.5" />
+        Tail this pattern
+      </Button>
 
       {/* Watch / Unwatch */}
       {isWatched ? (
@@ -492,45 +508,55 @@ export function TemplateDetailPanel() {
     }
   }, [selectedTemplateId, setSelectedTemplateId])
 
-  if (!selectedTemplateId || !template) return null
-
   return (
-    <>
-      {/* Backdrop on mobile */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop overlay dismisses panel */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: escape key handled separately */}
-      <div
-        className="fixed inset-0 bg-black/30 z-40 md:hidden"
-        onClick={() => setSelectedTemplateId(null)}
-      />
-
-      {/* Panel */}
-      <aside
-        className={cn(
-          'fixed right-0 top-0 bottom-0 z-50 w-full md:w-[380px] lg:w-[440px] xl:w-[480px] bg-surface-card border-l border-border',
-          'overflow-y-auto shadow-2xl',
-          'transform transition-transform duration-200 ease-out',
-          'md:relative md:shrink-0',
-        )}
-      >
-        {/* Header */}
-        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-border-subtle bg-surface-card/95 backdrop-blur-sm">
-          <h3 className="text-sm font-semibold text-text-primary truncate pr-4">Pattern Detail</h3>
-          <Button
-            variant="ghost"
-            size="sm"
+    <AnimatePresence>
+      {selectedTemplateId && template && (
+        <>
+          {/* Backdrop on mobile */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop overlay dismisses panel */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: escape key handled separately */}
+          <motion.div
+            className="fixed inset-0 bg-black/30 z-40 md:hidden"
             onClick={() => setSelectedTemplateId(null)}
-            aria-label="Close pattern detail"
-          >
-            <X size={16} />
-          </Button>
-        </div>
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          />
 
-        {/* Content */}
-        <div className="p-5">
-          <DetailContent template={template} />
-        </div>
-      </aside>
-    </>
+          {/* Panel */}
+          <motion.aside
+            className={cn(
+              'fixed right-0 top-0 bottom-0 z-50 w-full md:w-[380px] lg:w-[440px] xl:w-[480px] bg-surface-card border-l border-border',
+              'overflow-y-auto shadow-2xl',
+              'md:relative md:shrink-0',
+            )}
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          >
+            {/* Header */}
+            <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-border-subtle bg-surface-card/95 backdrop-blur-sm">
+              <h3 className="text-sm font-semibold text-text-primary truncate pr-4">
+                Pattern Detail
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedTemplateId(null)}
+                aria-label="Close pattern detail"
+              >
+                <X size={16} />
+              </Button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5">
+              <DetailContent template={template} />
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
   )
 }

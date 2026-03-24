@@ -75,6 +75,8 @@ export const useDashboardStore = create<DashboardState>()(
         sidebarCollapsed: state.sidebarCollapsed,
         timeRange: state.timeRange,
         hiddenTemplateIds: state.hiddenTemplateIds,
+        serviceFilter: state.serviceFilter,
+        levelFilters: state.levelFilters,
       }),
     },
   ),

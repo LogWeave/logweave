@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Layers, Sparkles, Unplug, Zap } from 'lucide-react'
+import { Activity, AlertTriangle, Inbox, Layers, Sparkles, Unplug, Zap } from 'lucide-react'
 import { useMemo } from 'react'
 import { useOverview, useTemplates } from '../../api/queries'
 import { QueryError } from '../../components/ui/query-error'
@@ -21,7 +21,12 @@ export function KpiStrip({ className }: { className?: string }) {
   const prev = overview?.previous
 
   const timeRange = useDashboardStore((s) => s.timeRange)
-  const trendLabel = { '1h': 'vs prev 1h', '6h': 'vs prev 6h', '24h': 'vs prev 24h', '7d': 'vs prev 7d' }[timeRange]
+  const trendLabel = {
+    '1h': 'vs prev 1h',
+    '6h': 'vs prev 6h',
+    '24h': 'vs prev 24h',
+    '7d': 'vs prev 7d',
+  }[timeRange]
 
   const spikeCount = useMemo(
     () => templatesResponse?.data?.filter((t) => t.maxAnomalyScore > 1.0).length ?? 0,
@@ -36,14 +41,22 @@ export function KpiStrip({ className }: { className?: string }) {
     )
   }
 
-  const hasNoData = !isLoading && overview && overview.totalEvents === 0 && overview.totalTemplates === 0
+  const hasNoData =
+    !isLoading && overview && overview.totalEvents === 0 && overview.totalTemplates === 0
 
   if (hasNoData) {
     return (
-      <div className={cn('rounded-[var(--radius-lg)] border border-border-subtle bg-surface-raised p-6 text-center', className)}>
+      <div
+        className={cn(
+          'rounded-[var(--radius-lg)] border border-border-subtle bg-surface-raised p-6 text-center',
+          className,
+        )}
+      >
+        <Inbox size={32} className="mx-auto mb-3 text-text-muted" />
         <p className="text-sm font-medium text-text-primary mb-1">Waiting for data...</p>
         <p className="text-xs text-text-muted">
-          Install the <code className="text-brand-400">@logweave/transport</code> SDK and send your first logs to see metrics here.
+          Install the <code className="text-brand-400">@logweave/transport</code> SDK and send your
+          first logs to see metrics here.
         </p>
       </div>
     )
