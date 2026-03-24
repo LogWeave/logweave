@@ -19,7 +19,7 @@ Send some logs and watch clustering in action:
 ```bash
 curl -s -X POST http://localhost:3000/v1/ingest/batch \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer e2e-key-tenant-a" \
+  -H "Authorization: Bearer dev-key" \
   -d '{
     "service": "demo",
     "events": [

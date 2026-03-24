@@ -6,7 +6,7 @@
  */
 
 const API_URL = process.env.LOGWEAVE_API_URL ?? 'http://localhost:3000'
-const API_KEY = process.env.LOGWEAVE_API_KEY ?? 'e2e-key-tenant-a'
+const API_KEY = process.env.LOGWEAVE_API_KEY ?? 'dev-key'
 
 interface RawEvent {
   message: string
