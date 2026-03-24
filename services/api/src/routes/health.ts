@@ -25,13 +25,14 @@ export function healthRoutes(deps: HealthDeps): Router {
   router.get('/readyz', async (_req, res) => {
     const now = Date.now()
 
-    // Use cached result if fresh
-    if (readyCache.ok && now - readyCache.ts < READY_CACHE_TTL_MS) {
-      res.json({
-        status: 'ready',
-        clickhouse: 'ok',
+    // Use cached result if fresh (caches both success and failure to prevent hammering)
+    if (now - readyCache.ts < READY_CACHE_TTL_MS) {
+      const clustererStatus = deps.clustererHealth.consecutiveFailures === 0 ? 'ok' : 'degraded'
+      res.status(readyCache.ok ? 200 : HttpStatus.SERVICE_UNAVAILABLE).json({
+        status: readyCache.ok ? 'ready' : 'not_ready',
+        clickhouse: readyCache.ok ? 'ok' : 'error',
         clusterer: {
-          status: deps.clustererHealth.consecutiveFailures === 0 ? 'ok' : 'degraded',
+          status: clustererStatus,
           consecutiveFailures: deps.clustererHealth.consecutiveFailures,
           circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
         },

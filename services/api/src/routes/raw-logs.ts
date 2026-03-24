@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
-import { S3Adapter } from '../connectors/s3-adapter.js'
+import { s3Adapter } from '../connectors/shared.js'
 import type { ConnectorConfig } from '../connectors/types.js'
 import { decrypt } from '../crypto.js'
 import { SCAN_DEFAULTS } from '../connectors/types.js'
@@ -52,12 +52,6 @@ interface RawLogsData {
   truncatedReason?: string
 }
 
-
-// ---------------------------------------------------------------------------
-// Adapter registry
-// ---------------------------------------------------------------------------
-
-const s3Adapter = new S3Adapter()
 
 // ---------------------------------------------------------------------------
 // Template text lookup

@@ -281,10 +281,17 @@ export class S3Adapter implements LogSourceAdapter {
       for await (const line of rl) {
         bytesRead += Buffer.byteLength(line, 'utf8')
 
-        const message = config.logFormat === 'jsonl' ? extractJsonMessage(line) : line
+        let message: string | undefined
+        let timestamp: string | undefined
+        if (config.logFormat === 'jsonl') {
+          const fields = extractJsonFields(line)
+          message = fields?.message
+          timestamp = fields?.timestamp
+        } else {
+          message = line
+        }
 
         if (message && regex.test(message)) {
-          const timestamp = config.logFormat === 'jsonl' ? extractJsonTimestamp(line) : undefined
           matches.push({ message, timestamp })
           if (matches.length >= remaining) break
         }
@@ -300,19 +307,13 @@ export class S3Adapter implements LogSourceAdapter {
 // JSON helpers
 // ---------------------------------------------------------------------------
 
-function extractJsonMessage(line: string): string | undefined {
+function extractJsonFields(line: string): { message?: string; timestamp?: string } | undefined {
   try {
     const obj = JSON.parse(line)
-    return obj.message ?? obj.msg ?? undefined
-  } catch {
-    return undefined
-  }
-}
-
-function extractJsonTimestamp(line: string): string | undefined {
-  try {
-    const obj = JSON.parse(line)
-    return obj.timestamp ?? obj['@timestamp'] ?? obj.time ?? undefined
+    return {
+      message: obj.message ?? obj.msg ?? undefined,
+      timestamp: obj.timestamp ?? obj['@timestamp'] ?? obj.time ?? undefined,
+    }
   } catch {
     return undefined
   }

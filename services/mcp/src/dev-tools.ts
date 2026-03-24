@@ -64,11 +64,14 @@ export async function devQuery(
   if (!['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN', 'WITH'].includes(firstWord)) {
     return 'Error: Only SELECT, SHOW, DESCRIBE, EXPLAIN, and WITH queries are allowed.'
   }
+  if (sql.includes(';')) {
+    return 'Error: Multi-statement queries are not allowed.'
+  }
 
   try {
     const res = await globalThis.fetch(config.clickhouseUrl, {
       method: 'POST',
-      body: `${sql}\nFORMAT TabSeparatedWithNames`,
+      body: `${sql}\nFORMAT TabSeparatedWithNames\nSETTINGS readonly=1`,
       signal: AbortSignal.timeout(CH_TIMEOUT_MS),
     })
 

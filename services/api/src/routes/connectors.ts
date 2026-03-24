@@ -9,7 +9,8 @@ import {
   insertConnector,
   listConnectors,
 } from '../db/connector-queries.js'
-import { S3Adapter } from '../connectors/s3-adapter.js'
+import { s3Adapter } from '../connectors/shared.js'
+import type { S3Adapter } from '../connectors/s3-adapter.js'
 import type { ConnectorConfig } from '../connectors/types.js'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
@@ -91,8 +92,6 @@ function redactConfig(configJson: string): Record<string, unknown> {
     return {}
   }
 }
-
-const s3Adapter = new S3Adapter()
 
 function getAdapter(_type: string): S3Adapter {
   return s3Adapter
