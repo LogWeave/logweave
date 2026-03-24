@@ -117,6 +117,14 @@ export function KpiStrip({ className }: { className?: string }) {
           variant={overview?.unclusteredCount && overview.unclusteredCount > 0 ? 'warning' : undefined}
           loading={isLoading}
         />
+        {overview && overview.totalTemplates > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-brand-500/5 border border-brand-500/20">
+            <span className="text-[10px] text-brand-400 font-medium font-mono">
+              {Math.round(overview.totalEvents / overview.totalTemplates)}:1
+            </span>
+            <span className="text-[10px] text-brand-400 hidden sm:inline">compression</span>
+          </div>
+        )}
       </div>
     </div>
   )
