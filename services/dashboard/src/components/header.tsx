@@ -118,7 +118,9 @@ export function Header() {
     <header className="h-14 flex items-center justify-between px-4 md:px-6 border-b border-border-subtle bg-surface-raised">
       <div className="flex items-center gap-3">
         <h1 className="text-sm font-semibold text-text-primary hidden sm:block">{pageTitle}</h1>
-        <FilterBar definitions={filterDefs} values={filterValues} onChange={handleFilterChange} />
+        {location.pathname === '/' && (
+          <FilterBar definitions={filterDefs} values={filterValues} onChange={handleFilterChange} />
+        )}
       </div>
 
       <div className="flex items-center gap-2">
