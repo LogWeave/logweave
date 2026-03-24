@@ -158,19 +158,6 @@ SELECT
 FROM logweave.log_metadata
 GROUP BY tenant_id, service, level, interval_start`,
 
-  // Environment dimension in service_stats_5m MV
-  `DROP VIEW IF EXISTS logweave.service_stats_5m_mv`,
-  `ALTER TABLE logweave.service_stats_5m ADD COLUMN IF NOT EXISTS environment LowCardinality(String) DEFAULT ''`,
-  `CREATE MATERIALIZED VIEW IF NOT EXISTS logweave.service_stats_5m_mv
-TO logweave.service_stats_5m AS
-SELECT
-    tenant_id, service, environment, level,
-    toStartOfFiveMinutes(timestamp) AS interval_start,
-    countState()                    AS log_count,
-    countIfState(level = 'ERROR')   AS error_count,
-    countIfState(level = 'WARN')    AS warn_count
-FROM logweave.log_metadata
-GROUP BY tenant_id, service, environment, level, interval_start`,
 
   // 18. Cooldown minutes column on alert_rules
   `ALTER TABLE logweave.alert_rules ADD COLUMN IF NOT EXISTS cooldown_minutes UInt32 DEFAULT 0`,
@@ -234,6 +221,20 @@ GROUP BY tenant_id, service, environment, level, interval_start`,
       countIfState(level = 'WARN')    AS warn_count
   FROM logweave.log_metadata
   GROUP BY tenant_id, service, level, interval_start`,
+
+  // Environment dimension in service_stats_5m (must come after CREATE TABLE above)
+  `DROP VIEW IF EXISTS logweave.service_stats_5m_mv`,
+  `ALTER TABLE logweave.service_stats_5m ADD COLUMN IF NOT EXISTS environment LowCardinality(String) DEFAULT ''`,
+  `CREATE MATERIALIZED VIEW IF NOT EXISTS logweave.service_stats_5m_mv
+TO logweave.service_stats_5m AS
+SELECT
+    tenant_id, service, environment, level,
+    toStartOfFiveMinutes(timestamp) AS interval_start,
+    countState()                    AS log_count,
+    countIfState(level = 'ERROR')   AS error_count,
+    countIfState(level = 'WARN')    AS warn_count
+FROM logweave.log_metadata
+GROUP BY tenant_id, service, environment, level, interval_start`,
 
   // 12. Alert rules — unified template watches + threshold rules
   `CREATE TABLE IF NOT EXISTS logweave.alert_rules (
