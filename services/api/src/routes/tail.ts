@@ -96,10 +96,10 @@ export function tailRoutes(deps: TailDeps): Router {
   router.get('/tail', validateQuery(tailFilterSchema), (req: Request, res: Response) => {
     const tenantId = getTenantId(res)
     const keyId = getKeyId(res)
-    const tailMode = deps.settingsStore.get(tenantId).tailMode
+    const tailMode = deps.settingsStore.get(tenantId).tailMode ?? 'metadata'
 
-    // Check if tail is enabled
-    if (!tailMode || tailMode === 'disabled') {
+    // Check if tail is explicitly disabled
+    if (tailMode === 'disabled') {
       res.status(HttpStatus.FORBIDDEN).json({
         error: { code: 'TAIL_DISABLED', message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.' },
       })

@@ -81,6 +81,29 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
     if (config.apiKey) params.set('api_key', config.apiKey)
 
     const url = `${config.apiUrl}/v1/tail?${params.toString()}`
+
+    // Pre-flight: EventSource can't read HTTP error bodies, so do a HEAD-like
+    // fetch first to catch 403/4xx and surface the error message to the user.
+    fetch(url, { headers: { Accept: 'text/event-stream' } })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          const msg = body?.error?.message ?? `Server returned ${res.status}`
+          setStatus('error')
+          setError(msg)
+          return
+        }
+        // Abort the pre-flight response — we'll use EventSource for the real stream
+        res.body?.cancel()
+        openEventSource(url)
+      })
+      .catch((err) => {
+        setStatus('error')
+        setError(err instanceof Error ? err.message : 'Connection failed')
+      })
+  }, [filters, disconnect, maxEvents, resetActivityTimer])
+
+  const openEventSource = useCallback((url: string) => {
     const es = new EventSource(url)
 
     eventSourceRef.current = es
@@ -135,7 +158,7 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
       setEventRate(rateCountRef.current)
       rateCountRef.current = 0
     }, 1000)
-  }, [filters, maxEvents, disconnect, resetActivityTimer])
+  }, [maxEvents, disconnect, resetActivityTimer])
 
   // Cleanup on unmount
   useEffect(() => {
