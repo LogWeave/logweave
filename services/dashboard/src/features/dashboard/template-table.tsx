@@ -317,6 +317,41 @@ export function TemplateTable({ className }: { className?: string }) {
         </div>
       </CardHeader>
       <CardContent>
+        {/* Card view for small screens */}
+        <div className="lg:hidden space-y-2">
+          {rows.length === 0 && (
+            <p className="py-8 text-center text-text-muted text-sm">
+              {globalFilter ? 'No patterns match your search.' : 'No pattern data yet.'}
+            </p>
+          )}
+          {rows.slice(0, 50).map((row) => (
+            <div
+              key={row.id}
+              className={cn(
+                'p-3 rounded-lg bg-surface-base hover:bg-surface-elevated transition-colors cursor-pointer',
+                selectedTemplateId === row.original.templateId && 'bg-brand-500/10 border-l-2 border-l-brand-500',
+              )}
+              onClick={() => setSelectedTemplateId(row.original.templateId)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setSelectedTemplateId(row.original.templateId)
+              }}
+              tabIndex={0}
+            >
+              <div className="flex items-start gap-2">
+                <code className="text-xs font-mono text-text-primary flex-1 leading-relaxed line-clamp-2">{row.original.templateText}</code>
+                {row.original.isNewToday && <Badge variant="new" className="shrink-0">NEW</Badge>}
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-[10px] text-text-muted">
+                <span className="text-brand-400">{row.original.service}</span>
+                <span>{row.original.occurrenceCount.toLocaleString()} events</span>
+                {row.original.errorCount > 0 && <span className="text-danger">{row.original.errorCount} errors</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Table view for large screens */}
+        <div className="hidden lg:block">
         {/* Table header */}
         <div className="flex items-center border-b border-border-subtle pb-2 mb-1">
           {table.getHeaderGroups().map((headerGroup) =>
@@ -420,6 +455,7 @@ export function TemplateTable({ className }: { className?: string }) {
                 : 'No pattern data yet. Install the @logweave/transport SDK and send some logs to get started.'}
           </div>
         )}
+        </div>
       </CardContent>
     </Card>
   )

@@ -5,6 +5,8 @@
  */
 export const TOOLTIPS = {
   // --- KPI Strip ---
+  spikesActive:
+    'Patterns with anomaly scores above the threshold. These are patterns experiencing unusual activity compared to their baseline.',
   newToday:
     'Distinct log patterns seen for the first time today. A sudden spike often means a new deployment introduced new message patterns.',
   unclustered:

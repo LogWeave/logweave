@@ -16,6 +16,10 @@ const AlertsPage = lazy(() =>
   import('./features/alerts/alerts-page').then((m) => ({ default: m.AlertsPage })),
 )
 
+const MockupsPage = lazy(() =>
+  import('./features/mockups/ux-mockups').then((m) => ({ default: m.MockupsPage })),
+)
+
 export function App() {
   return (
     <BrowserRouter>
@@ -43,6 +47,14 @@ export function App() {
             element={
               <Suspense fallback={<Skeleton className="h-64 w-full" />}>
                 <SettingsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/mockups"
+            element={
+              <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+                <MockupsPage />
               </Suspense>
             }
           />

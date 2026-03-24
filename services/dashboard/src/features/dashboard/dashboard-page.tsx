@@ -2,7 +2,6 @@ import { useLocation } from 'react-router-dom'
 import { ErrorBoundary } from '../../components/error-boundary'
 import { useUrlSync } from '../../hooks/use-url-sync'
 import { ChangesPanel } from './changes-panel'
-import { CompressionFunnel } from './compression-funnel'
 import { KpiStrip } from './kpi-strip'
 import { ServiceHealthCards } from './service-health-cards'
 import { TemplateTable } from './template-table'
@@ -14,15 +13,10 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Row 1: KPI strip + compression funnel */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <ErrorBoundary name="KPI Strip" key={`kpi-${location.key}`}>
-          <KpiStrip className="lg:col-span-3" />
-        </ErrorBoundary>
-        <ErrorBoundary name="Compression" key={`funnel-${location.key}`}>
-          <CompressionFunnel />
-        </ErrorBoundary>
-      </div>
+      {/* Row 1: KPI strip — priority tier layout */}
+      <ErrorBoundary name="KPI Strip" key={`kpi-${location.key}`}>
+        <KpiStrip />
+      </ErrorBoundary>
 
       {/* Row 2: What Changed — most actionable, above the fold */}
       <ErrorBoundary name="What Changed" key={`changes-${location.key}`}>

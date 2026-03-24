@@ -85,7 +85,7 @@ export function ServiceHealthCards({ className }: { className?: string }) {
             onClick={() => setServiceFilter(isActive ? null : svc.service)}
             className={cn(isActive && 'border-brand-500/50 bg-brand-500/5')}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <div
                 className={cn(
                   'h-8 w-8 rounded-[var(--radius-md)] flex items-center justify-center shrink-0',
