@@ -19,7 +19,7 @@
         "LOGWEAVE_API_URL": "http://localhost:3000",
         "LOGWEAVE_API_KEY": "dev-key",
         "LOGWEAVE_DEV": "true",
-        "LOGWEAVE_CLICKHOUSE_URL": "http://logweave:logweave-dev@localhost:8123",
+        "LOGWEAVE_CLICKHOUSE_URL": "http://localhost:8123",
         "LOGWEAVE_CLUSTERER_URL": "http://localhost:8000"
       }
     }
