@@ -319,9 +319,7 @@ const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS
 const MAX_RETRIES = 5
 const INITIAL_BACKOFF_MS = 200
 
-async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
+import { sleep } from '../lib/sleep.js'
 
 export async function initSchema(client: ClickHouseClient, logger: pino.Logger): Promise<void> {
   let lastError: unknown

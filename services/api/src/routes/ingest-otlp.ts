@@ -24,7 +24,8 @@ export interface OtlpIngestDeps {
   eventBus?: EventBus
 }
 
-const MAX_BATCH_SIZE = 1000
+import { MAX_BATCH_SIZE } from '../lib/constants.js'
+
 const MAX_BODY_BYTES = 5 * 1024 * 1024 // 5MB
 
 /**

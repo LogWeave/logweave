@@ -18,9 +18,7 @@ function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max)}\u2026` : s
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
-}
+import { sleep } from '../lib/sleep.js'
 
 export interface SlackObserverOptions {
   settingsStore: TenantSettingsStore

@@ -25,9 +25,7 @@ function extractPagerDutyKey(channel: string): string {
   return channel.slice(PAGERDUTY_PREFIX.length)
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
-}
+import { sleep } from '../lib/sleep.js'
 
 export interface WebhookObserverOptions {
   settingsStore: TenantSettingsStore

@@ -21,7 +21,8 @@ export interface GenericIngestDeps {
   eventBus?: EventBus
 }
 
-const MAX_BATCH_SIZE = 1000
+import { MAX_BATCH_SIZE } from '../lib/constants.js'
+
 const genericParser = new GenericLogParser()
 
 export function genericIngestRoutes(deps: GenericIngestDeps): Router {
