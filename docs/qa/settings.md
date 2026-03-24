@@ -38,3 +38,25 @@
 ## Edge Cases
 - Webhook URL validation is client-side (prefix check) — should not accept arbitrary URLs
 - Multiple rapid clicks on Save/Test/Disconnect should not cause duplicate requests (buttons disable during pending)
+
+## Tag Extraction — Not Configured
+- Card title "Tag Extraction"
+- Status badge shows "Not configured" (gray) when no keys set
+- Description text explains the feature (extract custom metadata fields, e.g. customer_id, order_id)
+- Input field with placeholder "field_name"
+- "Add Key" button — disabled when input is empty, enabled when text entered
+
+## Tag Extraction — Configured
+- Status badge shows count (e.g. "2 keys") in blue
+- Tags displayed as removable chips/pills with × button
+- Each tag shows the key name
+- Clicking × on a tag removes it with toast confirmation
+- Input + "Add Key" still visible below tags for adding more
+
+## Tag Extraction — Interactions
+- Add key: enter name → click Add Key (or press Enter) → toast "Added 'field_name'" → input clears → tag appears as chip
+- Add invalid key (special chars): enter "bad key!" → toast error about alphanumeric only
+- Add duplicate key: enter existing key → toast error "already configured"
+- Add when at 20 keys: toast error "Maximum 20 tag keys"
+- Remove key: click × on chip → toast "Removed 'field_name'" → chip disappears
+- Button shows "Saving..." and is disabled during mutations
