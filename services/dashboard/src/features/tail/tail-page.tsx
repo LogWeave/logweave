@@ -87,13 +87,26 @@ export function TailPage() {
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center gap-3 p-3 border-b border-border-subtle bg-surface-raised">
-        {!isConnected ? (
+        {status === 'disconnected' && (
           <Button size="sm" onClick={connect}>
             Start Tail
           </Button>
-        ) : (
+        )}
+        {status === 'connecting' && (
+          <Button size="sm" disabled>
+            <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse mr-1.5" />
+            Connecting...
+          </Button>
+        )}
+        {status === 'connected' && (
           <Button size="sm" variant="secondary" onClick={disconnect}>
+            <div className="h-2 w-2 rounded-full bg-success animate-pulse mr-1.5" />
             Stop
+          </Button>
+        )}
+        {status === 'error' && (
+          <Button size="sm" variant="secondary" onClick={connect}>
+            Retry
           </Button>
         )}
 
