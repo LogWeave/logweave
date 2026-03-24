@@ -33,7 +33,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliOptions {
     throw new Error('--duration must be a non-negative number')
   }
 
-  const apiKey = getArg(argv, '--api-key') ?? process.env.LOGWEAVE_SIM_API_KEY ?? 'e2e-key-tenant-a'
+  const apiKey = getArg(argv, '--api-key') ?? process.env.LOGWEAVE_SIM_API_KEY ?? 'dev-key'
 
   const endpoint =
     getArg(argv, '--endpoint') ??
