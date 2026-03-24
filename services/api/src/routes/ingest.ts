@@ -34,6 +34,7 @@ export function ingestRoutes(deps: IngestDeps): Router {
             anomalyScorer: deps.anomalyScorer,
             tailBuffer: deps.tailBuffer,
             settingsStore: deps.settingsStore,
+            eventBus: deps.eventBus,
           },
           tenantId,
           body.events,
