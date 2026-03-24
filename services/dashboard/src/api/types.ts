@@ -123,6 +123,14 @@ export interface TemplateEvent {
   statusCode: number
 }
 
+export interface DeployEntry {
+  deployId: string
+  service: string
+  version: string | null
+  commitSha: string | null
+  timestamp: string
+}
+
 export interface SlackTestResult {
   success: boolean
   error?: string

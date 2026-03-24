@@ -21,6 +21,7 @@ export const queryKeys = {
     ['dashboard', 'template-status-codes', hours, templateId, since, until] as const,
   templateEvents: (templateId: string, hours: number, statusCode?: number) =>
     ['dashboard', 'template-events', templateId, hours, statusCode] as const,
+  deploys: (limit: number) => ['deploys', limit] as const,
   watches: () => ['watches'] as const,
   rules: () => ['rules'] as const,
   alerts: (hours: number) => ['alerts', hours] as const,

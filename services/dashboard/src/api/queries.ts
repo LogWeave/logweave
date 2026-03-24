@@ -8,6 +8,7 @@ import type {
   AlertRule,
   ApiResponse,
   ClusteringHealthData,
+  DeployEntry,
   LevelCount,
   OverviewData,
   ServiceRow,
@@ -201,6 +202,15 @@ export function useTemplateStatusCodes(
         until: timeWindow?.until,
       }),
     enabled: templateId !== null,
+    staleTime: config.staleTimeMs,
+  })
+}
+
+export function useDeploys(limit = 20) {
+  return useQuery({
+    queryKey: queryKeys.deploys(limit),
+    queryFn: () => api.get<ApiResponse<DeployEntry[]>>('/v1/deploys', { limit }),
+    refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
   })
 }
