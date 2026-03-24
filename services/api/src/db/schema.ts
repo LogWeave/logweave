@@ -309,6 +309,23 @@ GROUP BY tenant_id, service, environment, level, interval_start`,
   WHERE template_id != '0'
   GROUP BY tenant_id, service, template_id, day`,
 
+  // 19. Event tags — searchable custom metadata fields (allowlist-only)
+  `CREATE TABLE IF NOT EXISTS logweave.event_tags (
+    tenant_id       LowCardinality(String),
+    event_id        String,
+    template_id     String,
+    service         LowCardinality(String),
+    level           LowCardinality(String),
+    timestamp       DateTime64(3),
+    tag_key         LowCardinality(String),
+    tag_value       String,
+    INDEX idx_tag_value tag_value TYPE bloom_filter(0.01) GRANULARITY 1
+  ) ENGINE = MergeTree()
+  PARTITION BY toYYYYMM(timestamp)
+  ORDER BY (tenant_id, tag_key, tag_value, timestamp)
+  TTL toDateTime(timestamp) + toIntervalDay(30) DELETE
+  SETTINGS ttl_only_drop_parts = 1`,
+
   // ---------------------------------------------------------------------------
   // ALTER migrations — MUST come after all CREATE TABLE statements above
   // ---------------------------------------------------------------------------

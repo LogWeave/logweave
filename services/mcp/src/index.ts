@@ -26,6 +26,7 @@ import {
   logweaveListRules,
   logweaveCreateRule,
   logweaveListAlerts,
+  logweaveSearchByTag,
 } from './tools.js'
 
 // ---------------------------------------------------------------------------
@@ -551,6 +552,30 @@ server.registerTool(
     logweaveListAlerts(
       client,
       args as { hours?: number; rule_id?: string; service?: string; limit?: number },
+    ),
+  ),
+)
+
+server.registerTool(
+  'search_by_tag',
+  {
+    title: 'Search by Tag',
+    description:
+      'Find events by a custom metadata tag (customer_id, order_id, user_id, etc.). ' +
+      'Only works if the tenant has configured tag extraction in Settings. ' +
+      'Use this when investigating a specific customer, order, or request.',
+    inputSchema: {
+      key: z.string().describe('Tag key to search (e.g. "customer_id", "order_id")'),
+      value: z.string().describe('Tag value to match (e.g. "ACME-123")'),
+      hours: z.number().optional().describe('Time window in hours (default: 24)'),
+      limit: z.number().optional().describe('Max results (default: 50, max: 200)'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveSearchByTag(
+      client,
+      args as { key: string; value: string; hours?: number; limit?: number },
     ),
   ),
 )

@@ -4,6 +4,7 @@ export interface ClustererHealth {
 }
 
 export interface LogMetadataRow {
+  id?: string
   tenant_id: string
   timestamp: string
   service: string

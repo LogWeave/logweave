@@ -10,6 +10,7 @@ export interface TenantSettings {
   tailMode?: TailMode
   retentionDays?: number
   maintenanceUntil?: string
+  extractTags?: string[]
 }
 
 interface SettingsRow {
@@ -25,6 +26,7 @@ const SETTING_KEYS: (keyof TenantSettings)[] = [
   'tailMode',
   'retentionDays',
   'maintenanceUntil',
+  'extractTags',
 ]
 
 export interface TenantSettingsStoreOpts {
@@ -74,6 +76,15 @@ export class TenantSettingsStore {
         const parsed = Number(row.setting_value)
         if (Number.isFinite(parsed) && parsed > 0) {
           existing.retentionDays = parsed
+        }
+      } else if (row.setting_key === 'extractTags') {
+        try {
+          const parsed = JSON.parse(row.setting_value)
+          if (Array.isArray(parsed)) {
+            existing.extractTags = parsed.filter((t): t is string => typeof t === 'string')
+          }
+        } catch {
+          // ignore malformed JSON
         }
       }
       this.settings.set(row.tenant_id, existing)

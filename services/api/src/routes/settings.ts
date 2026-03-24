@@ -74,6 +74,45 @@ export function settingsRoutes(deps: SettingsDeps): Router {
     }
   })
 
+  // GET /settings/tags -- returns configured tag extraction keys
+  router.get('/settings/tags', async (_req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const settings = deps.settingsStore.get(tenantId)
+
+      res.status(HttpStatus.OK).json({
+        data: { extractTags: settings.extractTags ?? [] },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // PUT /settings/tags -- update tag extraction keys
+  const extractTagsSchema = z.object({
+    extractTags: z
+      .array(z.string().min(1).max(64).regex(/^[a-zA-Z0-9_.-]+$/, 'Tag keys must be alphanumeric with _ . -'))
+      .max(20, 'Maximum 20 tag keys'),
+  })
+
+  router.put('/settings/tags', validateBody(extractTagsSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const body = req.body as z.infer<typeof extractTagsSchema>
+
+      await deps.settingsStore.set(tenantId, { extractTags: body.extractTags })
+      deps.logger.info({ tenantId, tagCount: body.extractTags.length }, 'Tag extraction keys updated')
+
+      res.status(HttpStatus.OK).json({
+        data: { extractTags: body.extractTags },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
   // POST /settings/slack/test -- send test message
   router.post('/settings/slack/test', async (_req, res, next) => {
     try {

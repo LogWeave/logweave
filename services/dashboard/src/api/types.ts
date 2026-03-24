@@ -131,6 +131,10 @@ export interface DeployEntry {
   timestamp: string
 }
 
+export interface TagSettings {
+  extractTags: string[]
+}
+
 export interface SlackTestResult {
   success: boolean
   error?: string

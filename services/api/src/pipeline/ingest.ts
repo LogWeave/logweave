@@ -5,6 +5,7 @@ import * as metrics from '../metrics.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { TailBuffer } from '../tail/buffer.js'
 import type { LogMetadataRow } from '../types.js'
+import { uuidv7 } from '../uuid.js'
 import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 import type { AnomalyScorer } from './anomaly-scorer.js'
 import type { ClusterClient, ClusterResult } from './cluster-client.js'
@@ -69,6 +70,7 @@ function toMetadataRow(
   options: ParseOptions,
 ): LogMetadataRow {
   return {
+    id: uuidv7(),
     tenant_id: tenantId,
     timestamp: item.timestamp,
     service: item.processed.service,
@@ -186,6 +188,44 @@ export async function ingestBatch(
   const insertStart = Date.now()
   await batchInsert(deps.db, rows)
   const insertMs = Date.now() - insertStart
+
+  // Phase 4.5: Extract configured tags to event_tags table
+  const extractTags = deps.settingsStore?.get(tenantId).extractTags
+  if (extractTags && extractTags.length > 0) {
+    const tagRows: Array<Record<string, unknown>> = []
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      const rawEvent = events[i]
+      if (!row || typeof rawEvent !== 'object' || rawEvent === null) continue
+      const obj = rawEvent as Record<string, unknown>
+      const fields = (typeof obj.fields === 'object' && obj.fields !== null) ? obj.fields as Record<string, unknown> : undefined
+
+      for (const tagKey of extractTags) {
+        const value = obj[tagKey] ?? fields?.[tagKey]
+        if (value === undefined || value === null) continue
+        const strValue = String(value)
+        if (strValue.length === 0 || strValue.length > 256) continue
+
+        tagRows.push({
+          tenant_id: tenantId,
+          event_id: row.id ?? '',
+          template_id: row.template_id ?? '0',
+          service: row.service,
+          level: row.level,
+          timestamp: row.timestamp,
+          tag_key: tagKey,
+          tag_value: strValue,
+        })
+      }
+    }
+    if (tagRows.length > 0) {
+      try {
+        await deps.db.insert({ table: 'logweave.event_tags', values: tagRows, format: 'JSONEachRow' })
+      } catch (err) {
+        deps.logger.error({ err, tenantId, tagCount: tagRows.length }, 'Failed to insert event tags')
+      }
+    }
+  }
 
   // Update global metrics
   metrics.increment(metrics.EVENTS_INGESTED, items.length)

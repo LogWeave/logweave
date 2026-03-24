@@ -16,6 +16,7 @@ import type {
   SlackTestResult,
   SparklineData,
   StatusCodeCount,
+  TagSettings,
   TemplateEvent,
   TemplateRow,
   VolumeData,
@@ -363,6 +364,28 @@ export function useTestSlackConnection() {
     mutationFn: () => api.post<ApiResponse<SlackTestResult>>('/v1/settings/slack/test'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.slackSettings() })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Tag extraction settings
+// ---------------------------------------------------------------------------
+
+export function useTagSettings() {
+  return useQuery({
+    queryKey: queryKeys.tagSettings(),
+    queryFn: () => api.get<ApiResponse<TagSettings>>('/v1/settings/tags'),
+    staleTime: 30_000,
+  })
+}
+
+export function useSaveTagSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (extractTags: string[]) => api.put('/v1/settings/tags', { extractTags }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.tagSettings() })
     },
   })
 }

@@ -3,13 +3,17 @@ import { toast } from 'sonner'
 import {
   useDeleteSlackSettings,
   useSaveSlackSettings,
+  useSaveTagSettings,
   useSlackSettings,
+  useTagSettings,
   useTestSlackConnection,
 } from '../../api/queries'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { cn } from '../../lib/cn'
+
+const TAG_KEY_PATTERN = /^[a-zA-Z0-9_.-]+$/
 
 export function SettingsPage() {
   const { data: settingsResponse, isLoading } = useSlackSettings()
@@ -18,6 +22,11 @@ export function SettingsPage() {
   const deleteMutation = useDeleteSlackSettings()
   const testMutation = useTestSlackConnection()
   const [webhookUrl, setWebhookUrl] = useState('')
+
+  const { data: tagResponse } = useTagSettings()
+  const tagSettings = tagResponse?.data
+  const saveTagsMutation = useSaveTagSettings()
+  const [newTagKey, setNewTagKey] = useState('')
 
   const handleSave = () => {
     if (!webhookUrl.startsWith('https://hooks.slack.com/')) {
@@ -146,6 +155,111 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Tag Extraction</CardTitle>
+            <span
+              className={cn(
+                'text-[11px] font-medium px-2 py-0.5 rounded-full',
+                tagSettings?.extractTags?.length
+                  ? 'bg-brand-500/10 text-brand-400'
+                  : 'bg-surface-elevated text-text-muted',
+              )}
+            >
+              {tagSettings?.extractTags?.length
+                ? `${tagSettings.extractTags.length} key${tagSettings.extractTags.length > 1 ? 's' : ''}`
+                : 'Not configured'}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <p className="text-xs text-text-muted">
+              Extract custom metadata fields from your log events for searchable tags. Specify which
+              field names to extract (e.g. customer_id, order_id, request_id). Max 20 keys.
+            </p>
+
+            {tagSettings?.extractTags && tagSettings.extractTags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {tagSettings.extractTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-surface-elevated text-text-secondary"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      className="text-text-muted hover:text-danger ml-0.5"
+                      onClick={() => {
+                        const updated = tagSettings.extractTags.filter((t) => t !== tag)
+                        saveTagsMutation.mutate(updated, {
+                          onSuccess: () => toast.success(`Removed "${tag}"`),
+                          onError: () => toast.error('Failed to update tags'),
+                        })
+                      }}
+                    >
+                      &times;
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Input
+                placeholder="field_name"
+                value={newTagKey}
+                onChange={(e) => setNewTagKey(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddTag()
+                  }
+                }}
+                className="max-w-[200px]"
+              />
+              <Button
+                size="sm"
+                onClick={handleAddTag}
+                disabled={saveTagsMutation.isPending || !newTagKey}
+              >
+                {saveTagsMutation.isPending ? 'Saving...' : 'Add Key'}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
+
+  function handleAddTag() {
+    const key = newTagKey.trim()
+    if (!key) return
+    if (!TAG_KEY_PATTERN.test(key)) {
+      toast.error('Tag keys must be alphanumeric with _ . - only')
+      return
+    }
+    if (key.length > 64) {
+      toast.error('Tag key must be 64 characters or less')
+      return
+    }
+    const current = tagSettings?.extractTags ?? []
+    if (current.includes(key)) {
+      toast.error(`"${key}" is already configured`)
+      return
+    }
+    if (current.length >= 20) {
+      toast.error('Maximum 20 tag keys')
+      return
+    }
+    saveTagsMutation.mutate([...current, key], {
+      onSuccess: () => {
+        toast.success(`Added "${key}"`)
+        setNewTagKey('')
+      },
+      onError: () => toast.error('Failed to save tag key'),
+    })
+  }
 }

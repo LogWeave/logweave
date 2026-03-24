@@ -26,6 +26,7 @@ export const queryKeys = {
   rules: () => ['rules'] as const,
   alerts: (hours: number) => ['alerts', hours] as const,
   slackSettings: () => ['settings', 'slack'] as const,
+  tagSettings: () => ['settings', 'tags'] as const,
 } as const
 
 /** Convert level filter array to stable query param string. */

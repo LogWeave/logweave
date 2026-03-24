@@ -744,6 +744,37 @@ export async function logweaveTemplateEvents(
 }
 
 // ---------------------------------------------------------------------------
+// Tag search tools
+// ---------------------------------------------------------------------------
+
+export async function logweaveSearchByTag(
+  client: LogWeaveClient,
+  args: { key: string; value: string; hours?: number; limit?: number },
+): Promise<string> {
+  const res = (await client.get('/events/by-tag', {
+    key: args.key,
+    value: args.value,
+    hours: args.hours,
+    limit: args.limit,
+  })) as ApiResponse
+
+  const events = (res.data as Array<Record<string, unknown>>) ?? []
+
+  if (events.length === 0) {
+    return `No events found with ${args.key} = "${args.value}" in the last ${args.hours ?? 24} hours.`
+  }
+
+  let text = `## Events with ${args.key} = "${args.value}" (${events.length} results)\n\n`
+  for (const e of events) {
+    const ts = (e.timestamp as string).slice(0, 19).replace('T', ' ')
+    text += `- **${ts}** ${e.service} [${e.level}] template: ${e.templateId}\n`
+  }
+
+  text += formatMeta(res.meta)
+  return text
+}
+
+// ---------------------------------------------------------------------------
 // Alert rules + history tools
 // ---------------------------------------------------------------------------
 

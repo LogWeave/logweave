@@ -29,6 +29,7 @@ import { otlpIngestRoutes } from './routes/ingest-otlp.js'
 import { rawLogsRoutes } from './routes/raw-logs.js'
 import { ruleRoutes } from './routes/rules.js'
 import { settingsRoutes } from './routes/settings.js'
+import { tagRoutes } from './routes/tags.js'
 import { tailRoutes } from './routes/tail.js'
 import { watchRoutes } from './routes/watches.js'
 import type { TailBuffer } from './tail/buffer.js'
@@ -199,6 +200,12 @@ export function createApp(deps: AppDependencies): express.Express {
       db: deps.db,
       logger: deps.logger,
       encryptionKey: deps.config.encryptionKey,
+    }),
+  )
+  v1.use(
+    tagRoutes({
+      db: deps.db,
+      logger: deps.logger,
     }),
   )
   v1.use(
