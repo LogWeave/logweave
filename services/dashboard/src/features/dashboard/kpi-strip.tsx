@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Inbox, Layers, Sparkles, Unplug, Zap } from 'lucide-react'
+import { Activity, AlertTriangle, Inbox, Layers, Server, Sparkles, Unplug, Zap } from 'lucide-react'
 import { useMemo } from 'react'
 import { useOverview, useTemplates } from '../../api/queries'
 import { QueryError } from '../../components/ui/query-error'
@@ -63,7 +63,7 @@ export function KpiStrip({ className }: { className?: string }) {
   return (
     <div className={cn('space-y-3', className)}>
       {/* Primary row — hero metrics that matter for triage */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
           label="Spikes Active"
           value={spikeCount}
@@ -91,6 +91,13 @@ export function KpiStrip({ className }: { className?: string }) {
           trend={trendPercent(overview?.totalEvents ?? 0, prev?.totalEvents)}
           trendLabel={trendLabel}
           trendPolarity="positive"
+          loading={isLoading}
+        />
+        <KpiCard
+          label="Services"
+          value={overview?.serviceCount ?? 0}
+          icon={Server}
+          trendPolarity="neutral"
           loading={isLoading}
         />
       </div>
