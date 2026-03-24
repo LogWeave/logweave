@@ -42,6 +42,7 @@ export class TailBuffer {
   private readonly subscribers = new Map<string, Set<Subscriber>>()
   private readonly config: TailBufferConfig
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
+  private totalEventCount = 0
 
   constructor(config?: Partial<TailBufferConfig>) {
     this.config = { ...TAIL_DEFAULTS, ...config }
@@ -78,7 +79,10 @@ export class TailBuffer {
 
     ring.events[ring.head] = tailEvent
     ring.head = (ring.head + 1) % ring.events.length
-    if (ring.size < ring.events.length) ring.size++
+    if (ring.size < ring.events.length) {
+      ring.size++
+      this.totalEventCount++
+    }
     ring.lastPushTime = Date.now()
 
     // Notify subscribers (non-blocking — callbacks must queue, not write)
@@ -191,14 +195,10 @@ export class TailBuffer {
 
   /** Get buffer statistics. */
   stats(): TailBufferStats {
-    let totalEvents = 0
-    for (const ring of this.rings.values()) {
-      totalEvents += ring.size
-    }
     return {
       tenants: this.rings.size,
-      totalEvents,
-      memoryBytes: totalEvents * ESTIMATED_EVENT_BYTES,
+      totalEvents: this.totalEventCount,
+      memoryBytes: this.totalEventCount * ESTIMATED_EVENT_BYTES,
     }
   }
 
@@ -249,6 +249,8 @@ export class TailBuffer {
     }
 
     if (lruTenant) {
+      const evicted = this.rings.get(lruTenant)
+      if (evicted) this.totalEventCount -= evicted.size
       this.rings.delete(lruTenant)
       this.subscribers.delete(lruTenant)
     }
@@ -261,6 +263,7 @@ export class TailBuffer {
     for (const [tenantId, ring] of this.rings) {
       // Evict idle tenants
       if (now - ring.lastPushTime > this.config.idleTimeoutMs) {
+        this.totalEventCount -= ring.size
         this.rings.delete(tenantId)
         this.subscribers.delete(tenantId)
         continue

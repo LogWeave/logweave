@@ -199,6 +199,12 @@ export class ThresholdEvaluator {
       if (lastAlerted < cooldownCutoff) this.cooldowns.delete(key)
     }
 
+    // Prune firingRules for deleted/disabled rules
+    const activeRuleKeys = new Set(rules.map((r) => `${r.tenantId}:${r.ruleId}`))
+    for (const key of this.firingRules) {
+      if (!activeRuleKeys.has(key)) this.firingRules.delete(key)
+    }
+
     return alertCount
   }
 

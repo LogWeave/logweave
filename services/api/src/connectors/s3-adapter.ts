@@ -277,19 +277,21 @@ export class S3Adapter implements LogSourceAdapter {
     const matches: Array<{ message: string; timestamp?: string }> = []
     let bytesRead = 0
 
-    for await (const line of rl) {
-      bytesRead += Buffer.byteLength(line, 'utf8')
+    try {
+      for await (const line of rl) {
+        bytesRead += Buffer.byteLength(line, 'utf8')
 
-      const message = config.logFormat === 'jsonl' ? extractJsonMessage(line) : line
+        const message = config.logFormat === 'jsonl' ? extractJsonMessage(line) : line
 
-      if (message && regex.test(message)) {
-        const timestamp = config.logFormat === 'jsonl' ? extractJsonTimestamp(line) : undefined
-        matches.push({ message, timestamp })
-        if (matches.length >= remaining) break
+        if (message && regex.test(message)) {
+          const timestamp = config.logFormat === 'jsonl' ? extractJsonTimestamp(line) : undefined
+          matches.push({ message, timestamp })
+          if (matches.length >= remaining) break
+        }
       }
+    } finally {
+      rl.close()
     }
-
-    rl.close()
     return { matches, bytesRead }
   }
 }
