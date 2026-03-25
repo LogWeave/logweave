@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { Check, ClipboardCopy, MessageSquareText } from 'lucide-react'
 import { config } from '../../config'
 import { cn } from '../../lib/cn'
@@ -30,10 +31,22 @@ export function StepConnectAi({ complete }: StepConnectAiProps) {
 
   if (complete) {
     return (
-      <div className="flex items-center gap-2 text-success-500 text-sm">
-        <Check size={16} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+        className="flex items-center gap-2 text-success-500 text-sm"
+      >
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.1, type: 'spring', stiffness: 400, damping: 15 }}
+          className="h-5 w-5 rounded-full bg-success-500/20 flex items-center justify-center"
+        >
+          <Check size={12} />
+        </motion.div>
         <span>AI assistant connected!</span>
-      </div>
+      </motion.div>
     )
   }
 

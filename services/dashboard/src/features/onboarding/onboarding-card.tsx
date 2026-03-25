@@ -104,13 +104,23 @@ export function OnboardingCard() {
                   isExpanded && 'bg-surface-elevated',
                 )}
               >
-                {step.complete ? (
-                  <div className="h-5 w-5 rounded-full bg-success-500/20 flex items-center justify-center shrink-0">
-                    <Check size={12} className="text-success-500" />
-                  </div>
-                ) : (
-                  <CircleDot size={20} className="text-text-muted shrink-0" />
-                )}
+                <AnimatePresence mode="wait" initial={false}>
+                  {step.complete ? (
+                    <motion.div
+                      key="done"
+                      initial={{ scale: 0, rotate: -90 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+                      className="h-5 w-5 rounded-full bg-success-500/20 flex items-center justify-center shrink-0"
+                    >
+                      <Check size={12} className="text-success-500" />
+                    </motion.div>
+                  ) : (
+                    <motion.div key="pending" exit={{ scale: 0 }} className="shrink-0">
+                      <CircleDot size={20} className="text-text-muted" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 <span
                   className={cn(
                     'text-sm flex-1',
