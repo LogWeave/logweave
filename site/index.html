@@ -4,7 +4,40 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LogWeave — Log Intelligence for AI Agents</title>
-  <meta name="description" content="LogWeave extracts patterns from your logs and makes them queryable by your AI coding assistant. Self-hosted, open source, 21 MCP tools.">
+  <meta name="description" content="LogWeave extracts patterns from your logs and makes them queryable by your AI coding assistant. Self-hosted, free, 21 MCP tools. Ask your AI about production.">
+  <meta name="keywords" content="log intelligence, MCP, AI agents, log analysis, pattern detection, anomaly detection, self-hosted, observability, Claude, Cursor, Drain3, ClickHouse">
+  <meta name="author" content="LogWeave">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://logweave.dev">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="LogWeave — Log Intelligence for AI Agents">
+  <meta property="og:description" content="Extract patterns from your logs. Query them with your AI. 21 MCP tools for production debugging. Self-hosted and free.">
+  <meta property="og:url" content="https://logweave.dev">
+  <meta property="og:image" content="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/populated-dash.png">
+  <meta property="og:site_name" content="LogWeave">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="LogWeave — Log Intelligence for AI Agents">
+  <meta name="twitter:description" content="Extract patterns from your logs. Query them with your AI. 21 MCP tools for production debugging.">
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/populated-dash.png">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "LogWeave",
+    "description": "Log intelligence platform that extracts patterns from logs and makes them queryable by AI coding assistants via MCP tools.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, Docker",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "url": "https://logweave.dev",
+    "softwareVersion": "0.1.0"
+  }
+  </script>
   <style>
     :root {
       --bg: #07090f;
@@ -283,7 +316,6 @@
       <div class="nav-links">
         <a href="#features">Features</a>
         <a href="#mcp">MCP Tools</a>
-        <a href="#pricing">Pricing</a>
         <a href="https://github.com/logweave/logweave" target="_blank">GitHub</a>
         <a href="https://github.com/logweave/logweave/blob/main/docs/install.md" target="_blank" class="nav-cta">Get Started</a>
       </div>
@@ -294,7 +326,7 @@
   <section class="hero">
     <div class="hero-badge">
       <span class="dot"></span>
-      Self-hosted &middot; BSL Licensed &middot; 21 MCP Tools
+      Beta &middot; Self-hosted &middot; Free &middot; 21 MCP Tools
     </div>
     <h1>Log intelligence for<br><em>AI agents</em></h1>
     <p class="hero-sub">
@@ -397,54 +429,12 @@
     </div>
   </section>
 
-  <!-- Pricing -->
-  <section class="pricing" id="pricing">
-    <h2>Simple pricing</h2>
-    <p>Free for small teams. Pay when you grow.</p>
-    <div class="pricing-cards">
-      <div class="pricing-card">
-        <h3>Starter</h3>
-        <div class="price">Free</div>
-        <p style="color: var(--text-muted); font-size: 14px;">Up to 3 users, 1 tenant</p>
-        <ul>
-          <li>All features included</li>
-          <li>21 MCP tools</li>
-          <li>Dashboard + live tail</li>
-          <li>Alerting (Slack, PagerDuty)</li>
-          <li>Community support</li>
-        </ul>
-      </div>
-      <div class="pricing-card featured">
-        <h3>Team</h3>
-        <div class="price">$30 <span>/user/month</span></div>
-        <p style="color: var(--text-muted); font-size: 14px;">Unlimited users</p>
-        <ul>
-          <li>Everything in Starter</li>
-          <li>Priority support</li>
-          <li>Multiple tenants</li>
-          <li>Extended retention</li>
-          <li>Advanced RBAC (coming soon)</li>
-        </ul>
-      </div>
-      <div class="pricing-card">
-        <h3>Enterprise</h3>
-        <div class="price">Custom</div>
-        <p style="color: var(--text-muted); font-size: 14px;">For large teams</p>
-        <ul>
-          <li>Everything in Team</li>
-          <li>SSO / OIDC</li>
-          <li>High availability</li>
-          <li>Dedicated support + SLA</li>
-          <li>Custom integrations</li>
-        </ul>
-      </div>
-    </div>
-  </section>
+  <!-- Pricing placeholder — will add when ready -->
 
   <!-- CTA -->
   <section class="cta-section">
     <h2>Ready to try it?</h2>
-    <p>Self-host LogWeave in 5 minutes. Free for up to 3 users.</p>
+    <p>Self-host LogWeave in 5 minutes. Free during beta.</p>
     <div class="hero-buttons">
       <a href="https://github.com/logweave/logweave/blob/main/docs/install.md" target="_blank" class="btn btn-primary">Get Started</a>
       <a href="https://github.com/logweave/logweave" target="_blank" class="btn btn-secondary">View Source</a>
