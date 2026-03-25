@@ -86,34 +86,37 @@ class DrainService:
     ) -> list[DrainResult]:
         """Cluster pre-processed messages for a tenant. Synchronous, thread-safe.
 
-        If sim_th is provided, the miner's config is updated for subsequent
-        add_log_message calls within this batch (affects matching, not tree structure).
+        If sim_th is provided, the miner's config is temporarily overridden
+        for this batch, then restored to the original value.
         """
         _validate_tenant_id(tenant_id)
         lock = self._get_lock(tenant_id)
         with lock:
             miner = self._get_or_create_miner(tenant_id)
-            # Apply per-request sim_th if provided
+            original_sim_th = miner.config.drain_sim_th
             if sim_th is not None:
-                miner.drain.config.drain_sim_th = sim_th
-            results: list[DrainResult] = []
-            state_changed = False
-            for msg in messages:
-                result = miner.add_log_message(msg)
-                is_new = result["change_type"] == "cluster_created"
-                results.append(
-                    DrainResult(
-                        drain_cluster_id=result["cluster_id"],
-                        template_text=result["template_mined"],
-                        is_new=is_new,
+                miner.config.drain_sim_th = sim_th
+            try:
+                results: list[DrainResult] = []
+                state_changed = False
+                for msg in messages:
+                    result = miner.add_log_message(msg)
+                    is_new = result["change_type"] == "cluster_created"
+                    results.append(
+                        DrainResult(
+                            drain_cluster_id=result["cluster_id"],
+                            template_text=result["template_mined"],
+                            is_new=is_new,
+                        )
                     )
-                )
-                if result["change_type"] != "none":
-                    state_changed = True
-            if state_changed:
-                gen = self._dirty_generations.get(tenant_id, 0) + 1
-                self._dirty_generations[tenant_id] = gen
-            return results
+                    if result["change_type"] != "none":
+                        state_changed = True
+                if state_changed:
+                    gen = self._dirty_generations.get(tenant_id, 0) + 1
+                    self._dirty_generations[tenant_id] = gen
+                return results
+            finally:
+                miner.config.drain_sim_th = original_sim_th
 
     def get_dirty_tenants(self) -> dict[str, int]:
         """Return {tenant_id: generation} snapshot of dirty tenants."""

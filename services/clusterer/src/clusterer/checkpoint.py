@@ -104,6 +104,15 @@ class CheckpointManager:
                 )
         return result
 
+    def delete(self, tenant_id: str) -> bool:
+        """Delete checkpoint for a tenant. Returns True if file existed."""
+        path = self._dir / f"{tenant_id}{_EXTENSION}"
+        if path.exists():
+            path.unlink()
+            logger.info("Deleted checkpoint for tenant %s", tenant_id)
+            return True
+        return False
+
     def cleanup_stale_tmp(self) -> None:
         """Remove all .drain3.tmp files — they are always stale leftovers."""
         for tmp_path in self._dir.glob(f"*{_TMP_SUFFIX}"):

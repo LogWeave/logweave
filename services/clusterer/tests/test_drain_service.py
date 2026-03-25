@@ -183,3 +183,66 @@ class TestStateSerialization:
         svc2 = DrainService(sim_th=0.4, depth=4)
         svc2.load_state("t1", state)
         assert "t1" in svc2._miners
+
+
+class TestPreview:
+    def test_returns_stats_for_sample_messages(self, svc: DrainService) -> None:
+        messages = [
+            "User alice logged in",
+            "User bob logged in",
+            "User charlie logged in",
+            "Connection timeout to host1",
+            "Connection timeout to host2",
+        ]
+        pattern_count, compression_ratio, templates = svc.preview(messages, sim_th=0.4)
+        assert pattern_count > 0
+        assert pattern_count <= len(messages)
+        assert compression_ratio > 0
+        assert len(templates) > 0
+
+    def test_different_sim_th_gives_different_results(self, svc: DrainService) -> None:
+        messages = [
+            "User alice logged in from 1.2.3.4",
+            "User bob logged in from 5.6.7.8",
+            "User charlie logged in from 9.10.11.12",
+        ]
+        count_low, _, _ = svc.preview(messages, sim_th=0.2)
+        count_high, _, _ = svc.preview(messages, sim_th=0.8)
+        # Higher sim_th = stricter matching = more patterns (or equal)
+        assert count_high >= count_low
+
+    def test_preview_does_not_affect_tenant_miners(self, svc: DrainService) -> None:
+        svc.cluster_messages("t1", ["test message"])
+        assert "t1" in svc._miners
+        miner_before = svc._miners["t1"]
+
+        svc.preview(["different message"], sim_th=0.3)
+        assert svc._miners["t1"] is miner_before
+
+
+class TestResetTenant:
+    def test_clears_existing_miner(self, svc: DrainService) -> None:
+        svc.cluster_messages("t1", ["test"])
+        assert "t1" in svc._miners
+        result = svc.reset_tenant("t1")
+        assert result is True
+        assert "t1" not in svc._miners
+
+    def test_returns_false_for_nonexistent_tenant(self, svc: DrainService) -> None:
+        result = svc.reset_tenant("no-such-tenant")
+        assert result is False
+
+    def test_clears_dirty_generation(self, svc: DrainService) -> None:
+        svc.cluster_messages("t1", ["test"])
+        assert "t1" in svc.get_dirty_tenants()
+        svc.reset_tenant("t1")
+        assert "t1" not in svc.get_dirty_tenants()
+
+
+class TestSimThRestore:
+    def test_sim_th_restored_after_cluster_messages(self, svc: DrainService) -> None:
+        svc.cluster_messages("t1", ["msg1"])
+        miner = svc._miners["t1"]
+        original = miner.config.drain_sim_th
+        svc.cluster_messages("t1", ["msg2"], sim_th=0.8)
+        assert miner.config.drain_sim_th == original

@@ -79,8 +79,10 @@ class ClusterPipeline:
         return await asyncio.to_thread(self._drain.preview, messages, sim_th=sim_th)
 
     async def reset_tenant(self, tenant_id: str) -> bool:
-        """Clear a tenant's miner state. Returns True if miner existed."""
-        return await asyncio.to_thread(self._drain.reset_tenant, tenant_id)
+        """Clear a tenant's miner state and checkpoint. Returns True if miner existed."""
+        existed = await asyncio.to_thread(self._drain.reset_tenant, tenant_id)
+        await asyncio.to_thread(self._checkpoint.delete, tenant_id)
+        return existed
 
     async def restore_checkpoints(self) -> None:
         """Load all checkpoints from disk and restore DrainService state.

@@ -232,14 +232,28 @@ async def cluster(request: ClusterRequest) -> ClusterResponse:
 @app.post("/cluster/preview", response_model=PreviewResponse)
 async def cluster_preview(request: PreviewRequest) -> PreviewResponse:
     pipeline: ClusterPipeline = app.state.pipeline
+    settings = app.state.settings
+    semaphore: asyncio.Semaphore = app.state.semaphore
 
     try:
-        pattern_count, compression_ratio, sample_templates = await pipeline.preview(
-            request.messages, sim_th=request.sim_th
+        await asyncio.wait_for(semaphore.acquire(), timeout=0.1)
+    except TimeoutError:
+        raise HTTPException(
+            status_code=503, detail="Server busy", headers={"Retry-After": "1"}
+        ) from None
+
+    try:
+        pattern_count, compression_ratio, sample_templates = await asyncio.wait_for(
+            pipeline.preview(request.messages, sim_th=request.sim_th),
+            timeout=settings.request_timeout_seconds * 4,
         )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Preview timeout") from None
     except Exception:
         logger.exception("Internal error in /cluster/preview")
         raise HTTPException(status_code=500, detail="Internal server error") from None
+    finally:
+        semaphore.release()
 
     return PreviewResponse(
         pattern_count=pattern_count,
@@ -251,12 +265,22 @@ async def cluster_preview(request: PreviewRequest) -> PreviewResponse:
 @app.post("/cluster/reset", response_model=ResetResponse)
 async def cluster_reset(request: ResetRequest) -> ResetResponse:
     pipeline: ClusterPipeline = app.state.pipeline
+    semaphore: asyncio.Semaphore = app.state.semaphore
+
+    try:
+        await asyncio.wait_for(semaphore.acquire(), timeout=0.1)
+    except TimeoutError:
+        raise HTTPException(
+            status_code=503, detail="Server busy", headers={"Retry-After": "1"}
+        ) from None
 
     try:
         cleared = await pipeline.reset_tenant(request.tenant_id)
     except Exception:
         logger.exception("Internal error in /cluster/reset")
         raise HTTPException(status_code=500, detail="Internal server error") from None
+    finally:
+        semaphore.release()
 
     return ResetResponse(cleared=cleared)
 
