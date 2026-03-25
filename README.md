@@ -14,7 +14,9 @@
 
 ## What It Does
 
-You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 21 MCP tools. No raw log content is ever stored — patterns, metadata, and intelligence only. Raw logs stay in your infrastructure.
+You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 21 MCP tools. Raw logs stay in your infrastructure — LogWeave stores only the patterns, metadata, and custom fields you configure.
+
+LogWeave works alongside your existing logging stack (Datadog, Grafana, CloudWatch). It adds an AI-queryable intelligence layer on top — it doesn't replace your log storage or search tools.
 
 ## Quick Start
 
@@ -139,6 +141,16 @@ Set up alerts in minutes from the dashboard — no config files, no YAML.
 
 LogWeave runs entirely in your infrastructure. Raw logs never leave your environment — LogWeave reads them on demand from your S3 bucket for drill-down, but only stores extracted patterns and metadata. Nothing is sent to external services.
 
+### Data Handling
+
+LogWeave stores **patterns and metadata, not raw logs**. When a log message is ingested:
+
+1. **Pre-processing** strips UUIDs, timestamps, emails, IPs, and numeric IDs
+2. **Clustering** extracts a template pattern (e.g. `Connection to <*> failed after <*>ms`)
+3. **Only the template ID, metadata, and statistics** are stored permanently
+
+For events that fail clustering (e.g. clusterer timeout), a pre-processed version of the message is temporarily stored so it can be re-clustered later. This pre-processed text has high-cardinality tokens removed but may still contain some original message content. Once successfully clustered, it is set to null. If your logs contain sensitive data (PII, payment details), consider adding custom pre-processing rules or restricting which services send logs to LogWeave.
+
 ### Security
 - Username/password login with forced password change
 - Optional TOTP 2FA (Google Authenticator, Authy)
@@ -146,6 +158,7 @@ LogWeave runs entirely in your infrastructure. Raw logs never leave your environ
 - Admin/viewer roles with team management
 - API key auth for SDK and MCP (separate from dashboard login)
 - All secrets encrypted at rest (AES-256-GCM)
+- CSRF protection (double-submit cookie)
 - Session cookies (httpOnly, secure, sameSite)
 - Audit trail for all auth events
 
