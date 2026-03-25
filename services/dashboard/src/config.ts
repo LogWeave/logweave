@@ -5,10 +5,3 @@ export const config = {
   staleTimeMs: 30_000,
   fetchTimeoutMs: 10_000,
 } as const
-
-if (!config.apiKey) {
-  console.warn(
-    '%c[LogWeave] VITE_LOGWEAVE_API_KEY is not set — API requests will fail.',
-    'color: #fbbf24; font-weight: bold',
-  )
-}

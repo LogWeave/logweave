@@ -10,7 +10,24 @@ export class ApiError extends Error {
   }
 }
 
+/** Callback for handling 401 responses (set by AuthProvider). */
+let onUnauthorized: (() => void) | null = null
+
+export function setOnUnauthorized(callback: (() => void) | null): void {
+  onUnauthorized = callback
+}
+
 class ApiClient {
+  private headers(): HeadersInit {
+    const h: HeadersInit = { Accept: 'application/json' }
+    // If VITE_LOGWEAVE_API_KEY is set (dev/legacy), use Bearer auth
+    // Otherwise rely on session cookie (credentials: 'include')
+    if (config.apiKey) {
+      h.Authorization = `Bearer ${config.apiKey}`
+    }
+    return h
+  }
+
   async get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
     const base = config.apiUrl || window.location.origin
     const url = new URL(path, base)
@@ -20,17 +37,18 @@ class ApiClient {
       }
     }
     const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        Accept: 'application/json',
-      },
+      headers: this.headers(),
+      credentials: 'include',
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
+      if (res.status === 401 && onUnauthorized) {
+        onUnauthorized()
+      }
       const body = await res.json().catch(() => ({}))
       const message =
         res.status === 401
-          ? 'Authentication failed — check your API key in the dashboard configuration.'
+          ? 'Authentication failed — please sign in again.'
           : (body?.error?.message ?? res.statusText)
       throw new ApiError(res.status, message)
     }
@@ -42,15 +60,13 @@ class ApiClient {
     const url = new URL(path, base)
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
-        Accept: 'application/json',
-      },
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
+      if (res.status === 401 && onUnauthorized) onUnauthorized()
       const body = await res.json().catch(() => ({}))
       throw new ApiError(res.status, body?.error?.message ?? res.statusText)
     }
@@ -62,15 +78,13 @@ class ApiClient {
     const url = new URL(path, base)
     const res = await fetch(url, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
-        Accept: 'application/json',
-      },
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
+      if (res.status === 401 && onUnauthorized) onUnauthorized()
       const errBody = await res.json().catch(() => ({}))
       throw new ApiError(res.status, errBody?.error?.message ?? res.statusText)
     }
@@ -82,13 +96,12 @@ class ApiClient {
     const url = new URL(path, base)
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        Accept: 'application/json',
-      },
+      headers: this.headers(),
+      credentials: 'include',
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
+      if (res.status === 401 && onUnauthorized) onUnauthorized()
       const errBody = await res.json().catch(() => ({}))
       throw new ApiError(res.status, errBody?.error?.message ?? res.statusText)
     }
