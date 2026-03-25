@@ -69,14 +69,15 @@ describe('LocalEventBus', () => {
     assert.equal(pushed.length, 0)
   })
 
-  it('does not push when tailMode is undefined', () => {
+  it('defaults to metadata mode when tailMode is undefined', () => {
     const { buffer, pushed } = createMockTailBuffer()
     const store = { get: () => ({}) } as unknown as TenantSettingsStore
     const bus = new LocalEventBus(buffer, store)
 
     bus.publishTailEvent('tenant-a', SAMPLE_EVENT)
 
-    assert.equal(pushed.length, 0)
+    assert.equal(pushed.length, 1)
+    assert.equal(pushed[0].event.preProcessedMessage, undefined)
   })
 
   it('isConnected returns true', () => {
