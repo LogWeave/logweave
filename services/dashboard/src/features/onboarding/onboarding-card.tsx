@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Check, ChevronDown, CircleDot, Rocket, Send, Sparkles, X } from 'lucide-react'
+import { Check, ChevronDown, CircleDot, Rocket, Send, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { useDismissOnboarding, useOnboardingStatus } from './use-onboarding'
 import { StepSendLogs } from './step-send-logs'
 import { StepConnectAi } from './step-connect-ai'
+import { StepClustering } from './step-clustering'
 import { CompletionCard } from './completion-card'
 import { DashboardPreview } from './dashboard-preview'
 
-type StepId = 'send-logs' | 'connect-ai'
+type StepId = 'send-logs' | 'connect-ai' | 'clustering'
 
 interface StepDef {
   id: StepId
@@ -28,13 +29,14 @@ export function OnboardingCard() {
   if (isLoading || !status) return null
   if (status.dismissed) return null
 
-  const allDone = status.hasEvents && status.mcpConnected
+  const allDone = status.hasEvents && status.mcpConnected && status.clusteringConfigured
 
   if (allDone) return <CompletionCard />
 
   const steps: StepDef[] = [
     { id: 'send-logs', label: 'Send your first logs', time: '~2 min', icon: Send, complete: status.hasEvents },
     { id: 'connect-ai', label: 'Connect your AI assistant', time: '~1 min', icon: Sparkles, complete: status.mcpConnected },
+    { id: 'clustering', label: 'Tune clustering sensitivity', time: '~1 min', icon: SlidersHorizontal, complete: status.clusteringConfigured },
   ]
 
   const completedCount = steps.filter((s) => s.complete).length
@@ -139,6 +141,7 @@ export function OnboardingCard() {
                     <div className="px-5 pb-4 pt-1">
                       {step.id === 'send-logs' && <StepSendLogs complete={step.complete} />}
                       {step.id === 'connect-ai' && <StepConnectAi complete={step.complete} />}
+                      {step.id === 'clustering' && <StepClustering complete={step.complete} />}
                     </div>
                   </motion.div>
                 )}

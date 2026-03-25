@@ -145,7 +145,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
         data: {
           hasEvents,
           mcpConnected: settings.lastMcpConnectionAt !== undefined,
-          clusteringConfigured: false, // TODO(#135): wire to clusteringSensitivity setting
+          clusteringConfigured: settings.clusteringSensitivity !== undefined,
           dismissed: settings.onboardingDismissedAt !== undefined,
         },
         meta: { fetchedAt: new Date().toISOString() },
@@ -170,6 +170,43 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
       res.status(HttpStatus.OK).json({
         data: { dismissed: true },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // PUT /settings/clustering -- update clustering sensitivity
+  const clusteringSchema = z.object({
+    sensitivity: z.number().min(0.2).max(0.8),
+  })
+
+  router.put('/settings/clustering', validateBody(clusteringSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const body = req.body as z.infer<typeof clusteringSchema>
+
+      await deps.settingsStore.set(tenantId, { clusteringSensitivity: body.sensitivity })
+      deps.logger.info({ tenantId, sensitivity: body.sensitivity }, 'Clustering sensitivity updated')
+
+      res.status(HttpStatus.OK).json({
+        data: { sensitivity: body.sensitivity },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // GET /settings/clustering -- get current clustering sensitivity
+  router.get('/settings/clustering', async (_req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const settings = deps.settingsStore.get(tenantId)
+
+      res.status(HttpStatus.OK).json({
+        data: { sensitivity: settings.clusteringSensitivity ?? null },
         meta: { fetchedAt: new Date().toISOString() },
       })
     } catch (err) {

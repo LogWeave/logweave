@@ -191,4 +191,110 @@ describe('TenantSettings onboarding fields', () => {
     assert.equal(settings.tailMode, 'metadata')
     assert.equal(settings.lastMcpConnectionAt, '2026-03-25T12:00:00Z')
   })
+
+  it('round-trips clusteringSensitivity via set/get', async () => {
+    const store = new TenantSettingsStore()
+    await store.set('t1', { clusteringSensitivity: 0.3 })
+    assert.equal(store.get('t1').clusteringSensitivity, 0.3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PUT /v1/settings/clustering
+// ---------------------------------------------------------------------------
+
+describe('PUT /v1/settings/clustering', () => {
+  it('saves sensitivity and returns it', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .put('/v1/settings/clustering')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ sensitivity: 0.3 })
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.sensitivity, 0.3)
+  })
+
+  it('rejects sensitivity below 0.2', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .put('/v1/settings/clustering')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ sensitivity: 0.1 })
+
+    assert.equal(res.status, 400)
+  })
+
+  it('rejects sensitivity above 0.8', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .put('/v1/settings/clustering')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ sensitivity: 0.9 })
+
+    assert.equal(res.status, 400)
+  })
+
+  it('requires authentication', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .put('/v1/settings/clustering')
+      .send({ sensitivity: 0.4 })
+
+    assert.equal(res.status, 401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /v1/settings/clustering
+// ---------------------------------------------------------------------------
+
+describe('GET /v1/settings/clustering', () => {
+  it('returns null when not configured', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .get('/v1/settings/clustering')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.sensitivity, null)
+  })
+
+  it('returns saved sensitivity', async () => {
+    const { app, settingsStore } = createTestApp()
+    await settingsStore.set(TENANT_A, { clusteringSensitivity: 0.6 })
+
+    const res = await request(app)
+      .get('/v1/settings/clustering')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.sensitivity, 0.6)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// onboarding-status reflects clusteringConfigured
+// ---------------------------------------------------------------------------
+
+describe('onboarding-status clusteringConfigured', () => {
+  it('returns false when no sensitivity set', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .get('/v1/settings/onboarding-status')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.body.data.clusteringConfigured, false)
+  })
+
+  it('returns true when sensitivity is set', async () => {
+    const { app, settingsStore } = createTestApp()
+    await settingsStore.set(TENANT_A, { clusteringSensitivity: 0.4 })
+
+    const res = await request(app)
+      .get('/v1/settings/onboarding-status')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.body.data.clusteringConfigured, true)
+  })
 })

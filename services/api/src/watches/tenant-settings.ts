@@ -13,6 +13,7 @@ export interface TenantSettings {
   extractTags?: string[]
   lastMcpConnectionAt?: string
   onboardingDismissedAt?: string
+  clusteringSensitivity?: number
 }
 
 interface SettingsRow {
@@ -31,6 +32,7 @@ const SETTING_KEYS: (keyof TenantSettings)[] = [
   'extractTags',
   'lastMcpConnectionAt',
   'onboardingDismissedAt',
+  'clusteringSensitivity',
 ]
 
 export interface TenantSettingsStoreOpts {
@@ -94,6 +96,11 @@ export class TenantSettingsStore {
         existing.lastMcpConnectionAt = row.setting_value
       } else if (row.setting_key === 'onboardingDismissedAt') {
         existing.onboardingDismissedAt = row.setting_value
+      } else if (row.setting_key === 'clusteringSensitivity') {
+        const parsed = Number(row.setting_value)
+        if (Number.isFinite(parsed) && parsed >= 0.2 && parsed <= 0.8) {
+          existing.clusteringSensitivity = parsed
+        }
       }
       this.settings.set(row.tenant_id, existing)
     }

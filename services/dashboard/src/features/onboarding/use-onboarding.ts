@@ -21,11 +21,12 @@ export function useDismissOnboarding() {
   })
 }
 
-/** Count of incomplete onboarding steps (0-2, clustering excluded for now). */
+/** Count of incomplete onboarding steps (0-3). */
 export function useOnboardingRemaining(status: OnboardingStatus | undefined): number {
   if (!status) return 0
   let remaining = 0
   if (!status.hasEvents) remaining++
   if (!status.mcpConnected) remaining++
+  if (!status.clusteringConfigured) remaining++
   return remaining
 }
