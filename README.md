@@ -202,4 +202,4 @@ cd services/clusterer && uv run poe test  # 106 tests
 
 ## License
 
-MIT
+[Business Source License 1.1](LICENSE) — free to self-host for your own use. Cannot be offered as a commercial hosted service. Converts to Apache 2.0 after 4 years.
