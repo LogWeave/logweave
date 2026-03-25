@@ -1,23 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
-import type { DbClient } from '../../src/db/client.js'
 import { AnomalyScorer } from '../../src/pipeline/anomaly-scorer.js'
 import { AlertDispatcher, type AlertEvent, type TemplateAlertEvent } from '../../src/watches/alert-observer.js'
+import { createMockDb } from '../helpers/mock-db.js'
 import { AlertEvaluator } from '../../src/watches/alert-evaluator.js'
 import { WatchStore } from '../../src/watches/watch-store.js'
 
 const silentLogger = pino({ level: 'silent' })
-
-function createMockDb(): DbClient {
-  return {
-    query: async () => [],
-    insert: async () => {},
-    command: async () => {},
-    ping: async () => true,
-    close: async () => {},
-  } as unknown as DbClient
-}
 
 function createTestSetup(options: { clock?: number; cooldownMs?: number } = {}) {
   const clock = options.clock ?? Date.now()

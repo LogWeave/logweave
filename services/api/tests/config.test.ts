@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { beforeEach, describe, it } from 'node:test'
+import { afterEach, beforeEach, describe, it } from 'node:test'
 
 describe('loadConfig', () => {
   const validEnv = {
@@ -8,14 +8,31 @@ describe('loadConfig', () => {
     LOGWEAVE_API_KEYS: '{"test-key-1":"tenant-a","test-key-2":"tenant-b"}',
   }
 
+  // Snapshot and restore full env to prevent cross-test pollution
+  let envSnapshot: Record<string, string | undefined> = {}
+
   beforeEach(() => {
+    envSnapshot = { ...process.env }
     // Clear all LOGWEAVE_ vars to isolate tests
     for (const key of Object.keys(process.env)) {
       if (key.startsWith('LOGWEAVE_')) {
         delete process.env[key]
       }
     }
-    delete process.env.NODE_ENV
+  })
+
+  afterEach(() => {
+    // Restore original env
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith('LOGWEAVE_') && !(key in envSnapshot)) {
+        delete process.env[key]
+      }
+    }
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value !== undefined) {
+        process.env[key] = value
+      }
+    }
   })
 
   it('throws when LOGWEAVE_CLICKHOUSE_URL is missing', async () => {

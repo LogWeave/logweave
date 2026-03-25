@@ -3,9 +3,9 @@ import { describe, it } from 'node:test'
 import express, { Router } from 'express'
 import pino from 'pino'
 import request from 'supertest'
-import type { DbClient } from '../../src/db/client.js'
 import { createAuthMiddleware } from '../../src/middleware/auth.js'
 import { createErrorHandler } from '../../src/middleware/error-handler.js'
+import { createMockDb } from '../helpers/mock-db.js'
 import { TailBuffer } from '../../src/tail/buffer.js'
 import { TailTokenStore } from '../../src/tail/token-store.js'
 import { tailRoutes, tailSseRoute } from '../../src/routes/tail.js'
@@ -22,16 +22,6 @@ const keyMap = new Map([[KEY_A, TENANT_A]])
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function createMockDb(): DbClient {
-  return {
-    query: async () => [],
-    insert: async () => {},
-    command: async () => {},
-    ping: async () => true,
-    close: async () => {},
-  } as unknown as DbClient
-}
 
 function createTestApp(options?: { tailMode?: string; bufferEvents?: number }) {
   const logger = pino({ level: 'silent' })

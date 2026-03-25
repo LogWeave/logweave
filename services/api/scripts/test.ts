@@ -1,7 +1,10 @@
 import { execSync } from 'node:child_process'
 import { globSync } from 'node:fs'
 
-const mode = process.argv[2] // --unit or --integration
+const args = process.argv.slice(2)
+const mode = args.find((a) => a === '--unit' || a === '--integration')
+const verbose = args.includes('--verbose')
+const namePattern = args.find((a) => a.startsWith('--test-name-pattern='))
 
 let files: string[]
 
@@ -41,4 +44,20 @@ if (files.length === 0) {
 }
 
 console.log(`Running ${files.length} test file(s)${mode ? ` (${mode.slice(2)})` : ''}...`)
-execSync(`node --import tsx --test ${files.join(' ')}`, { stdio: 'inherit' })
+
+// Build the command
+const cmdParts = ['node', '--import', 'tsx', '--test']
+
+// Use dot reporter for compact output (default), spec for verbose
+if (verbose) {
+  cmdParts.push('--test-reporter', 'spec')
+} else {
+  cmdParts.push('--test-reporter', 'dot')
+}
+
+if (namePattern) {
+  cmdParts.push(`--test-name-pattern=${namePattern.split('=')[1]}`)
+}
+
+cmdParts.push(...files)
+execSync(cmdParts.join(' '), { stdio: 'inherit' })
