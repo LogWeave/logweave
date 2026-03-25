@@ -99,10 +99,11 @@ export async function generateRecoveryCodes(): Promise<{
   const hashed: string[] = []
 
   for (let i = 0; i < 10; i++) {
-    const raw = randomBytes(16).toString('hex') // 128 bits
-    const display = `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}`
+    const raw = randomBytes(10).toString('hex') // 80 bits, 20 hex chars
+    const display = `${raw.slice(0, 5)}-${raw.slice(5, 10)}-${raw.slice(10, 15)}-${raw.slice(15, 20)}`
     codes.push(display)
-    const hash = await hashPassword(raw.slice(0, 16)) // hash the first 16 hex chars
+    // Hash the raw value (without dashes) — verification must strip dashes before comparing
+    const hash = await hashPassword(raw)
     hashed.push(hash)
   }
 

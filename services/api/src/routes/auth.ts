@@ -3,6 +3,7 @@ import type pino from 'pino'
 import { TOTP, Secret } from 'otpauth'
 import QRCode from 'qrcode'
 import { z } from 'zod'
+import { encrypt, decrypt } from '../crypto.js'
 import type { DbClient } from '../db/client.js'
 import { insertAuditEvent } from '../db/audit-queries.js'
 import { HttpStatus } from '../http-status.js'
@@ -109,14 +110,37 @@ export function authRoutes(deps: AuthDeps): Router {
 
       const totpValid = verifyTotp(user.totpSecret, totpCode, deps.totpEncryptionKey)
       if (!totpValid) {
-        // TODO: check recovery codes here
-        await delay(FAILED_LOGIN_DELAY_MS)
-        lockout.recordFailure(username, true)
-        auditLogin(deps, user.tenantId, username, sourceIp, false, 'wrong_totp')
-        res.status(HttpStatus.UNAUTHORIZED).json({
-          error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
-        })
-        return
+        // Try recovery code (strip dashes, verify against stored hashes)
+        const stripped = totpCode.replace(/-/g, '')
+        let recoveryUsed = false
+        if (user.recoveryCodes) {
+          try {
+            const storedHashes = JSON.parse(user.recoveryCodes) as string[]
+            for (let i = 0; i < storedHashes.length; i++) {
+              const hash = storedHashes[i]
+              if (hash && await verifyPassword(stripped, hash)) {
+                // Consume the code — remove from list
+                storedHashes.splice(i, 1)
+                await deps.userStore.updateTotp(
+                  user.userId, user.totpSecret, JSON.stringify(storedHashes), true,
+                )
+                recoveryUsed = true
+                auditAuth(deps, user.tenantId, username, 'auth.recovery_code.used')
+                break
+              }
+            }
+          } catch { /* malformed recovery codes — ignore */ }
+        }
+
+        if (!recoveryUsed) {
+          await delay(FAILED_LOGIN_DELAY_MS)
+          lockout.recordFailure(username, true)
+          auditLogin(deps, user.tenantId, username, sourceIp, false, 'wrong_totp')
+          res.status(HttpStatus.UNAUTHORIZED).json({
+            error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
+          })
+          return
+        }
       }
     }
 
@@ -514,21 +538,12 @@ function verifyTotp(encryptedSecret: string, code: string, encryptionKey: Buffer
 }
 
 function encryptTotpSecret(secret: string, key: Buffer): string {
-  const secretBuf = Buffer.from(secret, 'utf-8')
-  const encrypted = Buffer.alloc(secretBuf.length)
-  for (let i = 0; i < secretBuf.length; i++) {
-    encrypted.writeUInt8(secretBuf.readUInt8(i) ^ key.readUInt8(i % key.length), i)
-  }
-  return encrypted.toString('base64')
+  // Use AES-256-GCM via the existing crypto module, with HKDF-derived key as hex string
+  return encrypt(secret, key.toString('hex'))
 }
 
 function decryptTotpSecret(encrypted: string, key: Buffer): string {
-  const encBuf = Buffer.from(encrypted, 'base64')
-  const decrypted = Buffer.alloc(encBuf.length)
-  for (let i = 0; i < encBuf.length; i++) {
-    decrypted.writeUInt8(encBuf.readUInt8(i) ^ key.readUInt8(i % key.length), i)
-  }
-  return decrypted.toString('utf-8')
+  return decrypt(encrypted, key.toString('hex'))
 }
 
 function delay(ms: number): Promise<void> {

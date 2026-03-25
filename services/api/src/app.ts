@@ -144,7 +144,7 @@ export function createApp(deps: AppDependencies): express.Express {
         db: deps.db,
         logger: deps.logger,
         totpEncryptionKey: deps.totpEncryptionKey,
-        isProduction: deps.config.logLevel !== 'debug' && deps.config.logLevel !== 'trace',
+        isProduction: process.env.NODE_ENV === 'production',
       }),
     )
   }

@@ -80,6 +80,7 @@ export class ClickHouseUserStore implements UserStore {
          LIMIT 1`
       : `SELECT * FROM logweave.dashboard_users FINAL
          WHERE username = {username:String} AND is_deleted = 0
+         ORDER BY tenant_id, username
          LIMIT 1`
     const rows = await this.db.query<UserRow>({
       query,
