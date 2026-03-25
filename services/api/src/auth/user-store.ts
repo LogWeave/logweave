@@ -27,7 +27,7 @@ export interface UserStore {
     tenantId: string
     role: 'admin' | 'viewer'
   }): Promise<DashboardUser>
-  updatePassword(userId: string, passwordHash: string): Promise<void>
+  updatePassword(userId: string, passwordHash: string, mustChangePassword?: boolean): Promise<void>
   updateTotp(userId: string, totpSecret: string, recoveryCodes: string, enabled: boolean): Promise<void>
   clearMustChangePassword(userId: string): Promise<void>
   bumpSessionVersion(userId: string): Promise<void>
@@ -159,7 +159,7 @@ export class ClickHouseUserStore implements UserStore {
     }
   }
 
-  async updatePassword(userId: string, passwordHash: string): Promise<void> {
+  async updatePassword(userId: string, passwordHash: string, mustChangePassword = false): Promise<void> {
     const user = await this.findById(userId)
     if (!user) return
     await this.db.insert({
@@ -170,7 +170,7 @@ export class ClickHouseUserStore implements UserStore {
         password_hash: passwordHash,
         tenant_id: user.tenantId,
         role: user.role,
-        must_change_password: 0,
+        must_change_password: mustChangePassword ? 1 : 0,
         totp_secret: user.totpSecret,
         totp_enabled: user.totpEnabled ? 1 : 0,
         recovery_codes: user.recoveryCodes,

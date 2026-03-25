@@ -502,7 +502,7 @@ export function authRoutes(deps: AuthDeps): Router {
     }
 
     const newHash = await hashPassword(newPassword)
-    await deps.userStore.updatePassword(targetId, newHash)
+    await deps.userStore.updatePassword(targetId, newHash, true)
     auditAuth(deps, session.tenantId, session.userId, 'auth.password.reset', target.username)
 
     res.status(HttpStatus.OK).json({ data: { reset: true } })
