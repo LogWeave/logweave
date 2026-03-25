@@ -79,7 +79,7 @@ Your AI assistant gets structured access to your production runtime:
 | `live_tail` | Real-time event stream |
 | `deploys` | Deployment markers for change correlation |
 | `create_rule` | Create threshold alerts programmatically |
-| ...and 8 more | [Full list in docs](docs/api-reference.md) |
+| ...and 8 more | See `services/mcp/src/tools.ts` for all tools |
 
 ### Real-Time Dashboard
 
@@ -94,10 +94,18 @@ Your AI assistant gets structured access to your production runtime:
 - Alert rules — threshold and pattern-based with Slack/PagerDuty
 
 ### Alerting
-- **Threshold rules** — alert when error count exceeds N in M minutes
-- **Pattern watches** — instant notification on specific patterns
-- **Channels** — Slack webhooks, PagerDuty, generic webhooks
-- **Cooldown** — prevent alert fatigue
+
+Set up alerts in minutes from the dashboard — no config files, no YAML.
+
+- **Threshold rules** — "Alert me when error count > 50 in 5 minutes for payment-service" → Slack message in seconds
+- **Pattern watches** — click "Watch" on any log pattern → get notified the next time it appears
+- **Slack** — paste your webhook URL in Settings, done. Test with one click.
+- **PagerDuty** — add your routing key as a channel, LogWeave sends Events API v2 payloads
+- **Generic webhooks** — any HTTPS endpoint receives structured JSON alerts
+- **Cooldown** — configurable per rule (1 min to 24 hours) to prevent alert fatigue
+- **Your AI can create rules too** — `create_rule` MCP tool lets your AI set up alerts programmatically
+
+![Alerts](docs/screenshots/alerts.png)
 
 ### Security
 - Username/password login with forced password change
@@ -139,7 +147,6 @@ LogWeave stores only metadata and patterns — never raw log content. Raw logs s
 
 - [Self-Hosted Install Guide](docs/install.md) — 5-minute setup with Docker Compose
 - [Configuration Reference](docs/install.md#environment-variable-reference) — all env vars
-- [Design Specs](docs/specs/) — architecture decisions and feature specs
 
 ## Tech Stack
 
