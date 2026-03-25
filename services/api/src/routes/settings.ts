@@ -5,12 +5,14 @@ import type { DbClient } from '../db/client.js'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
+import type { ClusterClient } from '../pipeline/cluster-client.js'
 import { sendSlackTestMessage } from '../watches/slack-observer.js'
 import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 
 export interface SettingsDeps {
   settingsStore: TenantSettingsStore
   db: DbClient | null
+  clusterClient?: ClusterClient
   logger: pino.Logger
 }
 
@@ -207,6 +209,91 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
       res.status(HttpStatus.OK).json({
         data: { sensitivity: settings.clusteringSensitivity ?? null },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // POST /settings/clustering/preview -- dry-run clustering on recent logs
+  const previewSchema = z.object({
+    sensitivity: z.number().min(0.2).max(0.8),
+  })
+
+  router.post('/settings/clustering/preview', validateBody(previewSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const body = req.body as z.infer<typeof previewSchema>
+
+      if (!deps.clusterClient || !deps.db) {
+        res.status(HttpStatus.OK).json({
+          data: { patternCount: 0, compressionRatio: 0, sampleTemplates: [] },
+          meta: { fetchedAt: new Date().toISOString(), message: 'Preview unavailable — clusterer not connected' },
+        })
+        return
+      }
+
+      // Fetch recent pre-processed messages from ClickHouse
+      const rows = await deps.db.query<{ pre_processed_message: string }>({
+        query: `SELECT pre_processed_message
+                FROM logweave.log_metadata
+                WHERE tenant_id = {tenantId:String}
+                  AND pre_processed_message != ''
+                ORDER BY timestamp DESC
+                LIMIT 1000`,
+        query_params: { tenantId },
+      })
+
+      if (rows.length === 0) {
+        res.status(HttpStatus.OK).json({
+          data: { patternCount: 0, compressionRatio: 0, sampleTemplates: [] },
+          meta: { fetchedAt: new Date().toISOString(), message: 'No log data to preview — send some logs first' },
+        })
+        return
+      }
+
+      const messages = rows.map((r) => r.pre_processed_message)
+      const result = await deps.clusterClient.preview(messages, body.sensitivity)
+
+      if (!result) {
+        res.status(HttpStatus.OK).json({
+          data: { patternCount: 0, compressionRatio: 0, sampleTemplates: [] },
+          meta: { fetchedAt: new Date().toISOString(), message: 'Clusterer preview failed — try again later' },
+        })
+        return
+      }
+
+      res.status(HttpStatus.OK).json({
+        data: result,
+        meta: { fetchedAt: new Date().toISOString(), sampleSize: messages.length },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // POST /settings/clustering/reset -- clear tenant's Drain3 miner and update sensitivity
+  const resetSchema = z.object({
+    sensitivity: z.number().min(0.2).max(0.8),
+  })
+
+  router.post('/settings/clustering/reset', validateBody(resetSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const body = req.body as z.infer<typeof resetSchema>
+
+      await deps.settingsStore.set(tenantId, { clusteringSensitivity: body.sensitivity })
+
+      let cleared = false
+      if (deps.clusterClient) {
+        cleared = await deps.clusterClient.resetTenant(tenantId)
+      }
+
+      deps.logger.info({ tenantId, sensitivity: body.sensitivity, cleared }, 'Clustering reset')
+
+      res.status(HttpStatus.OK).json({
+        data: { sensitivity: body.sensitivity, cleared },
         meta: { fetchedAt: new Date().toISOString() },
       })
     } catch (err) {

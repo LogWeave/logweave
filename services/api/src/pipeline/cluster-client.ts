@@ -74,7 +74,7 @@ export class ClusterClient {
     return this.circuitOpen
   }
 
-  async cluster(tenantId: string, messages: string[]): Promise<ClusterResult[]> {
+  async cluster(tenantId: string, messages: string[], simTh?: number): Promise<ClusterResult[]> {
     if (this.circuitOpen) {
       this.callsSinceOpen++
       if (this.callsSinceOpen % this.probeInterval !== 0) {
@@ -87,7 +87,11 @@ export class ClusterClient {
       const response = await this.fetchFn(`${this.url}/cluster`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant_id: tenantId, messages }),
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          messages,
+          ...(simTh !== undefined ? { sim_th: simTh } : {}),
+        }),
         signal: AbortSignal.timeout(this.timeoutMs),
       })
 
@@ -181,6 +185,68 @@ export class ClusterClient {
 
   private fallback(count: number): ClusterResult[] {
     return Array.from({ length: count }, () => ({ ...FALLBACK_RESULT }))
+  }
+
+  /**
+   * Preview clustering with a throwaway miner. Returns null on failure.
+   */
+  async preview(
+    messages: string[],
+    simTh: number,
+  ): Promise<{ patternCount: number; compressionRatio: number; sampleTemplates: string[] } | null> {
+    try {
+      const response = await this.fetchFn(`${this.url}/cluster/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, sim_th: simTh }),
+        signal: AbortSignal.timeout(this.timeoutMs * 4), // preview can be slower
+      })
+
+      if (!response.ok) {
+        this.logger.warn({ statusCode: response.status }, 'Clusterer /cluster/preview failed')
+        return null
+      }
+
+      const body = (await response.json()) as {
+        pattern_count?: number
+        compression_ratio?: number
+        sample_templates?: string[]
+      }
+
+      return {
+        patternCount: body.pattern_count ?? 0,
+        compressionRatio: body.compression_ratio ?? 0,
+        sampleTemplates: body.sample_templates ?? [],
+      }
+    } catch {
+      this.logger.warn('Clusterer /cluster/preview request failed')
+      return null
+    }
+  }
+
+  /**
+   * Reset a tenant's Drain3 miner state. Returns true if cleared, false on failure.
+   */
+  async resetTenant(tenantId: string): Promise<boolean> {
+    try {
+      const response = await this.fetchFn(`${this.url}/cluster/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: tenantId }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      })
+
+      if (!response.ok) {
+        this.logger.warn({ tenantId, statusCode: response.status }, 'Clusterer /cluster/reset failed')
+        return false
+      }
+
+      const body = (await response.json()) as { cleared?: boolean }
+      return body.cleared ?? false
+    } catch {
+      this.logger.warn({ tenantId }, 'Clusterer /cluster/reset request failed')
+      return false
+    }
   }
 
   /**

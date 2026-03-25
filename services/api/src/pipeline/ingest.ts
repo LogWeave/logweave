@@ -136,7 +136,8 @@ export async function ingestBatch(
 
   // Phase 2: Cluster (single call with all pre-processed messages)
   const messages = items.map((item) => item.processed.preProcessedMessage)
-  const clusterResults = await deps.clusterClient.cluster(tenantId, messages)
+  const simTh = deps.settingsStore?.get(tenantId).clusteringSensitivity
+  const clusterResults = await deps.clusterClient.cluster(tenantId, messages, simTh)
 
   // Phase 3: Enrich — build LogMetadataRow[]
   const rows: LogMetadataRow[] = []

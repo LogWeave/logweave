@@ -189,6 +189,7 @@ export function createApp(deps: AppDependencies): express.Express {
     settingsRoutes({
       settingsStore: deps.settingsStore,
       db: deps.db,
+      clusterClient: deps.clusterClient,
       logger: deps.logger,
     }),
   )
