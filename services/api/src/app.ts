@@ -15,6 +15,7 @@ import { SessionValidationCache } from './auth/session-cache.js'
 import { KeyStore, createAuthMiddleware } from './middleware/auth.js'
 import { createConcurrentQueryGuard } from './middleware/concurrent-query-guard.js'
 import { createErrorHandler } from './middleware/error-handler.js'
+import { createAccessAuditMiddleware } from './middleware/audit-access.js'
 import { createCsrfMiddleware } from './middleware/csrf.js'
 import { createMcpDetectMiddleware } from './middleware/mcp-detect.js'
 import { createRateLimiter } from './middleware/rate-limit.js'
@@ -179,6 +180,7 @@ export function createApp(deps: AppDependencies): express.Express {
     v1.use(csrf.tokenValidator)
   }
   v1.use(mcpDetect)
+  v1.use(createAccessAuditMiddleware({ db: deps.db, logger: deps.logger }))
   v1.use(rateLimiter)
   v1.use(queryGuard)
   const ingestDeps = {
