@@ -55,3 +55,8 @@ internal/
 # Claude Code project config
 CLAUDE.md
 .claude/
+
+# Local dev tooling
+dev.sh
+.mcp.json
+benchmarks/
