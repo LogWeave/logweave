@@ -1,5 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
+import type { SessionProvider } from '../auth/session.js'
+import { SESSION_COOKIE_NAME } from '../auth/session.js'
 import { unauthorized } from '../errors.js'
 
 const TENANT_ID_KEY = 'tenantId'
@@ -61,46 +63,66 @@ export class KeyStore {
 }
 
 /**
- * Create auth middleware that validates Bearer tokens.
- * Uses SHA-256 hashing + crypto.timingSafeEqual for constant-time comparison.
+ * Create auth middleware that validates Bearer tokens and session cookies.
+ * Auth priority: Bearer header → session cookie → api_key query param → 401.
  * Accepts either a KeyStore (hot-reloadable) or a static Map (legacy).
  */
-export function createAuthMiddleware(source: KeyStore | Map<string, string>): RequestHandler {
+export function createAuthMiddleware(
+  source: KeyStore | Map<string, string>,
+  sessionProvider?: SessionProvider,
+): RequestHandler {
   const store = source instanceof KeyStore ? source : new KeyStore(source)
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    // Extract token from Authorization header or query param (for SSE/EventSource)
-    let token: string | undefined
+    // 1. Bearer token (API keys, MCP, SDK)
     const header = req.get('authorization')
-
     if (header) {
       if (!header.startsWith('Bearer ')) {
         next(unauthorized('Authorization must use Bearer scheme'))
         return
       }
-      token = header.slice(7).trim()
-    } else {
-      // Fallback: ?api_key= query param (required for EventSource which can't set headers)
-      const queryKey = req.query.api_key
-      if (typeof queryKey === 'string') {
-        token = queryKey.trim()
+      const token = header.slice(7).trim()
+      if (token.length > 0) {
+        const result = store.validate(token)
+        if (result) {
+          res.locals[TENANT_ID_KEY] = result.tenantId
+          res.locals[KEY_ID_KEY] = result.keyId
+          next()
+          return
+        }
+        next(unauthorized('Invalid API key'))
+        return
       }
     }
 
-    if (!token || token.length === 0) {
-      next(unauthorized('Missing Authorization header or api_key query parameter'))
-      return
+    // 2. Session cookie (dashboard)
+    if (sessionProvider) {
+      const cookieValue = (req as Request & { cookies?: Record<string, string> }).cookies?.[SESSION_COOKIE_NAME]
+      if (cookieValue) {
+        const session = sessionProvider.validateSession(cookieValue)
+        if (session) {
+          res.locals[TENANT_ID_KEY] = session.tenantId
+          res.locals[KEY_ID_KEY] = `session:${session.userId}`
+          next()
+          return
+        }
+        // Cookie present but invalid — fall through to try api_key
+      }
     }
 
-    const result = store.validate(token)
-    if (!result) {
-      next(unauthorized('Invalid API key'))
-      return
+    // 3. Query param fallback (legacy SSE, deprecated)
+    const queryKey = req.query.api_key
+    if (typeof queryKey === 'string' && queryKey.length > 0) {
+      const result = store.validate(queryKey.trim())
+      if (result) {
+        res.locals[TENANT_ID_KEY] = result.tenantId
+        res.locals[KEY_ID_KEY] = result.keyId
+        next()
+        return
+      }
     }
 
-    res.locals[TENANT_ID_KEY] = result.tenantId
-    res.locals[KEY_ID_KEY] = result.keyId
-    next()
+    next(unauthorized('Missing or invalid authentication'))
   }
 }
 

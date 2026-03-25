@@ -326,6 +326,24 @@ GROUP BY tenant_id, service, environment, level, interval_start`,
   TTL toDateTime(timestamp) + toIntervalDay(30) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
 
+  // 20. Dashboard users — authentication for the web UI
+  `CREATE TABLE IF NOT EXISTS logweave.dashboard_users (
+    user_id              String,
+    username             LowCardinality(String),
+    password_hash        String,
+    tenant_id            LowCardinality(String),
+    role                 LowCardinality(String) DEFAULT 'viewer',
+    must_change_password UInt8 DEFAULT 0,
+    totp_secret          String DEFAULT '',
+    totp_enabled         UInt8 DEFAULT 0,
+    recovery_codes       String DEFAULT '',
+    session_version      UInt64 DEFAULT 1,
+    last_login_at        Nullable(DateTime64(3)),
+    version              UInt64,
+    is_deleted           UInt8 DEFAULT 0
+  ) ENGINE = ReplacingMergeTree(version, is_deleted)
+  ORDER BY (tenant_id, username)`,
+
   // ---------------------------------------------------------------------------
   // ALTER migrations — MUST come after all CREATE TABLE statements above
   // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import cookieParser from 'cookie-parser'
 import express, { Router } from 'express'
 import helmet from 'helmet'
 import type pino from 'pino'
@@ -16,8 +17,11 @@ import { createErrorHandler } from './middleware/error-handler.js'
 import { createMcpDetectMiddleware } from './middleware/mcp-detect.js'
 import { createRateLimiter } from './middleware/rate-limit.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
+import type { SessionProvider } from './auth/session.js'
+import type { UserStore } from './auth/user-store.js'
 import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
+import { authRoutes } from './routes/auth.js'
 import { connectorRoutes } from './routes/connectors.js'
 import { correlationRoutes } from './routes/correlation.js'
 import { compositeRoutes } from './routes/composite.js'
@@ -51,6 +55,9 @@ export interface AppDependencies {
   settingsStore: TenantSettingsStore
   tailBuffer?: TailBuffer
   eventBus?: EventBus
+  sessionProvider?: SessionProvider
+  userStore?: UserStore
+  totpEncryptionKey?: Buffer
 }
 
 export function createApp(deps: AppDependencies): express.Express {
@@ -115,6 +122,9 @@ export function createApp(deps: AppDependencies): express.Express {
     express.json({ limit: '1mb' })(req, res, next)
   })
 
+  // Cookie parsing (required for session auth)
+  app.use(cookieParser())
+
   // Routes — health (unauthenticated)
   app.use(
     healthRoutes({
@@ -124,9 +134,24 @@ export function createApp(deps: AppDependencies): express.Express {
     }),
   )
 
+  // Routes — auth (partially unauthenticated: login, logout, me)
+  if (deps.userStore && deps.sessionProvider && deps.totpEncryptionKey) {
+    app.use(
+      '/v1',
+      authRoutes({
+        userStore: deps.userStore,
+        sessionProvider: deps.sessionProvider,
+        db: deps.db,
+        logger: deps.logger,
+        totpEncryptionKey: deps.totpEncryptionKey,
+        isProduction: deps.config.logLevel !== 'debug' && deps.config.logLevel !== 'trace',
+      }),
+    )
+  }
+
   // Routes — API (authenticated, rate-limited)
   const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys)
-  const auth = createAuthMiddleware(keyStore)
+  const auth = createAuthMiddleware(keyStore, deps.sessionProvider)
 
   const rateLimiter = createRateLimiter({
     keyRpm: deps.config.rateLimitRpm,

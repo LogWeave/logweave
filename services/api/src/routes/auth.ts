@@ -1,0 +1,554 @@
+import { Router } from 'express'
+import type pino from 'pino'
+import { TOTP, Secret } from 'otpauth'
+import QRCode from 'qrcode'
+import { z } from 'zod'
+import type { DbClient } from '../db/client.js'
+import { insertAuditEvent } from '../db/audit-queries.js'
+import { HttpStatus } from '../http-status.js'
+import { validateBody } from '../middleware/validate.js'
+import { LockoutTracker } from '../auth/lockout.js'
+import { dummyVerify, hashPassword, validatePasswordPolicy, verifyPassword } from '../auth/passwords.js'
+import {
+  type SessionProvider,
+  SESSION_COOKIE_NAME,
+  SESSION_COOKIE_OPTIONS,
+} from '../auth/session.js'
+import type { UserStore } from '../auth/user-store.js'
+
+export interface AuthDeps {
+  userStore: UserStore
+  sessionProvider: SessionProvider
+  db: DbClient
+  logger: pino.Logger
+  totpEncryptionKey: Buffer
+  isProduction: boolean
+}
+
+const FAILED_LOGIN_DELAY_MS = 500
+
+const loginSchema = z.object({
+  username: z.string().min(1).max(128),
+  password: z.string().min(1),
+  totpCode: z.string().max(32).optional(),
+})
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(1),
+})
+
+const createUserSchema = z.object({
+  username: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_.-]+$/),
+  password: z.string().min(12),
+  tenantId: z.string().min(1).max(128),
+  role: z.enum(['admin', 'viewer']),
+})
+
+const resetPasswordSchema = z.object({
+  newPassword: z.string().min(12),
+})
+
+export function authRoutes(deps: AuthDeps): Router {
+  const router = Router()
+  const lockout = new LockoutTracker()
+
+  // POST /auth/session — login
+  router.post('/auth/session', validateBody(loginSchema), async (req, res) => {
+    const { username, password, totpCode } = req.body as z.infer<typeof loginSchema>
+    const sourceIp = req.ip ?? ''
+
+    // Check lockout
+    if (lockout.isLocked(username)) {
+      const retryAfter = lockout.lockoutSecondsRemaining(username)
+      res.status(HttpStatus.TOO_MANY_REQUESTS)
+        .set('Retry-After', String(retryAfter))
+        .json({ error: { code: 'LOCKED_OUT', message: 'Too many failed attempts. Try again later.' } })
+      return
+    }
+
+    // Find user across all tenants (login doesn't scope by tenant — user provides username only)
+    // Query all non-deleted users with this username
+    const user = await deps.userStore.findByUsername('', username)
+
+    // Timing normalization: always run scrypt
+    if (!user) {
+      await dummyVerify()
+      await delay(FAILED_LOGIN_DELAY_MS)
+      lockout.recordFailure(username)
+      auditLogin(deps, '', username, sourceIp, false, 'user_not_found')
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
+      })
+      return
+    }
+
+    // Verify password
+    const passwordValid = await verifyPassword(password, user.passwordHash)
+    if (!passwordValid) {
+      await delay(FAILED_LOGIN_DELAY_MS)
+      lockout.recordFailure(username)
+      auditLogin(deps, user.tenantId, username, sourceIp, false, 'wrong_password')
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
+      })
+      return
+    }
+
+    // Verify TOTP if enabled (same 401 response — no oracle)
+    if (user.totpEnabled) {
+      if (!totpCode) {
+        await delay(FAILED_LOGIN_DELAY_MS)
+        lockout.recordFailure(username, true)
+        auditLogin(deps, user.tenantId, username, sourceIp, false, 'totp_required')
+        res.status(HttpStatus.UNAUTHORIZED).json({
+          error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
+        })
+        return
+      }
+
+      const totpValid = verifyTotp(user.totpSecret, totpCode, deps.totpEncryptionKey)
+      if (!totpValid) {
+        // TODO: check recovery codes here
+        await delay(FAILED_LOGIN_DELAY_MS)
+        lockout.recordFailure(username, true)
+        auditLogin(deps, user.tenantId, username, sourceIp, false, 'wrong_totp')
+        res.status(HttpStatus.UNAUTHORIZED).json({
+          error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
+        })
+        return
+      }
+    }
+
+    // Success
+    lockout.recordSuccess(username)
+    await deps.userStore.updateLastLogin(user.userId)
+    auditLogin(deps, user.tenantId, username, sourceIp, true)
+
+    const cookie = deps.sessionProvider.createSession({
+      userId: user.userId,
+      tenantId: user.tenantId,
+      role: user.role,
+      sessionVersion: user.sessionVersion,
+    })
+
+    res.cookie(SESSION_COOKIE_NAME, cookie, {
+      ...SESSION_COOKIE_OPTIONS,
+      secure: deps.isProduction,
+    })
+
+    res.status(HttpStatus.OK).json({
+      data: {
+        userId: user.userId,
+        username: user.username,
+        tenantId: user.tenantId,
+        role: user.role,
+        mustChangePassword: user.mustChangePassword,
+        totpEnabled: user.totpEnabled,
+      },
+    })
+  })
+
+  // DELETE /auth/session — logout
+  router.delete('/auth/session', (_req, res) => {
+    res.clearCookie(SESSION_COOKIE_NAME, { path: '/' })
+    res.status(HttpStatus.NO_CONTENT).end()
+  })
+
+  // GET /auth/me — session check
+  router.get('/auth/me', async (req, res) => {
+    const session = getSessionFromCookie(req, deps)
+    if (!session) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'NOT_AUTHENTICATED', message: 'Not authenticated' },
+      })
+      return
+    }
+
+    const user = await deps.userStore.findById(session.userId)
+    if (!user || user.sessionVersion !== session.sessionVersion) {
+      res.clearCookie(SESSION_COOKIE_NAME, { path: '/' })
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'SESSION_INVALID', message: 'Session expired' },
+      })
+      return
+    }
+
+    res.status(HttpStatus.OK).json({
+      data: {
+        userId: user.userId,
+        username: user.username,
+        tenantId: user.tenantId,
+        role: user.role,
+        mustChangePassword: user.mustChangePassword,
+        totpEnabled: user.totpEnabled,
+      },
+    })
+  })
+
+  // PUT /auth/password — change own password
+  router.put('/auth/password', validateBody(changePasswordSchema), async (req, res) => {
+    const session = getSessionFromCookie(req, deps)
+    if (!session) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'NOT_AUTHENTICATED', message: 'Not authenticated' },
+      })
+      return
+    }
+
+    const { currentPassword, newPassword } = req.body as z.infer<typeof changePasswordSchema>
+
+    const policyError = validatePasswordPolicy(newPassword)
+    if (policyError) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        error: { code: 'WEAK_PASSWORD', message: policyError },
+      })
+      return
+    }
+
+    const user = await deps.userStore.findById(session.userId)
+    if (!user) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'NOT_AUTHENTICATED', message: 'Not authenticated' },
+      })
+      return
+    }
+
+    const valid = await verifyPassword(currentPassword, user.passwordHash)
+    if (!valid) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect' },
+      })
+      return
+    }
+
+    const newHash = await hashPassword(newPassword)
+    await deps.userStore.updatePassword(user.userId, newHash)
+
+    // Issue new cookie with bumped sessionVersion
+    const newCookie = deps.sessionProvider.createSession({
+      userId: user.userId,
+      tenantId: user.tenantId,
+      role: user.role,
+      sessionVersion: user.sessionVersion + 1,
+    })
+    res.cookie(SESSION_COOKIE_NAME, newCookie, {
+      ...SESSION_COOKIE_OPTIONS,
+      secure: deps.isProduction,
+    })
+
+    auditAuth(deps, user.tenantId, user.username, 'auth.password.change')
+    res.status(HttpStatus.OK).json({ data: { changed: true } })
+  })
+
+  // POST /auth/totp/setup — generate QR code
+  router.post('/auth/totp/setup', async (req, res) => {
+    const session = getSessionFromCookie(req, deps)
+    if (!session) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'NOT_AUTHENTICATED', message: 'Not authenticated' },
+      })
+      return
+    }
+
+    const user = await deps.userStore.findById(session.userId)
+    if (!user) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'NOT_AUTHENTICATED', message: 'Not authenticated' },
+      })
+      return
+    }
+
+    const secret = new Secret()
+    const totp = new TOTP({
+      issuer: 'LogWeave',
+      label: user.username,
+      secret,
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+    })
+
+    const uri = totp.toString()
+    const qrCodeDataUrl = await QRCode.toDataURL(uri)
+
+    // Store secret temporarily (not enabled yet — user must confirm)
+    const encryptedSecret = encryptTotpSecret(secret.base32, deps.totpEncryptionKey)
+    await deps.userStore.updateTotp(user.userId, encryptedSecret, user.recoveryCodes, false)
+
+    res.status(HttpStatus.OK).json({
+      data: {
+        qrCodeDataUrl,
+        secret: secret.base32,
+        uri,
+      },
+    })
+  })
+
+  // POST /auth/totp/confirm — verify setup with code
+  const confirmTotpSchema = z.object({ code: z.string().length(6) })
+  router.post('/auth/totp/confirm', validateBody(confirmTotpSchema), async (req, res) => {
+    const session = getSessionFromCookie(req, deps)
+    if (!session) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'NOT_AUTHENTICATED', message: 'Not authenticated' },
+      })
+      return
+    }
+
+    const { code } = req.body as z.infer<typeof confirmTotpSchema>
+    const user = await deps.userStore.findById(session.userId)
+    if (!user || !user.totpSecret) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        error: { code: 'NO_TOTP_PENDING', message: 'Call POST /v1/auth/totp/setup first' },
+      })
+      return
+    }
+
+    const valid = verifyTotp(user.totpSecret, code, deps.totpEncryptionKey)
+    if (!valid) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        error: { code: 'INVALID_CODE', message: 'Invalid TOTP code — check your authenticator app' },
+      })
+      return
+    }
+
+    // Generate recovery codes
+    const { generateRecoveryCodes } = await import('../auth/passwords.js')
+    const { display, hashed } = await generateRecoveryCodes()
+    await deps.userStore.updateTotp(user.userId, user.totpSecret, JSON.stringify(hashed), true)
+
+    auditAuth(deps, user.tenantId, user.username, 'auth.totp.setup')
+
+    res.status(HttpStatus.OK).json({
+      data: { enabled: true, recoveryCodes: display },
+    })
+  })
+
+  // DELETE /auth/totp — disable TOTP
+  const disableTotpSchema = z.object({ password: z.string().min(1) })
+  router.delete('/auth/totp', validateBody(disableTotpSchema), async (req, res) => {
+    const session = getSessionFromCookie(req, deps)
+    if (!session) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'NOT_AUTHENTICATED', message: 'Not authenticated' },
+      })
+      return
+    }
+
+    const { password } = req.body as z.infer<typeof disableTotpSchema>
+    const user = await deps.userStore.findById(session.userId)
+    if (!user) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'NOT_AUTHENTICATED', message: 'Not authenticated' },
+      })
+      return
+    }
+
+    const valid = await verifyPassword(password, user.passwordHash)
+    if (!valid) {
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'INVALID_CREDENTIALS', message: 'Password is incorrect' },
+      })
+      return
+    }
+
+    await deps.userStore.updateTotp(user.userId, '', '', false)
+    auditAuth(deps, user.tenantId, user.username, 'auth.totp.disable')
+
+    res.status(HttpStatus.OK).json({ data: { enabled: false } })
+  })
+
+  // GET /auth/users — list users (admin only)
+  router.get('/auth/users', async (req, res) => {
+    const session = getSessionFromCookie(req, deps)
+    if (!session || session.role !== 'admin') {
+      res.status(HttpStatus.FORBIDDEN).json({
+        error: { code: 'FORBIDDEN', message: 'Admin access required' },
+      })
+      return
+    }
+
+    const users = await deps.userStore.listByTenant(session.tenantId)
+    res.status(HttpStatus.OK).json({
+      data: users.map((u) => ({
+        userId: u.userId,
+        username: u.username,
+        tenantId: u.tenantId,
+        role: u.role,
+        totpEnabled: u.totpEnabled,
+        lastLoginAt: u.lastLoginAt,
+      })),
+    })
+  })
+
+  // POST /auth/users — create user (admin only, own tenant)
+  router.post('/auth/users', validateBody(createUserSchema), async (req, res) => {
+    const session = getSessionFromCookie(req, deps)
+    if (!session || session.role !== 'admin') {
+      res.status(HttpStatus.FORBIDDEN).json({
+        error: { code: 'FORBIDDEN', message: 'Admin access required' },
+      })
+      return
+    }
+
+    const body = req.body as z.infer<typeof createUserSchema>
+
+    // Admin can only create users in their own tenant
+    if (body.tenantId !== session.tenantId) {
+      res.status(HttpStatus.FORBIDDEN).json({
+        error: { code: 'FORBIDDEN', message: 'Cannot create users in a different tenant' },
+      })
+      return
+    }
+
+    // Check if username already exists in this tenant
+    const existing = await deps.userStore.findByUsername(body.tenantId, body.username)
+    if (existing) {
+      res.status(HttpStatus.CONFLICT).json({
+        error: { code: 'USERNAME_TAKEN', message: 'Username already exists' },
+      })
+      return
+    }
+
+    const user = await deps.userStore.createUser(body)
+    auditAuth(deps, session.tenantId, session.userId, 'auth.user.create', body.username)
+
+    res.status(HttpStatus.CREATED).json({
+      data: {
+        userId: user.userId,
+        username: user.username,
+        tenantId: user.tenantId,
+        role: user.role,
+      },
+    })
+  })
+
+  // DELETE /auth/users/:id — delete user (admin only)
+  router.delete('/auth/users/:id', async (req, res) => {
+    const session = getSessionFromCookie(req, deps)
+    if (!session || session.role !== 'admin') {
+      res.status(HttpStatus.FORBIDDEN).json({
+        error: { code: 'FORBIDDEN', message: 'Admin access required' },
+      })
+      return
+    }
+
+    const targetId = req.params.id as string
+    if (targetId === session.userId) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        error: { code: 'CANNOT_DELETE_SELF', message: 'Cannot delete your own account' },
+      })
+      return
+    }
+
+    const target = await deps.userStore.findById(targetId)
+    if (!target || target.tenantId !== session.tenantId) {
+      res.status(HttpStatus.NOT_FOUND).json({
+        error: { code: 'NOT_FOUND', message: 'User not found' },
+      })
+      return
+    }
+
+    await deps.userStore.deleteUser(targetId)
+    auditAuth(deps, session.tenantId, session.userId, 'auth.user.delete', target.username)
+
+    res.status(HttpStatus.NO_CONTENT).end()
+  })
+
+  // PUT /auth/users/:id/password — reset user password (admin only)
+  router.put('/auth/users/:id/password', validateBody(resetPasswordSchema), async (req, res) => {
+    const session = getSessionFromCookie(req, deps)
+    if (!session || session.role !== 'admin') {
+      res.status(HttpStatus.FORBIDDEN).json({
+        error: { code: 'FORBIDDEN', message: 'Admin access required' },
+      })
+      return
+    }
+
+    const targetId = req.params.id as string
+    const { newPassword } = req.body as z.infer<typeof resetPasswordSchema>
+
+    const target = await deps.userStore.findById(targetId)
+    if (!target || target.tenantId !== session.tenantId) {
+      res.status(HttpStatus.NOT_FOUND).json({
+        error: { code: 'NOT_FOUND', message: 'User not found' },
+      })
+      return
+    }
+
+    const newHash = await hashPassword(newPassword)
+    await deps.userStore.updatePassword(targetId, newHash)
+    auditAuth(deps, session.tenantId, session.userId, 'auth.password.reset', target.username)
+
+    res.status(HttpStatus.OK).json({ data: { reset: true } })
+  })
+
+  return router
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getSessionFromCookie(req: { cookies?: Record<string, string> }, deps: AuthDeps) {
+  const cookie = req.cookies?.[SESSION_COOKIE_NAME]
+  if (!cookie) return null
+  return deps.sessionProvider.validateSession(cookie)
+}
+
+function verifyTotp(encryptedSecret: string, code: string, encryptionKey: Buffer): boolean {
+  try {
+    const secret = decryptTotpSecret(encryptedSecret, encryptionKey)
+    const totp = new TOTP({
+      secret: Secret.fromBase32(secret),
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+    })
+    const delta = totp.validate({ token: code, window: 1 })
+    return delta !== null
+  } catch {
+    return false
+  }
+}
+
+function encryptTotpSecret(secret: string, key: Buffer): string {
+  const secretBuf = Buffer.from(secret, 'utf-8')
+  const encrypted = Buffer.alloc(secretBuf.length)
+  for (let i = 0; i < secretBuf.length; i++) {
+    encrypted.writeUInt8(secretBuf.readUInt8(i) ^ key.readUInt8(i % key.length), i)
+  }
+  return encrypted.toString('base64')
+}
+
+function decryptTotpSecret(encrypted: string, key: Buffer): string {
+  const encBuf = Buffer.from(encrypted, 'base64')
+  const decrypted = Buffer.alloc(encBuf.length)
+  for (let i = 0; i < encBuf.length; i++) {
+    decrypted.writeUInt8(encBuf.readUInt8(i) ^ key.readUInt8(i % key.length), i)
+  }
+  return decrypted.toString('utf-8')
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function auditLogin(deps: AuthDeps, tenantId: string, username: string, sourceIp: string, success: boolean, reason?: string): void {
+  const action = success ? 'auth.login.success' : 'auth.login.failure'
+  insertAuditEvent(deps.db, tenantId || 'system', {
+    keyId: username,
+    action,
+    sourceIp,
+    details: reason ? JSON.stringify({ reason }) : undefined,
+  }).catch(() => {})
+}
+
+function auditAuth(deps: AuthDeps, tenantId: string, actor: string, action: string, target?: string): void {
+  insertAuditEvent(deps.db, tenantId, {
+    keyId: actor,
+    action,
+    details: target ? JSON.stringify({ target }) : undefined,
+  }).catch(() => {})
+}
