@@ -11,6 +11,7 @@ import type { DbClient } from './db/client.js'
 import { notFound } from './errors.js'
 import type { EventBus } from './events/event-bus.js'
 import { requestContext } from './logger.js'
+import { SessionValidationCache } from './auth/session-cache.js'
 import { KeyStore, createAuthMiddleware } from './middleware/auth.js'
 import { createConcurrentQueryGuard } from './middleware/concurrent-query-guard.js'
 import { createErrorHandler } from './middleware/error-handler.js'
@@ -151,7 +152,8 @@ export function createApp(deps: AppDependencies): express.Express {
 
   // Routes — API (authenticated, rate-limited)
   const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys)
-  const auth = createAuthMiddleware(keyStore, deps.sessionProvider)
+  const sessionCache = new SessionValidationCache()
+  const auth = createAuthMiddleware(keyStore, deps.sessionProvider, sessionCache, deps.userStore)
 
   const rateLimiter = createRateLimiter({
     keyRpm: deps.config.rateLimitRpm,

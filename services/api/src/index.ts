@@ -91,7 +91,11 @@ if (config.encryptionKey) {
     logger.info({ tenantId: firstTenantId }, 'Default admin user created (admin/admin) — change password on first login')
   }
 } else {
-  logger.warn('LOGWEAVE_ENCRYPTION_KEY not set — dashboard login disabled, API key auth only')
+  logger.error('=================================================================')
+  logger.error('LOGWEAVE_ENCRYPTION_KEY is not set!')
+  logger.error('Dashboard login, TOTP, and connector encryption are DISABLED.')
+  logger.error('Generate one: openssl rand -hex 16')
+  logger.error('=================================================================')
 }
 
 const tailBuffer = new TailBuffer()

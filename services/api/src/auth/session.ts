@@ -18,7 +18,7 @@ export interface SessionProvider {
   validateSession(cookieValue: string): SessionData | null
 }
 
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000 // 8 hours (absolute TTL)
 
 export class HmacSessionProvider implements SessionProvider {
   private readonly key: Buffer

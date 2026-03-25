@@ -1,7 +1,9 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
+import type { SessionValidationCache } from '../auth/session-cache.js'
 import type { SessionProvider } from '../auth/session.js'
 import { SESSION_COOKIE_NAME } from '../auth/session.js'
+import type { UserStore } from '../auth/user-store.js'
 import { unauthorized } from '../errors.js'
 
 const TENANT_ID_KEY = 'tenantId'
@@ -70,6 +72,8 @@ export class KeyStore {
 export function createAuthMiddleware(
   source: KeyStore | Map<string, string>,
   sessionProvider?: SessionProvider,
+  sessionCache?: SessionValidationCache,
+  userStore?: UserStore,
 ): RequestHandler {
   const store = source instanceof KeyStore ? source : new KeyStore(source)
 
@@ -95,18 +99,36 @@ export function createAuthMiddleware(
       }
     }
 
-    // 2. Session cookie (dashboard)
+    // 2. Session cookie (dashboard) — validates HMAC + checks session version
     if (sessionProvider) {
       const cookieValue = (req as Request & { cookies?: Record<string, string> }).cookies?.[SESSION_COOKIE_NAME]
       if (cookieValue) {
         const session = sessionProvider.validateSession(cookieValue)
         if (session) {
+          // Check session version against cache/DB to catch deleted/changed users
+          if (sessionCache && userStore) {
+            let cached = sessionCache.get(session.userId)
+            if (!cached) {
+              // Cache miss — query DB (async, but we need to await)
+              // Fire-and-forget populate cache; for this request, trust the signed cookie
+              userStore.findById(session.userId).then((user) => {
+                sessionCache.set(
+                  session.userId,
+                  user?.sessionVersion ?? 0,
+                  !user,
+                )
+              }).catch(() => {})
+            } else if (cached.isDeleted || cached.sessionVersion !== session.sessionVersion) {
+              // User deleted or session version mismatch — reject
+              next(unauthorized('Session expired'))
+              return
+            }
+          }
           res.locals[TENANT_ID_KEY] = session.tenantId
           res.locals[KEY_ID_KEY] = `session:${session.userId}`
           next()
           return
         }
-        // Cookie present but invalid — fall through to try api_key
       }
     }
 

@@ -557,7 +557,9 @@ function auditLogin(deps: AuthDeps, tenantId: string, username: string, sourceIp
     action,
     sourceIp,
     details: reason ? JSON.stringify({ reason }) : undefined,
-  }).catch(() => {})
+  }).catch((err) => {
+    deps.logger.warn({ err, action, username }, 'Failed to write audit event')
+  })
 }
 
 function auditAuth(deps: AuthDeps, tenantId: string, actor: string, action: string, target?: string): void {
@@ -565,5 +567,7 @@ function auditAuth(deps: AuthDeps, tenantId: string, actor: string, action: stri
     keyId: actor,
     action,
     details: target ? JSON.stringify({ target }) : undefined,
-  }).catch(() => {})
+  }).catch((err) => {
+    deps.logger.warn({ err, action, actor }, 'Failed to write audit event')
+  })
 }
