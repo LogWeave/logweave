@@ -1,6 +1,7 @@
-import { Bell, LayoutDashboard, Radio, Settings } from 'lucide-react'
+import { Bell, LayoutDashboard, Radio, Rocket, Settings } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '../lib/cn'
+import { useOnboardingStatus, useOnboardingRemaining } from '../features/onboarding/use-onboarding'
 import { useDashboardStore } from '../stores/dashboard-store'
 
 const navItems = [
@@ -14,6 +15,11 @@ export function Sidebar() {
   const collapsed = useDashboardStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useDashboardStore((s) => s.toggleSidebar)
   const location = useLocation()
+
+  const { data: onboardingResponse } = useOnboardingStatus()
+  const status = onboardingResponse?.data
+  const remaining = useOnboardingRemaining(status)
+  const showSetup = remaining > 0 && !status?.dismissed
 
   return (
     <>
@@ -61,6 +67,33 @@ export function Sidebar() {
               </Link>
             )
           })}
+
+          {/* Setup nav item — shown only when onboarding is incomplete */}
+          {showSetup && (
+            <Link
+              to="/"
+              className={cn(
+                'flex items-center gap-3 px-2.5 py-2 rounded-[var(--radius-md)] text-sm transition-colors',
+                'text-brand-400 hover:bg-brand-500/10',
+              )}
+              title={collapsed ? `Setup (${remaining} left)` : undefined}
+            >
+              <Rocket size={18} className="shrink-0" />
+              {!collapsed && (
+                <>
+                  <span>Setup</span>
+                  <span className="ml-auto text-[10px] font-medium bg-brand-500/20 text-brand-400 rounded-full px-1.5 py-0.5">
+                    {remaining}
+                  </span>
+                </>
+              )}
+              {collapsed && (
+                <span className="absolute left-9 text-[9px] font-bold bg-brand-500 text-white rounded-full h-4 w-4 flex items-center justify-center">
+                  {remaining}
+                </span>
+              )}
+            </Link>
+          )}
         </nav>
       </aside>
 

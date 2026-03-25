@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom'
 import { ErrorBoundary } from '../../components/error-boundary'
 import { useUrlSync } from '../../hooks/use-url-sync'
+import { OnboardingCard } from '../onboarding/onboarding-card'
 import { ChangesPanel } from './changes-panel'
 import { KpiStrip } from './kpi-strip'
 import { ServiceHealthCards } from './service-health-cards'
@@ -13,6 +14,11 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Onboarding — shown until all steps complete or dismissed */}
+      <ErrorBoundary name="Onboarding">
+        <OnboardingCard />
+      </ErrorBoundary>
+
       {/* Row 1: KPI strip — priority tier layout */}
       <ErrorBoundary name="KPI Strip" key={`kpi-${location.key}`}>
         <KpiStrip />

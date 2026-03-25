@@ -140,6 +140,13 @@ export interface SlackTestResult {
   error?: string
 }
 
+export interface OnboardingStatus {
+  hasEvents: boolean
+  mcpConnected: boolean
+  clusteringConfigured: boolean
+  dismissed: boolean
+}
+
 export interface ThresholdConfig {
   metric: 'error_count' | 'warn_count' | 'log_count'
   service: string
