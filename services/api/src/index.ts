@@ -1,4 +1,7 @@
 import { createApp } from './app.js'
+import { deriveKeys } from './auth/passwords.js'
+import { HmacSessionProvider } from './auth/session.js'
+import { ClickHouseUserStore } from './auth/user-store.js'
 import { createClickHouseClient } from './clients/clickhouse.js'
 import { ClustererHealthChecker } from './clients/clusterer.js'
 import { loadConfig } from './config.js'
@@ -64,6 +67,33 @@ try {
   process.exit(1)
 }
 
+// Auth: derive keys, create stores, bootstrap default admin
+let sessionProvider: HmacSessionProvider | undefined
+let userStore: ClickHouseUserStore | undefined
+let totpEncryptionKey: Buffer | undefined
+
+if (config.encryptionKey) {
+  const keys = await deriveKeys(config.encryptionKey)
+  sessionProvider = new HmacSessionProvider(keys.sessionSigningKey)
+  totpEncryptionKey = keys.totpEncryptionKey
+  userStore = new ClickHouseUserStore(db, logger)
+
+  // Bootstrap default admin if no users exist
+  const userCount = await userStore.countUsers()
+  if (userCount === 0) {
+    const firstTenantId = [...config.apiKeys.values()][0] ?? 'default'
+    await userStore.createUser({
+      username: 'admin',
+      password: 'admin',
+      tenantId: firstTenantId,
+      role: 'admin',
+    })
+    logger.info({ tenantId: firstTenantId }, 'Default admin user created (admin/admin) — change password on first login')
+  }
+} else {
+  logger.warn('LOGWEAVE_ENCRYPTION_KEY not set — dashboard login disabled, API key auth only')
+}
+
 const tailBuffer = new TailBuffer()
 tailBuffer.start()
 const eventBus = new LocalEventBus(tailBuffer, settingsStore)
@@ -80,6 +110,9 @@ const app = createApp({
   settingsStore,
   tailBuffer,
   eventBus,
+  sessionProvider,
+  userStore,
+  totpEncryptionKey,
 })
 
 const recovery = new RecoverySweep(
