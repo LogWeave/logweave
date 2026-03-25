@@ -14,7 +14,16 @@ from clusterer.checkpoint import CheckpointManager
 from clusterer.config import get_settings
 from clusterer.drain_service import DrainService, TenantLimitError
 from clusterer.embedding import EmbeddingService
-from clusterer.models import ClusterRequest, ClusterResponse, EmbedRequest, EmbedResponse
+from clusterer.models import (
+    ClusterRequest,
+    ClusterResponse,
+    EmbedRequest,
+    EmbedResponse,
+    PreviewRequest,
+    PreviewResponse,
+    ResetRequest,
+    ResetResponse,
+)
 from clusterer.pipeline import ClusterPipeline
 from clusterer.template_registry import TemplateRegistry
 
@@ -202,7 +211,7 @@ async def cluster(request: ClusterRequest) -> ClusterResponse:
 
     try:
         results = await asyncio.wait_for(
-            pipeline.cluster(request.tenant_id, request.messages),
+            pipeline.cluster(request.tenant_id, request.messages, sim_th=request.sim_th),
             timeout=settings.request_timeout_seconds,
         )
     except TimeoutError:
@@ -218,6 +227,38 @@ async def cluster(request: ClusterRequest) -> ClusterResponse:
         semaphore.release()
 
     return ClusterResponse(results=results)
+
+
+@app.post("/cluster/preview", response_model=PreviewResponse)
+async def cluster_preview(request: PreviewRequest) -> PreviewResponse:
+    pipeline: ClusterPipeline = app.state.pipeline
+
+    try:
+        pattern_count, compression_ratio, sample_templates = await pipeline.preview(
+            request.messages, sim_th=request.sim_th
+        )
+    except Exception:
+        logger.exception("Internal error in /cluster/preview")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
+
+    return PreviewResponse(
+        pattern_count=pattern_count,
+        compression_ratio=round(compression_ratio, 1),
+        sample_templates=sample_templates,
+    )
+
+
+@app.post("/cluster/reset", response_model=ResetResponse)
+async def cluster_reset(request: ResetRequest) -> ResetResponse:
+    pipeline: ClusterPipeline = app.state.pipeline
+
+    try:
+        cleared = await pipeline.reset_tenant(request.tenant_id)
+    except Exception:
+        logger.exception("Internal error in /cluster/reset")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
+
+    return ResetResponse(cleared=cleared)
 
 
 @app.post("/embed", response_model=EmbedResponse)

@@ -118,7 +118,7 @@ class TestCluster:
         pipeline = _make_pipeline(drain=drain, registry=registry)
         await pipeline.cluster("my_tenant", ["msg"])
 
-        drain.cluster_messages.assert_called_once_with("my_tenant", ["msg"])
+        drain.cluster_messages.assert_called_once_with("my_tenant", ["msg"], sim_th=None)
         registry.batch_get_or_create.assert_called_once_with("my_tenant", ["tmpl"])
 
 

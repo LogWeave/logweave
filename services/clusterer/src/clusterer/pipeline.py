@@ -43,14 +43,18 @@ class ClusterPipeline:
         self._registry = registry
         self._checkpoint = checkpoint_manager
 
-    async def cluster(self, tenant_id: str, messages: list[str]) -> list[ClusterResultItem]:
+    async def cluster(
+        self, tenant_id: str, messages: list[str], *, sim_th: float | None = None
+    ) -> list[ClusterResultItem]:
         """Cluster messages and assign stable template IDs.
 
         1. Drain3 clustering (CPU-bound, run in thread)
         2. Registry lookup for each template (async, cache-first)
         3. Return combined results using registry's is_new (authoritative)
         """
-        drain_results = await asyncio.to_thread(self._drain.cluster_messages, tenant_id, messages)
+        drain_results = await asyncio.to_thread(
+            self._drain.cluster_messages, tenant_id, messages, sim_th=sim_th
+        )
 
         # Batch registry lookup: deduplicate template texts, single round-trip
         unique_texts = list({dr.template_text for dr in drain_results})
@@ -67,6 +71,16 @@ class ClusterPipeline:
                 )
             )
         return results
+
+    async def preview(
+        self, messages: list[str], *, sim_th: float = 0.4
+    ) -> tuple[int, float, list[str]]:
+        """Preview clustering with a throwaway miner. No side effects."""
+        return await asyncio.to_thread(self._drain.preview, messages, sim_th=sim_th)
+
+    async def reset_tenant(self, tenant_id: str) -> bool:
+        """Clear a tenant's miner state. Returns True if miner existed."""
+        return await asyncio.to_thread(self._drain.reset_tenant, tenant_id)
 
     async def restore_checkpoints(self) -> None:
         """Load all checkpoints from disk and restore DrainService state.

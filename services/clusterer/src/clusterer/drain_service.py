@@ -64,9 +64,9 @@ class DrainService:
                 self._locks[tenant_id] = threading.Lock()
         return self._locks[tenant_id]
 
-    def _create_miner(self) -> TemplateMiner:
+    def _create_miner(self, sim_th: float | None = None) -> TemplateMiner:
         config = TemplateMinerConfig()
-        config.drain_sim_th = self._sim_th
+        config.drain_sim_th = sim_th if sim_th is not None else self._sim_th
         config.drain_depth = self._depth
         config.drain_max_clusters = self._max_clusters
         config.snapshot_compress_state = False
@@ -81,12 +81,21 @@ class DrainService:
             self._miners[tenant_id] = self._create_miner()
         return self._miners[tenant_id]
 
-    def cluster_messages(self, tenant_id: str, messages: list[str]) -> list[DrainResult]:
-        """Cluster pre-processed messages for a tenant. Synchronous, thread-safe."""
+    def cluster_messages(
+        self, tenant_id: str, messages: list[str], *, sim_th: float | None = None
+    ) -> list[DrainResult]:
+        """Cluster pre-processed messages for a tenant. Synchronous, thread-safe.
+
+        If sim_th is provided, the miner's config is updated for subsequent
+        add_log_message calls within this batch (affects matching, not tree structure).
+        """
         _validate_tenant_id(tenant_id)
         lock = self._get_lock(tenant_id)
         with lock:
             miner = self._get_or_create_miner(tenant_id)
+            # Apply per-request sim_th if provided
+            if sim_th is not None:
+                miner.drain.config.drain_sim_th = sim_th
             results: list[DrainResult] = []
             state_changed = False
             for msg in messages:
@@ -145,3 +154,36 @@ class DrainService:
                 tenant_id,
                 len(loaded_drain.clusters),
             )
+
+    def preview(
+        self, messages: list[str], *, sim_th: float = 0.4
+    ) -> tuple[int, float, list[str]]:
+        """Cluster messages with a throwaway miner. Returns (pattern_count, compression_ratio, top_templates).
+
+        No side effects — the miner is discarded after this call.
+        """
+        miner = self._create_miner(sim_th=sim_th)
+        for msg in messages:
+            miner.add_log_message(msg)
+
+        clusters = list(miner.drain.clusters)
+        pattern_count = len(clusters)
+        compression_ratio = len(messages) / pattern_count if pattern_count > 0 else 0.0
+
+        # Top 10 templates by frequency (descending)
+        sorted_clusters = sorted(clusters, key=lambda c: c.size, reverse=True)
+        sample_templates = [c.get_template() for c in sorted_clusters[:10]]
+
+        return pattern_count, compression_ratio, sample_templates
+
+    def reset_tenant(self, tenant_id: str) -> bool:
+        """Delete a tenant's miner state. Thread-safe. Returns True if miner existed."""
+        _validate_tenant_id(tenant_id)
+        lock = self._get_lock(tenant_id)
+        with lock:
+            existed = tenant_id in self._miners
+            self._miners.pop(tenant_id, None)
+            self._dirty_generations.pop(tenant_id, None)
+            if existed:
+                logger.info("Reset miner for tenant %s", tenant_id)
+            return existed
