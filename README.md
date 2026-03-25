@@ -14,7 +14,7 @@
 
 ## What It Does
 
-You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 21 MCP tools. Raw logs stay in your infrastructure — LogWeave stores only the patterns, metadata, and custom fields you configure.
+You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 23 MCP tools. Raw logs stay in your infrastructure — LogWeave stores only the patterns, metadata, and custom fields you configure.
 
 LogWeave works alongside your existing logging stack (Datadog, Grafana, CloudWatch). It adds an AI-queryable intelligence layer on top — it doesn't replace your log storage or search tools.
 
@@ -84,7 +84,7 @@ Search patterns by meaning, not just keywords. *"database slow"* matches *"conne
 
 Millions of individual log lines become hundreds of meaningful patterns with occurrence counts, sparkline trends, and anomaly scores. You see signals, not noise.
 
-### 21 MCP Tools
+### 23 MCP Tools
 
 Your AI assistant gets structured access to your production runtime:
 
@@ -168,7 +168,7 @@ For events that fail clustering (e.g. clusterer timeout), a pre-processed versio
 Your Apps ──→ LogWeave ──→ Your AI
                  │
                  ├── Dashboard
-                 ├── MCP Server (21 tools)
+                 ├── MCP Server (23 tools)
                  └── Alerts (Slack/PagerDuty)
 ```
 

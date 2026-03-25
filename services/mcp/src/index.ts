@@ -580,6 +580,143 @@ server.registerTool(
   ),
 )
 
+server.registerTool(
+  'clustering_health',
+  {
+    title: 'Clustering Health',
+    description:
+      'Check the health of the log clustering pipeline. Reports ClickHouse connectivity, ' +
+      'clusterer circuit breaker state, consecutive failures, and key metrics (ingested, clustered, ' +
+      'unclustered counts). Use this when data seems stale or patterns are not updating.',
+    inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  toolHandler(async () => {
+    const data = await client.get('/readyz')
+    const r = data as {
+      status: string
+      clickhouse: string
+      clusterer: { status: string; consecutiveFailures: number; circuitOpen: boolean }
+      metrics: Record<string, number>
+    }
+
+    let text = `# Clustering Pipeline Health\n\n`
+    text += `**Overall:** ${r.status}\n`
+    text += `**ClickHouse:** ${r.clickhouse}\n`
+    text += `**Clusterer:** ${r.clusterer.status}`
+    if (r.clusterer.circuitOpen) {
+      text += ` ⚠ CIRCUIT OPEN (${r.clusterer.consecutiveFailures} consecutive failures)\n`
+      text += `\nThe circuit breaker is open — new events are being stored as unclustered (template_id=0) and will be re-clustered when the clusterer recovers.\n`
+    } else if (r.clusterer.consecutiveFailures > 0) {
+      text += ` (${r.clusterer.consecutiveFailures} recent failures)\n`
+    } else {
+      text += `\n`
+    }
+    text += `\n## Metrics\n\n`
+    text += `| Metric | Value |\n|--------|-------|\n`
+    for (const [key, val] of Object.entries(r.metrics)) {
+      text += `| ${key} | ${val} |\n`
+    }
+    return text
+  }),
+)
+
+server.registerTool(
+  'compare_periods',
+  {
+    title: 'Compare Time Periods',
+    description:
+      'Compare error patterns between two time periods (e.g. "last 2 hours vs previous 2 hours"). ' +
+      'Returns new, resolved, and changed patterns. Useful for spotting regressions or ' +
+      'confirming a fix. Do NOT use for deploy comparisons — use the changes tool with deploy_id instead.',
+    inputSchema: {
+      service: z.string().optional().describe('Filter by service name'),
+      recent_hours: z.number().default(2).describe('Recent period length in hours (default: 2)'),
+      baseline_hours: z.number().default(2).describe('Baseline period length in hours (default: 2, starts right after recent period)'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler(async (args) => {
+    const { service, recent_hours = 2, baseline_hours = 2 } = args as {
+      service?: string
+      recent_hours?: number
+      baseline_hours?: number
+    }
+
+    const serviceFilter = service ? `&service=${encodeURIComponent(service)}` : ''
+
+    // Fetch both periods in parallel
+    const [recentData, baselineData] = await Promise.all([
+      client.get(`/v1/templates?hours=${recent_hours}${serviceFilter}`),
+      client.get(`/v1/templates?hours=${recent_hours + baseline_hours}${serviceFilter}`),
+    ])
+
+    const recent = ((recentData as { data: Array<{ templateId: string; template: string; count: number; errorCount: number; service: string }> }).data) ?? []
+    const baseline = ((baselineData as { data: Array<{ templateId: string; template: string; count: number; errorCount: number; service: string }> }).data) ?? []
+
+    const recentMap = new Map(recent.map((t) => [t.templateId, t]))
+    const baselineMap = new Map(baseline.map((t) => [t.templateId, t]))
+
+    const newPatterns = recent.filter((t) => !baselineMap.has(t.templateId))
+    const resolvedPatterns = baseline.filter((t) => !recentMap.has(t.templateId))
+    const changed: Array<{ template: string; service: string; recentCount: number; baselineCount: number; ratio: number }> = []
+
+    for (const t of recent) {
+      const b = baselineMap.get(t.templateId)
+      if (b && b.count > 0) {
+        const ratio = t.count / b.count
+        if (ratio > 2 || ratio < 0.5) {
+          changed.push({
+            template: t.template,
+            service: t.service,
+            recentCount: t.count,
+            baselineCount: b.count,
+            ratio,
+          })
+        }
+      }
+    }
+
+    let text = `# Period Comparison\n\n`
+    text += `**Recent:** last ${recent_hours}h | **Baseline:** ${recent_hours}h–${recent_hours + baseline_hours}h ago`
+    if (service) text += ` | **Service:** ${service}`
+    text += `\n\n`
+
+    if (newPatterns.length > 0) {
+      text += `## New Patterns (${newPatterns.length})\n\n`
+      for (const t of newPatterns.slice(0, 10)) {
+        text += `- **${t.template.slice(0, 120)}** — ${t.count} occurrences (${t.service})\n`
+      }
+      text += '\n'
+    }
+
+    if (resolvedPatterns.length > 0) {
+      text += `## Resolved Patterns (${resolvedPatterns.length})\n\n`
+      for (const t of resolvedPatterns.slice(0, 10)) {
+        text += `- ~~${t.template.slice(0, 120)}~~ — was ${t.count} occurrences (${t.service})\n`
+      }
+      text += '\n'
+    }
+
+    if (changed.length > 0) {
+      changed.sort((a, b) => b.ratio - a.ratio)
+      text += `## Significant Changes (${changed.length})\n\n`
+      text += `| Pattern | Service | Recent | Baseline | Change |\n|---------|---------|--------|----------|--------|\n`
+      for (const c of changed.slice(0, 10)) {
+        const dir = c.ratio > 1 ? `↑ ${c.ratio.toFixed(1)}x` : `↓ ${(1 / c.ratio).toFixed(1)}x`
+        text += `| ${c.template.slice(0, 80)} | ${c.service} | ${c.recentCount} | ${c.baselineCount} | ${dir} |\n`
+      }
+      text += '\n'
+    }
+
+    if (newPatterns.length === 0 && resolvedPatterns.length === 0 && changed.length === 0) {
+      text += `No significant differences between the two periods.\n`
+    }
+
+    return text
+  }),
+)
+
 // ---------------------------------------------------------------------------
 // Dev-only tools — registered when LOGWEAVE_DEV=true
 // ---------------------------------------------------------------------------
