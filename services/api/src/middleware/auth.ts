@@ -4,6 +4,7 @@ import type { SessionValidationCache } from '../auth/session-cache.js'
 import type { SessionProvider } from '../auth/session.js'
 import { SESSION_COOKIE_NAME } from '../auth/session.js'
 import type { UserStore } from '../auth/user-store.js'
+import { SESSION_COOKIE_OPTIONS } from '../auth/session.js'
 import { unauthorized } from '../errors.js'
 
 const TENANT_ID_KEY = 'tenantId'
@@ -126,6 +127,14 @@ export function createAuthMiddleware(
           }
           res.locals[TENANT_ID_KEY] = session.tenantId
           res.locals[KEY_ID_KEY] = `session:${session.userId}`
+          // Refresh cookie to extend idle timeout
+          const refreshed = sessionProvider.createSession({
+            userId: session.userId,
+            tenantId: session.tenantId,
+            role: session.role,
+            sessionVersion: session.sessionVersion,
+          })
+          res.cookie(SESSION_COOKIE_NAME, refreshed, SESSION_COOKIE_OPTIONS)
           next()
           return
         }

@@ -6,6 +6,7 @@ export interface SessionData {
   role: string
   sessionVersion: number
   exp: number
+  lastActivity?: number
 }
 
 /**
@@ -19,6 +20,7 @@ export interface SessionProvider {
 }
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000 // 8 hours (absolute TTL)
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes (idle timeout)
 
 export class HmacSessionProvider implements SessionProvider {
   private readonly key: Buffer
@@ -27,10 +29,12 @@ export class HmacSessionProvider implements SessionProvider {
     this.key = signingKey
   }
 
-  createSession(data: Omit<SessionData, 'exp'>): string {
+  createSession(data: Omit<SessionData, 'exp' | 'lastActivity'>): string {
+    const now = Date.now()
     const payload: SessionData = {
       ...data,
-      exp: Date.now() + SESSION_TTL_MS,
+      exp: now + SESSION_TTL_MS,
+      lastActivity: now,
     }
     const payloadStr = JSON.stringify(payload)
     const payloadB64 = Buffer.from(payloadStr).toString('base64url')
@@ -55,9 +59,13 @@ export class HmacSessionProvider implements SessionProvider {
       const payloadStr = Buffer.from(payloadB64, 'base64url').toString('utf-8')
       const data = JSON.parse(payloadStr) as SessionData
 
-      // Check expiry
-      if (typeof data.exp !== 'number' || Date.now() > data.exp) return null
+      // Check absolute expiry
+      const now = Date.now()
+      if (typeof data.exp !== 'number' || now > data.exp) return null
       if (!data.userId || !data.tenantId || !data.role) return null
+
+      // Check idle timeout
+      if (data.lastActivity && (now - data.lastActivity) > IDLE_TIMEOUT_MS) return null
 
       return data
     } catch {
