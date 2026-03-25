@@ -1,0 +1,105 @@
+# LogWeave — Production Docker Compose
+#
+# Usage:
+#   cp .env.production .env    # edit values
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Prerequisites: Docker Engine 24+, Docker Compose v2
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    restart: unless-stopped
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-logweave}
+    # ClickHouse ports are NOT exposed to host — only accessible by other containers
+    expose:
+      - "8123"
+      - "9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  clusterer:
+    build:
+      context: services/clusterer
+    restart: unless-stopped
+    expose:
+      - "8000"
+    volumes:
+      - drain3_checkpoints:/data/drain3
+    environment:
+      LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123/logweave
+      LOGWEAVE_DRAIN3_CHECKPOINT_DIR: /data/drain3
+      LOGWEAVE_DRAIN3_SIM_TH: ${LOGWEAVE_DRAIN3_SIM_TH:-0.4}
+      LOGWEAVE_DRAIN3_DEPTH: ${LOGWEAVE_DRAIN3_DEPTH:-4}
+      LOGWEAVE_DRAIN3_MAX_CLUSTERS: ${LOGWEAVE_DRAIN3_MAX_CLUSTERS:-10000}
+      LOGWEAVE_MAX_CONCURRENT_REQUESTS: ${LOGWEAVE_MAX_CONCURRENT_REQUESTS:-4}
+      LOGWEAVE_MAX_TENANTS: ${LOGWEAVE_MAX_TENANTS:-200}
+      LOGWEAVE_CHECKPOINT_HMAC_KEY: ${LOGWEAVE_CHECKPOINT_HMAC_KEY:-}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  api:
+    build:
+      context: services/api
+    restart: unless-stopped
+    ports:
+      - "${LOGWEAVE_PORT:-3000}:3000"
+    environment:
+      LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123
+      LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
+      LOGWEAVE_API_KEYS: ${LOGWEAVE_API_KEYS}
+      LOGWEAVE_ENCRYPTION_KEY: ${LOGWEAVE_ENCRYPTION_KEY:-}
+      LOGWEAVE_LOG_LEVEL: ${LOGWEAVE_LOG_LEVEL:-info}
+      LOGWEAVE_CLUSTERER_TIMEOUT_MS: ${LOGWEAVE_CLUSTERER_TIMEOUT_MS:-2000}
+      LOGWEAVE_RATE_LIMIT_RPM: ${LOGWEAVE_RATE_LIMIT_RPM:-300}
+      LOGWEAVE_RATE_LIMIT_TENANT_RPM: ${LOGWEAVE_RATE_LIMIT_TENANT_RPM:-600}
+      LOGWEAVE_RATE_LIMIT_INGEST_RPM: ${LOGWEAVE_RATE_LIMIT_INGEST_RPM:-600}
+      LOGWEAVE_MAX_CONCURRENT_QUERIES: ${LOGWEAVE_MAX_CONCURRENT_QUERIES:-8}
+      LOGWEAVE_RECOVERY_ENABLED: ${LOGWEAVE_RECOVERY_ENABLED:-true}
+      LOGWEAVE_RECOVERY_INTERVAL_MS: ${LOGWEAVE_RECOVERY_INTERVAL_MS:-60000}
+      LOGWEAVE_RECOVERY_LOOKBACK_HOURS: ${LOGWEAVE_RECOVERY_LOOKBACK_HOURS:-24}
+      LOGWEAVE_RETENTION_ENABLED: ${LOGWEAVE_RETENTION_ENABLED:-true}
+      LOGWEAVE_SHUTDOWN_TIMEOUT_MS: ${LOGWEAVE_SHUTDOWN_TIMEOUT_MS:-10000}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      clusterer:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  clickhouse_data:
+  drain3_checkpoints:
