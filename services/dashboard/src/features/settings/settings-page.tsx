@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { cn } from '../../lib/cn'
+import { ClusteringSettings } from './clustering-settings'
 
 const TAG_KEY_PATTERN = /^[a-zA-Z0-9_.-]+$/
 
@@ -155,6 +156,8 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ClusteringSettings />
 
       <Card>
         <CardHeader>
