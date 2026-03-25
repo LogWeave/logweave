@@ -121,7 +121,7 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
         } as RawLogsData, {
           hours: params.hours,
           count: 0,
-          message: 'No log source connector configured. Set up an S3 connector via POST /v1/connectors to enable raw log drill-down.',
+          message: 'Raw log drill-down unavailable — no S3 connector configured. Connect a log source in Settings > Connectors to enable.',
         })
         return
       }

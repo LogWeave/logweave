@@ -7,7 +7,8 @@ import type { DbClient } from '../../src/db/client.js'
 import { createAuthMiddleware } from '../../src/middleware/auth.js'
 import { createErrorHandler } from '../../src/middleware/error-handler.js'
 import { TailBuffer } from '../../src/tail/buffer.js'
-import { tailRoutes } from '../../src/routes/tail.js'
+import { TailTokenStore } from '../../src/tail/token-store.js'
+import { tailRoutes, tailSseRoute } from '../../src/routes/tail.js'
 import { TenantSettingsStore } from '../../src/watches/tenant-settings.js'
 
 // ---------------------------------------------------------------------------
@@ -61,14 +62,18 @@ function createTestApp(options?: { tailMode?: string; bufferEvents?: number }) {
     }
   }
 
+  const tailTokenStore = new TailTokenStore()
+
   const app = express()
   app.use(express.json())
+  // SSE route (own auth via ?token=) — mounted before auth middleware
+  app.use('/v1', tailSseRoute({ tailBuffer, settingsStore, tailTokenStore, db, logger }))
   const v1 = Router()
   v1.use(createAuthMiddleware(new Map(keyMap)))
-  v1.use(tailRoutes({ tailBuffer, settingsStore, db, logger }))
+  v1.use(tailRoutes({ tailBuffer, settingsStore, tailTokenStore, db, logger }))
   app.use('/v1', v1)
   app.use(createErrorHandler(logger))
-  return { app, tailBuffer, settingsStore }
+  return { app, tailBuffer, settingsStore, tailTokenStore }
 }
 
 // ---------------------------------------------------------------------------
@@ -193,32 +198,84 @@ describe('GET /v1/tail/stats', () => {
 })
 
 // ---------------------------------------------------------------------------
-// GET /v1/tail (SSE) — basic checks only (SSE needs special handling)
+// POST /v1/tail/token — short-lived SSE token exchange
+// ---------------------------------------------------------------------------
+
+describe('POST /v1/tail/token', () => {
+  it('returns a token when authenticated', async () => {
+    const { app } = createTestApp({ tailMode: 'metadata' })
+    const res = await request(app)
+      .post('/v1/tail/token')
+      .set('Authorization', `Bearer ${KEY_A}`)
+
+    assert.equal(res.status, 200)
+    assert.ok(res.body.data.token)
+    assert.equal(typeof res.body.data.token, 'string')
+  })
+
+  it('returns 401 without auth', async () => {
+    const { app } = createTestApp({ tailMode: 'metadata' })
+    const res = await request(app).post('/v1/tail/token')
+    assert.equal(res.status, 401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TailTokenStore
+// ---------------------------------------------------------------------------
+
+describe('TailTokenStore', () => {
+  it('issues and validates a token', () => {
+    const store = new TailTokenStore()
+    const token = store.issue('tenant-1')
+    assert.equal(store.validate(token), 'tenant-1')
+  })
+
+  it('returns undefined for unknown token', () => {
+    const store = new TailTokenStore()
+    assert.equal(store.validate('nonexistent'), undefined)
+  })
+
+  it('returns undefined for expired token', () => {
+    const store = new TailTokenStore(1) // 1ms TTL
+    const token = store.issue('tenant-1')
+    // Wait for expiry
+    const start = Date.now()
+    while (Date.now() - start < 5) { /* busy-wait */ }
+    assert.equal(store.validate(token), undefined)
+  })
+
+  it('does not consume token (reusable within TTL)', () => {
+    const store = new TailTokenStore()
+    const token = store.issue('tenant-1')
+    assert.equal(store.validate(token), 'tenant-1')
+    assert.equal(store.validate(token), 'tenant-1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /v1/tail (SSE) — token-based auth
 // ---------------------------------------------------------------------------
 
 describe('GET /v1/tail (SSE)', () => {
-  it('returns 403 when tail disabled', async () => {
-    const { app } = createTestApp({ tailMode: 'disabled' })
+  it('returns 403 when tail disabled (via token)', async () => {
+    const { app, tailTokenStore } = createTestApp({ tailMode: 'disabled' })
+    const token = tailTokenStore.issue(TENANT_A)
 
     const res = await request(app)
-      .get('/v1/tail')
-      .set('Authorization', `Bearer ${KEY_A}`)
+      .get(`/v1/tail?token=${token}`)
 
     assert.equal(res.status, 403)
     assert.equal(res.body.error.code, 'TAIL_DISABLED')
   })
 
-  it('returns 403 when tail_mode not set', async () => {
-    const { app } = createTestApp()
-
-    const res = await request(app)
-      .get('/v1/tail')
-      .set('Authorization', `Bearer ${KEY_A}`)
-
-    assert.equal(res.status, 403)
+  it('returns 401 with invalid token', async () => {
+    const { app } = createTestApp({ tailMode: 'metadata' })
+    const res = await request(app).get('/v1/tail?token=bad-token')
+    assert.equal(res.status, 401)
   })
 
-  it('returns 401 without auth', async () => {
+  it('returns 401 without any auth', async () => {
     const { app } = createTestApp({ tailMode: 'metadata' })
     const res = await request(app).get('/v1/tail')
     assert.equal(res.status, 401)

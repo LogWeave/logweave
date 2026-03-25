@@ -103,7 +103,7 @@ describe('GET /v1/templates/:id/raw-logs', () => {
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data.lines, [])
     assert.ok(res.body.meta.message)
-    assert.ok(res.body.meta.message.includes('No log source connector configured'))
+    assert.ok(res.body.meta.message.includes('no S3 connector configured'))
   })
 
   it('returns 404 for unknown template', async () => {

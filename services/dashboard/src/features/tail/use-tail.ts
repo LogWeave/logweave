@@ -66,21 +66,43 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
     setEventRate(0)
   }, [])
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     disconnect()
     setStatus('connecting')
     setError(undefined)
     setEvents([])
+
+    // Exchange API key for a short-lived SSE token (key never appears in URL)
+    let sseToken: string | undefined
+    try {
+      const base = config.apiUrl || window.location.origin
+      const tokenRes = await fetch(`${base}/v1/tail/token`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.apiKey}` },
+      })
+      if (tokenRes.ok) {
+        const tokenData = await tokenRes.json()
+        sseToken = tokenData.data?.token
+      }
+    } catch {
+      // Token exchange failed — will fall through to error state
+    }
+
+    if (!sseToken) {
+      setError('Failed to obtain tail token')
+      setStatus('disconnected')
+      return
+    }
 
     const params = new URLSearchParams()
     if (filters.service) params.set('service', filters.service)
     if (filters.level) params.set('level', filters.level)
     if (filters.templateId) params.set('template_id', filters.templateId)
     if (filters.minAnomaly !== undefined) params.set('min_anomaly', String(filters.minAnomaly))
-    // EventSource can't send Authorization headers — pass API key as query param
-    if (config.apiKey) params.set('api_key', config.apiKey)
+    params.set('token', sseToken)
 
-    const url = `${config.apiUrl}/v1/tail?${params.toString()}`
+    const base = config.apiUrl || window.location.origin
+    const url = `${base}/v1/tail?${params.toString()}`
     const es = new EventSource(url)
     let failCount = 0
 

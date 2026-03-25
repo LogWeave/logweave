@@ -31,9 +31,10 @@ import { rawLogsRoutes } from './routes/raw-logs.js'
 import { ruleRoutes } from './routes/rules.js'
 import { settingsRoutes } from './routes/settings.js'
 import { tagRoutes } from './routes/tags.js'
-import { tailRoutes } from './routes/tail.js'
+import { tailRoutes, tailSseRoute } from './routes/tail.js'
 import { watchRoutes } from './routes/watches.js'
 import type { TailBuffer } from './tail/buffer.js'
+import { TailTokenStore } from './tail/token-store.js'
 import type { RuleStore } from './watches/rule-store.js'
 import type { TenantSettingsStore } from './watches/tenant-settings.js'
 import type { WatchStore } from './watches/watch-store.js'
@@ -223,16 +224,24 @@ export function createApp(deps: AppDependencies): express.Express {
       encryptionKey: deps.config.encryptionKey,
     }),
   )
+  const tailTokenStore = new TailTokenStore()
+  tailTokenStore.start()
+
   if (deps.tailBuffer) {
-    v1.use(
-      tailRoutes({
-        tailBuffer: deps.tailBuffer,
-        settingsStore: deps.settingsStore,
-        db: deps.db,
-        logger: deps.logger,
-      }),
-    )
+    const tailDeps = {
+      tailBuffer: deps.tailBuffer,
+      settingsStore: deps.settingsStore,
+      tailTokenStore,
+      db: deps.db,
+      logger: deps.logger,
+    }
+    // Authenticated tail routes (token exchange, poll, stats)
+    v1.use(tailRoutes(tailDeps))
+    // SSE route — handles its own auth via ?token= (no global auth middleware)
+    // Must be mounted before the authenticated v1 router
+    app.use('/v1', tailSseRoute(tailDeps))
   }
+
   app.use('/v1', v1)
 
   // Dashboard SPA — serve static files if the dist directory exists
