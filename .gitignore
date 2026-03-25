@@ -29,8 +29,8 @@ build/
 *.egg-info/
 *.tsbuildinfo
 
-# Screenshots (from browser automation)
-screenshots/
+# Screenshots (from browser automation — root level only)
+/screenshots/
 
 # Docker
 docker-compose.override.yml
@@ -49,12 +49,9 @@ coverage/
 htmlcov/
 .coverage
 
-# Experiment outputs (generated data, results, temp files)
-experiments/**/data/
-experiments/**/results/
+# Internal development docs (plans, specs, ADRs, experiments, postmortems)
+internal/
 
-# Session prompts and scratch docs
-docs/prompts/
-
-# QA reports and screenshots (local-only)
-docs/qa/reports/
+# Claude Code project config
+CLAUDE.md
+.claude/

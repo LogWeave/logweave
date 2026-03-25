@@ -1,170 +1,172 @@
 # LogWeave
 
-**The log intelligence layer your AI agent queries.** Add one line to your Winston config and your logs get pattern detection, anomaly alerts, and structured intelligence -- queryable via REST API or MCP server. Your AI assistant already knows your codebase; LogWeave tells it what's happening at runtime. Together, they diagnose production issues faster than any dashboard. LogWeave never stores raw log content -- it extracts patterns and discards the rest.
+**Log intelligence for AI agents.** LogWeave extracts patterns from your logs and makes them queryable by your AI coding assistant. Your AI already knows your codebase — LogWeave tells it what's happening at runtime.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+## What It Does
+
+You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 21 MCP tools. Your AI can then answer questions like:
+
+- *"What new error patterns appeared after my last deploy?"*
+- *"Is my payment-service error rate abnormal right now?"*
+- *"What other services are affected when auth times out?"*
+
+**LogWeave never stores raw log content.** It extracts patterns, metadata, and intelligence — then discards the rest. Raw logs stay in your infrastructure (S3/CloudWatch).
 
 ## Quick Start
 
-### Docker (API only)
-
 ```bash
 git clone https://github.com/RobertDicker/logweave.git
 cd logweave
-docker compose up --build
+cp .env.production.example .env
+# Edit .env — set LOGWEAVE_API_KEYS and LOGWEAVE_ENCRYPTION_KEY
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-Three containers start: **API Server** (:3000), **Clusterer** (:8000), **ClickHouse** (:8123).
+Open `http://localhost:3000` and log in with `admin` / `admin` (you'll be prompted to change the password).
 
-Send some logs and watch clustering in action:
+**Send your first log:**
 
 ```bash
-curl -s -X POST http://localhost:3000/v1/ingest/batch \
+curl -X POST http://localhost:3000/v1/ingest/batch \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev-key" \
-  -d '{
-    "service": "demo",
-    "events": [
-      {"message": "User 12345 logged in from 192.168.1.1", "level": "info"},
-      {"message": "User 67890 logged in from 10.0.0.1", "level": "info"},
-      {"message": "User 11111 logged in from 172.16.0.5", "level": "info"},
-      {"message": "Payment failed for order abc-123", "level": "error"},
-      {"message": "Payment failed for order def-456", "level": "error"},
-      {"message": "Payment failed for order ghi-789", "level": "error"},
-      {"message": "Connection pool exhausted after 30s", "level": "error"},
-      {"message": "Connection pool exhausted after 45s", "level": "error"},
-      {"message": "Health check passed", "level": "info"},
-      {"message": "Health check passed", "level": "info"},
-      {"message": "Retry attempt 3 for request req-001", "level": "warn"},
-      {"message": "Retry attempt 2 for request req-002", "level": "warn"}
-    ]
-  }'
+  -d '{"events": [{"message": "User login succeeded", "level": "INFO", "service": "auth-service"}]}'
 ```
 
-12 events become 5 templates. LogWeave stores the patterns, not the raw content.
+**Connect your AI:**
 
-### Full Demo (with Dashboard + Simulator)
-
-```bash
-git clone https://github.com/RobertDicker/logweave.git
-cd logweave
-docker compose up --build -d    # start API + Clusterer + ClickHouse
-pnpm install                    # install workspace deps
-pnpm dev                        # starts dashboard + simulator
-```
-
-Open **http://localhost:5173** to see the dashboard with live data from the simulator.
-
-<!-- TODO: Add dashboard screenshot -->
-
-## Connect Your AI
-
-LogWeave exposes 21 MCP tools for AI assistants (Claude Code, Cursor, Windsurf, etc.). Add this to your `.mcp.json`:
+Add to your editor's MCP config (Claude Code, Cursor, Windsurf, VS Code):
 
 ```json
 {
   "mcpServers": {
     "logweave": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["services/mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["@logweave/mcp"],
       "env": {
         "LOGWEAVE_API_URL": "http://localhost:3000",
-        "LOGWEAVE_API_KEY": "your-api-key"
+        "LOGWEAVE_API_KEY": "YOUR_API_KEY"
       }
     }
   }
 }
 ```
 
-Then ask your AI: *"What errors are happening in the payments service?"* or *"What changed after the last deploy?"*
+Then ask your AI: *"What error patterns are happening in my services?"*
 
-Tools include: `overview`, `error_patterns`, `changes`, `service_health`, `diagnose_service`, `search_templates`, `template_detail`, `template_trend`, `correlations`, `related_patterns`, `trace_details`, `live_tail`, `deploys`, `list_services`, `service_outlier`, `level_distribution`, `template_events`, `raw_logs`, `list_rules`, `create_rule`, `list_alerts`.
+## Features
 
-## Ingestion Endpoints
+### Pattern Detection
+LogWeave clusters log messages into templates using [Drain3](https://github.com/logpai/Drain3). Instead of millions of individual log lines, you get hundreds of meaningful patterns with occurrence counts, trends, and anomaly scores.
 
-| Endpoint | Format | Use Case |
-|----------|--------|----------|
-| `POST /v1/ingest/batch` | LogWeave SDK format | `@logweave/transport` Winston transport |
-| `POST /v1/ingest/logs` | Generic JSON array | Any language / HTTP client |
-| `POST /v1/logs` | OTLP/HTTP JSON | OpenTelemetry Collector export |
+### 21 MCP Tools
+Your AI assistant gets structured access to your production runtime:
 
-All endpoints require `Authorization: Bearer <api-key>` and return `{ accepted, clustered, new_templates }`.
+| Tool | What it does |
+|------|-------------|
+| `overview` | System snapshot — events, patterns, error rate, services |
+| `error_patterns` | Top errors sorted by frequency |
+| `changes` | New patterns, spikes, and resolved issues |
+| `diagnose_service` | Health + outlier detection + recent changes (3-in-1) |
+| `search_templates` | Find patterns by text (substring or semantic) |
+| `template_detail` | Full context — sparkline, status codes, first/last seen |
+| `correlations` | Statistically correlated patterns (Pearson r) |
+| `related_patterns` | Co-occurring patterns in the same request |
+| `trace_details` | Cross-service trace timeline |
+| `raw_logs` | S3-backed raw log drill-down |
+| `live_tail` | Real-time event stream |
+| `deploys` | Deployment markers for change correlation |
+| `create_rule` | Create threshold alerts programmatically |
+| ...and 8 more | [Full list in docs](docs/api-reference.md) |
 
-## How Data Works
+### Real-Time Dashboard
 
-LogWeave stores patterns and metadata, never raw log content. When your app sends `"User 12345 logged in from 192.168.1.1"`, LogWeave extracts the template `"User <*> logged in from <*>"` and stores that -- along with occurrence counts, timestamps, anomaly scores, and service metadata. Raw logs stay in your infrastructure (S3, CloudWatch, wherever they already live).
+![Dashboard](docs/screenshots/dashboard.png)
+
+- KPI strip — spikes, error rate, event volume
+- What Changed — new patterns, spikes, resolved issues
+- Volume chart — per-service log volume over time
+- Pattern table — sortable, searchable, with sparkline trends
+- Service health cards — error rates and top patterns per service
+- Live tail — real-time event stream with filters
+- Alert rules — threshold and pattern-based with Slack/PagerDuty
+
+### Alerting
+- **Threshold rules** — alert when error count exceeds N in M minutes
+- **Pattern watches** — instant notification on specific patterns
+- **Channels** — Slack webhooks, PagerDuty, generic webhooks
+- **Cooldown** — prevent alert fatigue
+
+### Security
+- Username/password login with forced password change
+- Optional TOTP 2FA (Google Authenticator, Authy)
+- Account lockout after failed attempts
+- Admin/viewer roles with team management
+- API key auth for SDK and MCP (separate from dashboard login)
+- All secrets encrypted at rest (AES-256-GCM)
+- Session cookies (httpOnly, secure, sameSite)
+- Audit trail for all auth events
+
+![Login](docs/screenshots/login.png)
 
 ## Architecture
 
 ```
-Your App --> @logweave/transport --> API Server (Node.js/Express) --> ClickHouse
-                                        |
-                                    Clusterer (Python/FastAPI/Drain3)
+Your Apps ──→ LogWeave API ──→ Clusterer (Drain3) ──→ ClickHouse
+                  │                                        │
+                  ├── Dashboard (React)                    │
+                  ├── MCP Server (21 tools)                │
+                  └── Alerts (Slack/PagerDuty) ◄───────────┘
+
+Raw logs stay in YOUR S3 ──→ LogWeave reads on demand (drill-down)
 ```
 
-Three containers via Docker Compose:
-- **API Server** (Node.js / Express / TypeScript) -- ingestion, queries, dashboard endpoints, alerting
-- **Clusterer** (Python / FastAPI / Drain3) -- template extraction via log clustering
-- **ClickHouse** -- metadata store (ReplacingMergeTree, single-node)
+**Three containers:** API Server (Node.js/Express), Clusterer (Python/FastAPI/Drain3), ClickHouse.
 
-## Project Structure
+LogWeave stores only metadata and patterns — never raw log content. Raw logs stay in your S3 bucket and are read on demand for drill-down.
 
-```
-services/api/           Node.js Express TypeScript API server
-services/clusterer/     Python FastAPI Drain3 clustering service
-services/dashboard/     React/Vite SPA dashboard (Tailwind, ECharts)
-services/mcp/           MCP server for AI assistants (21 tools)
-packages/transport/     @logweave/transport -- Winston logger SDK (npm, MIT)
-simulator/              Realistic log generator for demos
-docs/                   ADRs, specs, lessons learned
-```
+## Ingestion Methods
+
+| Method | Use case |
+|--------|----------|
+| **SDK** (`@logweave/transport`) | Node.js apps with Winston/Pino |
+| **HTTP API** (`POST /v1/ingest/batch`) | Any language — curl, Go, Python, Java |
+| **OpenTelemetry** (`POST /v1/logs`) | OTel Collector integration |
+
+## Documentation
+
+- [Self-Hosted Install Guide](docs/install.md) — 5-minute setup with Docker Compose
+- [Configuration Reference](docs/install.md#environment-variable-reference) — all env vars
+- [Design Specs](docs/specs/) — architecture decisions and feature specs
+
+## Tech Stack
+
+- **API Server:** Node.js 24 / Express / TypeScript
+- **Clusterer:** Python 3.11 / FastAPI / Drain3
+- **Metadata Store:** ClickHouse (ReplacingMergeTree)
+- **Dashboard:** React / Vite / Tailwind CSS 4 / ECharts
+- **MCP Server:** `@logweave/mcp` (stdio transport)
+- **Infrastructure:** Docker Compose
 
 ## Development
 
-### API Server
-
 ```bash
-cd services/api
-pnpm install
-pnpm dev          # tsx watch + pino-pretty
-pnpm test         # all tests
-pnpm lint         # Biome check
-pnpm typecheck    # tsc --noEmit
+# API server
+cd services/api && pnpm install && pnpm dev
+
+# Clusterer
+cd services/clusterer && uv sync --dev && uv run poe serve
+
+# Dashboard
+cd services/dashboard && pnpm install && pnpm dev
+
+# Tests
+cd services/api && pnpm test        # 635 unit tests
+cd services/clusterer && uv run poe test  # 106 tests
 ```
 
-### Clusterer
+## License
 
-```bash
-cd services/clusterer
-uv sync --dev
-uv run poe serve   # dev server with hot reload
-uv run poe test    # pytest
-uv run poe check   # ruff lint + format check
-```
-
-### All Services
-
-```bash
-./dev.sh test      # run all tests across all services
-./dev.sh lint      # lint everything
-./dev.sh dev       # start dev servers
-```
-
-ClickHouse must be running for integration tests: `docker compose up clickhouse -d`
-
-## Key Design Decisions
-
-- **No raw log storage** -- only metadata and extracted patterns are persisted
-- **Two-language stack** -- Drain3 has no production Node.js equivalent; Python handles clustering, Node.js handles everything else
-- **Docker Compose, not Kubernetes** -- operational simplicity for solo maintainer
-- **UUIDv7 for all IDs** -- globally unique, timestamp-sortable, no coordination needed
-- **Best-effort clustering** -- 500ms timeout with graceful degradation to `[unclustered]`
-
-See [docs/adr/](docs/adr/) for detailed Architecture Decision Records.
-
-## Links
-
-- [Architecture Plan (PLAN.md)](PLAN.md)
-- [Architecture Decision Records](docs/adr/)
-- [API Server README](services/api/README.md)
-- [Clusterer README](services/clusterer/README.md)
-- [Transport SDK README](packages/transport/README.md)
+MIT
