@@ -2,17 +2,19 @@
 
 **Log intelligence for AI agents.** LogWeave extracts patterns from your logs and makes them queryable by your AI coding assistant. Your AI already knows your codebase — LogWeave tells it what's happening at runtime.
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Dashboard](screenshots/populated-dash.png)
+
+*"Diagnose the payments-api service — is anything unusual happening?"*
+
+![MCP Diagnose](screenshots/mcp-diagnose.png)
+
+*"What error patterns appeared since the last deploy?"*
+
+![MCP Patterns](screenshots/mcp-patterns-appeared.png)
 
 ## What It Does
 
-You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 21 MCP tools. Your AI can then answer questions like:
-
-- *"What new error patterns appeared after my last deploy?"*
-- *"Is my payment-service error rate abnormal right now?"*
-- *"What other services are affected when auth times out?"*
-
-**LogWeave never stores raw log content.** It extracts patterns, metadata, and intelligence — then discards the rest. Raw logs stay in your infrastructure (S3/CloudWatch).
+You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 21 MCP tools. No raw log content is ever stored — patterns, metadata, and intelligence only. Raw logs stay in your infrastructure.
 
 ## Quick Start
 
@@ -58,17 +60,37 @@ Then ask your AI: *"What error patterns are happening in my services?"*
 
 ## Features
 
-### Pattern Detection
-LogWeave clusters log messages into templates using [Drain3](https://github.com/logpai/Drain3). Instead of millions of individual log lines, you get hundreds of meaningful patterns with occurrence counts, trends, and anomaly scores.
+### Deploy-Anchored Change Detection
+
+Anchor any query to a deployment and instantly see what's new, what's spiking, and what resolved. *"What broke after my deploy?"* is one question away.
+
+### Anomaly Detection
+
+Every service is continuously scored against its 7-day baseline using z-score analysis. No manual thresholds to configure — LogWeave tells you whether an error rate is normal or a statistical outlier automatically.
+
+![Unusual Activity](screenshots/mcp-unusual-activity.png)
+
+### Cross-Service Correlation
+
+LogWeave finds statistically correlated patterns across services using Pearson r. When auth starts timing out and payment failures spike at the same time, you'll see them linked — not buried in separate dashboards.
+
+### Semantic Pattern Search
+
+Search patterns by meaning, not just keywords. *"database slow"* matches *"connection pool exhausted"*. Your AI uses this automatically when investigating issues.
+
+### Pattern Clustering
+
+Millions of individual log lines become hundreds of meaningful patterns with occurrence counts, sparkline trends, and anomaly scores. You see signals, not noise.
 
 ### 21 MCP Tools
+
 Your AI assistant gets structured access to your production runtime:
 
 | Tool | What it does |
 |------|-------------|
 | `overview` | System snapshot — events, patterns, error rate, services |
 | `error_patterns` | Top errors sorted by frequency |
-| `changes` | New patterns, spikes, and resolved issues |
+| `changes` | New patterns, spikes, and resolved issues since a deploy |
 | `diagnose_service` | Health + outlier detection + recent changes (3-in-1) |
 | `search_templates` | Find patterns by text (substring or semantic) |
 | `template_detail` | Full context — sparkline, status codes, first/last seen |
@@ -83,35 +105,39 @@ Your AI assistant gets structured access to your production runtime:
 
 ### Real-Time Dashboard
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Dashboard](screenshots/populated-dash.png)
 
-- KPI strip — spikes, error rate, event volume
+- KPI strip — spikes, error rate, event volume at a glance
 - What Changed — new patterns, spikes, resolved issues
 - Volume chart — per-service log volume over time
 - Pattern table — sortable, searchable, with sparkline trends
 - Service health cards — error rates and top patterns per service
-- Live tail — real-time event stream with filters
-- Alert rules — threshold and pattern-based with Slack/PagerDuty
+
+![Pattern Detail](screenshots/side-panel.png)
+
+Click any pattern to drill into occurrence counts, status code breakdown, and hourly sparklines.
 
 ### Live Tail
 
 Stream logs in real-time across all services with filtering by service, level, and pattern. 8+ events/sec with zero lag.
 
-![Live Tail](docs/screenshots/tail.png)
+![Live Tail](screenshots/live-tail.png)
 
 ### Alerting
 
 Set up alerts in minutes from the dashboard — no config files, no YAML.
 
-- **Threshold rules** — "Alert me when error count > 50 in 5 minutes for payment-service" → Slack message in seconds
-- **Pattern watches** — click "Watch" on any log pattern → get notified the next time it appears
-- **Slack** — paste your webhook URL in Settings, done. Test with one click.
-- **PagerDuty** — add your routing key as a channel, LogWeave sends Events API v2 payloads
-- **Generic webhooks** — any HTTPS endpoint receives structured JSON alerts
+- **Threshold rules** — "Alert me when error count > 50 in 5 minutes for payment-service" — Slack message in seconds
+- **Pattern watches** — click "Watch" on any log pattern, get notified the next time it appears
+- **Slack, PagerDuty, generic webhooks** — paste a URL, done
 - **Cooldown** — configurable per rule (1 min to 24 hours) to prevent alert fatigue
 - **Your AI can create rules too** — `create_rule` MCP tool lets your AI set up alerts programmatically
 
-![Alerts](docs/screenshots/alerts.png)
+![Alerts](screenshots/alerts.png)
+
+### Self-Hosted and Private
+
+LogWeave runs entirely in your infrastructure. Raw logs never leave your environment — LogWeave reads them on demand from your S3 bucket for drill-down, but only stores extracted patterns and metadata. Nothing is sent to external services.
 
 ### Security
 - Username/password login with forced password change
@@ -123,23 +149,17 @@ Set up alerts in minutes from the dashboard — no config files, no YAML.
 - Session cookies (httpOnly, secure, sameSite)
 - Audit trail for all auth events
 
-![Login](docs/screenshots/login.png)
-
 ## Architecture
 
 ```
-Your Apps ──→ LogWeave API ──→ Clusterer (Drain3) ──→ ClickHouse
-                  │                                        │
-                  ├── Dashboard (React)                    │
-                  ├── MCP Server (21 tools)                │
-                  └── Alerts (Slack/PagerDuty) ◄───────────┘
-
-Raw logs stay in YOUR S3 ──→ LogWeave reads on demand (drill-down)
+Your Apps ──→ LogWeave ──→ Your AI
+                 │
+                 ├── Dashboard
+                 ├── MCP Server (21 tools)
+                 └── Alerts (Slack/PagerDuty)
 ```
 
-**Three containers:** API Server (Node.js/Express), Clusterer (Python/FastAPI/Drain3), ClickHouse.
-
-LogWeave stores only metadata and patterns — never raw log content. Raw logs stay in your S3 bucket and are read on demand for drill-down.
+LogWeave runs as a single `docker compose up` — three containers, nothing else to manage. Raw logs stay in your S3 bucket; LogWeave stores only patterns and metadata.
 
 ## Ingestion Methods
 
