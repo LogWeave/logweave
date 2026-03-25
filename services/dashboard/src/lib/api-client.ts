@@ -17,6 +17,14 @@ export function setOnUnauthorized(callback: (() => void) | null): void {
   onUnauthorized = callback
 }
 
+function getCsrfToken(): string | undefined {
+  const match = document.cookie.match(/logweave_csrf=([^;]+)/)
+  if (!match) return undefined
+  const value = decodeURIComponent(match[1])
+  const dotIndex = value.indexOf('.')
+  return dotIndex > 0 ? value.slice(0, dotIndex) : undefined
+}
+
 class ApiClient {
   private headers(): HeadersInit {
     const h: HeadersInit = { Accept: 'application/json' }
@@ -24,6 +32,19 @@ class ApiClient {
     // Otherwise rely on session cookie (credentials: 'include')
     if (config.apiKey) {
       h.Authorization = `Bearer ${config.apiKey}`
+    }
+    return h
+  }
+
+  private mutationHeaders(): HeadersInit {
+    const h: HeadersInit = {
+      ...this.headers(),
+      'Content-Type': 'application/json',
+    }
+    // Add CSRF token for cookie-based auth (not needed for Bearer)
+    if (!config.apiKey) {
+      const csrf = getCsrfToken()
+      if (csrf) (h as Record<string, string>)['X-CSRF-Token'] = csrf
     }
     return h
   }
@@ -60,7 +81,7 @@ class ApiClient {
     const url = new URL(path, base)
     const res = await fetch(url, {
       method: 'POST',
-      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      headers: this.mutationHeaders(),
       credentials: 'include',
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
@@ -78,7 +99,7 @@ class ApiClient {
     const url = new URL(path, base)
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      headers: this.mutationHeaders(),
       credentials: 'include',
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
@@ -96,7 +117,7 @@ class ApiClient {
     const url = new URL(path, base)
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: this.headers(),
+      headers: this.mutationHeaders(),
       credentials: 'include',
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })

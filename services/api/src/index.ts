@@ -71,11 +71,13 @@ try {
 let sessionProvider: HmacSessionProvider | undefined
 let userStore: ClickHouseUserStore | undefined
 let totpEncryptionKey: Buffer | undefined
+let csrfTokenKey: Buffer | undefined
 
 if (config.encryptionKey) {
   const keys = await deriveKeys(config.encryptionKey)
   sessionProvider = new HmacSessionProvider(keys.sessionSigningKey)
   totpEncryptionKey = keys.totpEncryptionKey
+  csrfTokenKey = keys.csrfTokenKey
   userStore = new ClickHouseUserStore(db, logger)
 
   // Bootstrap default admin if no users exist
@@ -117,6 +119,7 @@ const app = createApp({
   sessionProvider,
   userStore,
   totpEncryptionKey,
+  csrfTokenKey,
 })
 
 const recovery = new RecoverySweep(

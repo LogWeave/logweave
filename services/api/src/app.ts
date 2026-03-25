@@ -15,6 +15,7 @@ import { SessionValidationCache } from './auth/session-cache.js'
 import { KeyStore, createAuthMiddleware } from './middleware/auth.js'
 import { createConcurrentQueryGuard } from './middleware/concurrent-query-guard.js'
 import { createErrorHandler } from './middleware/error-handler.js'
+import { createCsrfMiddleware } from './middleware/csrf.js'
 import { createMcpDetectMiddleware } from './middleware/mcp-detect.js'
 import { createRateLimiter } from './middleware/rate-limit.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
@@ -59,6 +60,7 @@ export interface AppDependencies {
   sessionProvider?: SessionProvider
   userStore?: UserStore
   totpEncryptionKey?: Buffer
+  csrfTokenKey?: Buffer
 }
 
 export function createApp(deps: AppDependencies): express.Express {
@@ -171,6 +173,11 @@ export function createApp(deps: AppDependencies): express.Express {
 
   const v1 = Router()
   v1.use(auth)
+  if (deps.csrfTokenKey) {
+    const csrf = createCsrfMiddleware(deps.csrfTokenKey)
+    v1.use(csrf.tokenSetter)
+    v1.use(csrf.tokenValidator)
+  }
   v1.use(mcpDetect)
   v1.use(rateLimiter)
   v1.use(queryGuard)
