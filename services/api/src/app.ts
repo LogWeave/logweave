@@ -13,6 +13,7 @@ import { requestContext } from './logger.js'
 import { KeyStore, createAuthMiddleware } from './middleware/auth.js'
 import { createConcurrentQueryGuard } from './middleware/concurrent-query-guard.js'
 import { createErrorHandler } from './middleware/error-handler.js'
+import { createMcpDetectMiddleware } from './middleware/mcp-detect.js'
 import { createRateLimiter } from './middleware/rate-limit.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
 import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
@@ -135,8 +136,14 @@ export function createApp(deps: AppDependencies): express.Express {
     maxConcurrent: deps.config.maxConcurrentQueries,
   })
 
+  const mcpDetect = createMcpDetectMiddleware({
+    settingsStore: deps.settingsStore,
+    logger: deps.logger,
+  })
+
   const v1 = Router()
   v1.use(auth)
+  v1.use(mcpDetect)
   v1.use(rateLimiter)
   v1.use(queryGuard)
   const ingestDeps = {
@@ -180,6 +187,7 @@ export function createApp(deps: AppDependencies): express.Express {
   v1.use(
     settingsRoutes({
       settingsStore: deps.settingsStore,
+      db: deps.db,
       logger: deps.logger,
     }),
   )

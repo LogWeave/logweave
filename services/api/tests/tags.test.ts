@@ -23,7 +23,7 @@ function createTestApp() {
   const app = express()
   app.use(express.json())
   const auth = createAuthMiddleware(keyMap)
-  app.use('/v1', auth, settingsRoutes({ settingsStore, logger }))
+  app.use('/v1', auth, settingsRoutes({ settingsStore, db: null, logger }))
   app.use('/v1', auth, tagRoutes({ db: null as never, logger }))
   app.use(createErrorHandler(logger))
   return { app, settingsStore }

@@ -11,6 +11,8 @@ export interface TenantSettings {
   retentionDays?: number
   maintenanceUntil?: string
   extractTags?: string[]
+  lastMcpConnectionAt?: string
+  onboardingDismissedAt?: string
 }
 
 interface SettingsRow {
@@ -27,6 +29,8 @@ const SETTING_KEYS: (keyof TenantSettings)[] = [
   'retentionDays',
   'maintenanceUntil',
   'extractTags',
+  'lastMcpConnectionAt',
+  'onboardingDismissedAt',
 ]
 
 export interface TenantSettingsStoreOpts {
@@ -86,6 +90,10 @@ export class TenantSettingsStore {
         } catch {
           // ignore malformed JSON
         }
+      } else if (row.setting_key === 'lastMcpConnectionAt') {
+        existing.lastMcpConnectionAt = row.setting_value
+      } else if (row.setting_key === 'onboardingDismissedAt') {
+        existing.onboardingDismissedAt = row.setting_value
       }
       this.settings.set(row.tenant_id, existing)
     }

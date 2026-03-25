@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
+import type { DbClient } from '../db/client.js'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
@@ -9,6 +10,7 @@ import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 
 export interface SettingsDeps {
   settingsStore: TenantSettingsStore
+  db: DbClient | null
   logger: pino.Logger
 }
 
@@ -114,6 +116,60 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
       res.status(HttpStatus.OK).json({
         data: { extractTags: body.extractTags },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // GET /settings/onboarding-status -- lightweight onboarding progress check
+  router.get('/settings/onboarding-status', async (_req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const settings = deps.settingsStore.get(tenantId)
+
+      let hasEvents = false
+      if (deps.db) {
+        const rows = await deps.db.query<{ has_data: number }>({
+          query: `SELECT 1 AS has_data
+                  FROM logweave.log_metadata
+                  WHERE tenant_id = {tenantId:String}
+                  LIMIT 1`,
+          query_params: { tenantId },
+        })
+        hasEvents = rows.length > 0
+      }
+
+      res.status(HttpStatus.OK).json({
+        data: {
+          hasEvents,
+          mcpConnected: settings.lastMcpConnectionAt !== undefined,
+          clusteringConfigured: false,
+          dismissed: settings.onboardingDismissedAt !== undefined,
+        },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // POST /settings/onboarding/dismiss -- mark onboarding as dismissed
+  router.post('/settings/onboarding/dismiss', async (_req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const settings = deps.settingsStore.get(tenantId)
+
+      if (!settings.onboardingDismissedAt) {
+        await deps.settingsStore.set(tenantId, {
+          onboardingDismissedAt: new Date().toISOString(),
+        })
+        deps.logger.info({ tenantId }, 'Onboarding dismissed')
+      }
+
+      res.status(HttpStatus.OK).json({
+        data: { dismissed: true },
         meta: { fetchedAt: new Date().toISOString() },
       })
     } catch (err) {
