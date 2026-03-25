@@ -145,7 +145,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
         data: {
           hasEvents,
           mcpConnected: settings.lastMcpConnectionAt !== undefined,
-          clusteringConfigured: false,
+          clusteringConfigured: false, // TODO(#135): wire to clusteringSensitivity setting
           dismissed: settings.onboardingDismissedAt !== undefined,
         },
         meta: { fetchedAt: new Date().toISOString() },
