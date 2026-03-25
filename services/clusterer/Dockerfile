@@ -16,6 +16,9 @@ COPY src/ src/
 # Install the project itself (no deps, just the package)
 RUN uv sync --frozen --no-dev
 
+RUN addgroup --system app && adduser --system --ingroup app app
+USER app
+
 EXPOSE 8000
 
 CMD ["uv", "run", "uvicorn", "clusterer.main:app", "--host", "0.0.0.0", "--port", "8000"]

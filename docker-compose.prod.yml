@@ -70,6 +70,7 @@ services:
     ports:
       - "${LOGWEAVE_PORT:-3000}:3000"
     environment:
+      NODE_ENV: production
       LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123
       LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
       LOGWEAVE_API_KEYS: ${LOGWEAVE_API_KEYS}

@@ -21,7 +21,7 @@ cd logweave
 ### 2. Configure environment
 
 ```bash
-cp .env.production .env
+cp .env.production.example .env
 ```
 
 Edit `.env` and set the **required** values:
