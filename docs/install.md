@@ -172,28 +172,44 @@ Then update your MCP config and SDK endpoints to use `https://your-domain.com`.
 
 ### Backups
 
-ClickHouse data is stored in the `clickhouse_data` Docker volume. Back up with:
+**Online backup (no downtime)** — recommended for production:
 
 ```bash
-# Stop the stack first for consistency
-docker compose -f docker-compose.prod.yml stop
+# Create a ClickHouse-native backup (runs while the stack is up)
+docker compose -f docker-compose.prod.yml exec clickhouse \
+  clickhouse-client --query "BACKUP DATABASE logweave TO Disk('backups', 'logweave-$(date +%Y%m%d).zip')"
+```
 
-# Create backup
+ClickHouse native backups are consistent without stopping the server. To restore:
+
+```bash
+docker compose -f docker-compose.prod.yml exec clickhouse \
+  clickhouse-client --query "RESTORE DATABASE logweave FROM Disk('backups', 'logweave-YYYYMMDD.zip')"
+```
+
+**Volume-level backup (requires brief stop)** — simpler but causes downtime:
+
+```bash
+docker compose -f docker-compose.prod.yml stop
 docker run --rm -v logweave_clickhouse_data:/data -v $(pwd):/backup \
   alpine tar czf /backup/clickhouse-backup-$(date +%Y%m%d).tar.gz /data
-
-# Restart
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+Schedule either method via cron. LogWeave data is bounded by TTL (30-day metadata, 365-day audit) so backups stay small.
+
 ### Resource Limits
 
-The production compose file sets memory limits:
-- ClickHouse: 2 GB
-- API: 512 MB
-- Clusterer: 512 MB
+The production compose file sets memory and CPU limits:
 
-Adjust in `docker-compose.prod.yml` under `deploy.resources.limits` if needed.
+| Service | Memory | CPU |
+|---------|--------|-----|
+| ClickHouse | 4 GB | 2 cores |
+| API | 512 MB | 1 core |
+| Clusterer | 512 MB | 1 core |
+| **Total** | **5 GB** | **4 cores** |
+
+ClickHouse needs headroom for merges, materialized views, and large scans. 4 GB is the minimum for production workloads — increase to 8 GB if you have 50+ services or high log volume. Adjust in `docker-compose.prod.yml` under `deploy.resources.limits`. An 8 GB / 4 vCPU VM is recommended.
 
 ### Logs
 
