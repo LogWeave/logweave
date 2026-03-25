@@ -65,7 +65,7 @@ describe('WebhookObserver', () => {
       channels: ['https://hooks.slack.com/services/T00/B00/xxx'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
 
     await observer.notify(alert)
 
@@ -78,7 +78,7 @@ describe('WebhookObserver', () => {
       channels: ['https://my-webhook.example.com/alerts'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
 
     await observer.notify(alert)
 
@@ -97,7 +97,7 @@ describe('WebhookObserver', () => {
       channels: ['pagerduty://abc123def456'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
 
     await observer.notify(alert)
 
@@ -116,7 +116,7 @@ describe('WebhookObserver', () => {
     const alert: AlertEvent = { ...TEMPLATE_ALERT }
     const store = new TenantSettingsStore()
     store.set('tenant-a', { slackWebhookUrl: 'https://hooks.slack.com/services/T00/B00/xxx' })
-    const observer = new WebhookObserver({ settingsStore: store, logger })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
 
     await observer.notify(alert)
     assert.equal(fetchCalls.length, 0, 'should skip — SlackObserver handles Slack URLs')
@@ -132,7 +132,7 @@ describe('WebhookObserver', () => {
       ],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
 
     await observer.notify(alert)
 
@@ -145,7 +145,7 @@ describe('WebhookObserver', () => {
   it('does nothing when no channels configured', async () => {
     const alert: ThresholdAlertEvent = { ...THRESHOLD_ALERT, channels: [] }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
 
     await observer.notify(alert)
 
@@ -159,7 +159,7 @@ describe('WebhookObserver', () => {
       channels: ['https://my-webhook.example.com/alerts'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
 
     // Should not throw
     await observer.notify(alert)
@@ -174,7 +174,7 @@ describe('WebhookObserver', () => {
     // Template alerts don't have channels, so use a non-Slack tenant default
     const store = new TenantSettingsStore()
     store.set('tenant-a', { slackWebhookUrl: 'https://generic-webhook.example.com/hook' })
-    const observer = new WebhookObserver({ settingsStore: store, logger })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
 
     // Actually this is a generic URL, not Slack — WebhookObserver should handle it
     // But wait, the tenant default is checked via settingsStore.getSlackUrl which is
@@ -199,7 +199,7 @@ describe('WebhookObserver', () => {
       channels: ['pagerduty://my-key'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
 
     await observer.notify(alert)
 

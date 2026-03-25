@@ -31,6 +31,8 @@ export interface WebhookObserverOptions {
   settingsStore: TenantSettingsStore
   dashboardBaseUrl?: string
   logger: pino.Logger
+  /** Override sleep for testing (default: real sleep). */
+  sleepFn?: (ms: number) => Promise<void>
 }
 
 /**
@@ -47,11 +49,13 @@ export class WebhookObserver implements AlertObserver {
   private readonly settingsStore: TenantSettingsStore
   private readonly dashboardBaseUrl: string | undefined
   private readonly logger: pino.Logger
+  private readonly sleepFn: (ms: number) => Promise<void>
 
   constructor(options: WebhookObserverOptions) {
     this.settingsStore = options.settingsStore
     this.dashboardBaseUrl = options.dashboardBaseUrl
     this.logger = options.logger
+    this.sleepFn = options.sleepFn ?? sleep
   }
 
   async notify(alert: AlertEvent): Promise<void> {
@@ -111,7 +115,7 @@ export class WebhookObserver implements AlertObserver {
 
       if (attempt < MAX_RETRIES) {
         const backoffMs = BACKOFF_BASE_MS * 2 ** attempt
-        await sleep(backoffMs)
+        await this.sleepFn(backoffMs)
         return this.post(url, payload, attempt + 1)
       }
 
@@ -123,7 +127,7 @@ export class WebhookObserver implements AlertObserver {
     } catch (err) {
       if (attempt < MAX_RETRIES) {
         const backoffMs = BACKOFF_BASE_MS * 2 ** attempt
-        await sleep(backoffMs)
+        await this.sleepFn(backoffMs)
         return this.post(url, payload, attempt + 1)
       }
       throw err
