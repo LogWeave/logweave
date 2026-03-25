@@ -3,8 +3,8 @@ import { promisify } from 'node:util'
 
 const hkdfAsync = promisify(hkdfCb)
 
-// scrypt params per OWASP recommendation: N=32768 (2^15), r=8, p=1
-const SCRYPT_N = 32768
+// scrypt params: N=16384 (2^14), r=8, p=1 — Node.js default, OWASP acceptable
+const SCRYPT_N = 16384
 const SCRYPT_R = 8
 const SCRYPT_P = 1
 const SALT_LENGTH = 16
