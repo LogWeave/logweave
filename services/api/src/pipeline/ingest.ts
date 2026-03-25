@@ -10,6 +10,7 @@ import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 import type { AnomalyScorer } from './anomaly-scorer.js'
 import type { ClusterClient, ClusterResult } from './cluster-client.js'
 import { parseEvent, processEvent, PREPROCESSING_VERSION } from './index.js'
+import { levelMeetsSeverity } from '../tail/types.js'
 import type { ParseOptions, ProcessedEvent } from './types.js'
 
 export interface IngestDependencies {
@@ -127,9 +128,21 @@ export async function ingestBatch(
     items.push({ processed, timestamp })
   }
 
-  metrics.increment(metrics.EVENTS_DROPPED, parseErrors)
+  // Filter by minimum ingest level (server-side log-level gating)
+  const minLevel = deps.settingsStore?.get(tenantId).minIngestLevel
+  let levelFiltered = 0
+  if (minLevel) {
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (!levelMeetsSeverity(items[i]!.processed.level, minLevel)) {
+        items.splice(i, 1)
+        levelFiltered++
+      }
+    }
+  }
 
-  // Early return if all events failed parsing
+  metrics.increment(metrics.EVENTS_DROPPED, parseErrors + levelFiltered)
+
+  // Early return if all events failed parsing or were filtered
   if (items.length === 0) {
     return { accepted: 0, clustered: 0, unclustered: 0, new_templates: 0 }
   }

@@ -14,6 +14,7 @@ export interface TenantSettings {
   lastMcpConnectionAt?: string
   onboardingDismissedAt?: string
   clusteringSensitivity?: number
+  minIngestLevel?: string
 }
 
 interface SettingsRow {
@@ -33,6 +34,7 @@ const SETTING_KEYS: (keyof TenantSettings)[] = [
   'lastMcpConnectionAt',
   'onboardingDismissedAt',
   'clusteringSensitivity',
+  'minIngestLevel',
 ]
 
 export interface TenantSettingsStoreOpts {
