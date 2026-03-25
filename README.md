@@ -93,6 +93,12 @@ Your AI assistant gets structured access to your production runtime:
 - Live tail — real-time event stream with filters
 - Alert rules — threshold and pattern-based with Slack/PagerDuty
 
+### Live Tail
+
+Stream logs in real-time across all services with filtering by service, level, and pattern. 8+ events/sec with zero lag.
+
+![Live Tail](docs/screenshots/tail.png)
+
 ### Alerting
 
 Set up alerts in minutes from the dashboard — no config files, no YAML.
