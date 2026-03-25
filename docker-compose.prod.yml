@@ -13,8 +13,10 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
+      - ./docker/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-logweave}
+      CLICKHOUSE_PASSWORD_SHA256: ${CLICKHOUSE_PASSWORD_SHA256:-}
     # ClickHouse ports are NOT exposed to host — only accessible by other containers
     expose:
       - "8123"
@@ -44,6 +46,8 @@ services:
       - drain3_checkpoints:/data/drain3
     environment:
       LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123/logweave
+      LOGWEAVE_CLICKHOUSE_USER: ${LOGWEAVE_CLICKHOUSE_USER:-}
+      LOGWEAVE_CLICKHOUSE_PASSWORD: ${LOGWEAVE_CLICKHOUSE_PASSWORD:-}
       LOGWEAVE_DRAIN3_CHECKPOINT_DIR: /data/drain3
       LOGWEAVE_DRAIN3_SIM_TH: ${LOGWEAVE_DRAIN3_SIM_TH:-0.4}
       LOGWEAVE_DRAIN3_DEPTH: ${LOGWEAVE_DRAIN3_DEPTH:-4}
@@ -74,6 +78,8 @@ services:
     environment:
       NODE_ENV: production
       LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123
+      LOGWEAVE_CLICKHOUSE_USER: ${LOGWEAVE_CLICKHOUSE_USER:-}
+      LOGWEAVE_CLICKHOUSE_PASSWORD: ${LOGWEAVE_CLICKHOUSE_PASSWORD:-}
       LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
       LOGWEAVE_API_KEYS: ${LOGWEAVE_API_KEYS}
       LOGWEAVE_ENCRYPTION_KEY: ${LOGWEAVE_ENCRYPTION_KEY:-}

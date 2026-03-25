@@ -47,6 +47,8 @@ const apiKeysSchema = z
 const configSchema = z.object({
   port: z.coerce.number().int().min(1).max(65535).default(3000),
   clickhouseUrl: z.string().min(1),
+  clickhouseUser: z.string().optional(),
+  clickhousePassword: z.string().optional(),
   clustererUrl: z.string().min(1),
   clustererTimeoutMs: z.coerce.number().int().min(50).max(30_000).default(500),
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
@@ -81,6 +83,8 @@ export function loadConfig(): Config {
   return configSchema.parse({
     port: process.env.LOGWEAVE_PORT,
     clickhouseUrl: process.env.LOGWEAVE_CLICKHOUSE_URL,
+    clickhouseUser: process.env.LOGWEAVE_CLICKHOUSE_USER || undefined,
+    clickhousePassword: process.env.LOGWEAVE_CLICKHOUSE_PASSWORD || undefined,
     clustererUrl: process.env.LOGWEAVE_CLUSTERER_URL,
     clustererTimeoutMs: process.env.LOGWEAVE_CLUSTERER_TIMEOUT_MS,
     logLevel: process.env.LOGWEAVE_LOG_LEVEL,

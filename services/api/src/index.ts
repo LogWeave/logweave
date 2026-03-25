@@ -26,7 +26,7 @@ import { WatchStore } from './watches/watch-store.js'
 
 const config = loadConfig()
 const logger = createLogger(config.logLevel)
-const clickhouse = createClickHouseClient(config.clickhouseUrl)
+const clickhouse = createClickHouseClient(config.clickhouseUrl, config.clickhouseUser, config.clickhousePassword)
 const db = new DbClient(clickhouse)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)
 const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTimeoutMs, logger)
