@@ -15,6 +15,9 @@ export interface TenantSettings {
   onboardingDismissedAt?: string
   clusteringSensitivity?: number
   minIngestLevel?: string
+  costNoiseDebugPct?: number
+  costReviewInfoPct?: number
+  costReviewWarnPct?: number
 }
 
 interface SettingsRow {
@@ -35,6 +38,9 @@ const SETTING_KEYS: (keyof TenantSettings)[] = [
   'onboardingDismissedAt',
   'clusteringSensitivity',
   'minIngestLevel',
+  'costNoiseDebugPct',
+  'costReviewInfoPct',
+  'costReviewWarnPct',
 ]
 
 export interface TenantSettingsStoreOpts {
@@ -103,6 +109,15 @@ export class TenantSettingsStore {
         if (Number.isFinite(parsed) && parsed >= 0.2 && parsed <= 0.8) {
           existing.clusteringSensitivity = parsed
         }
+      } else if (
+        row.setting_key === 'costNoiseDebugPct' ||
+        row.setting_key === 'costReviewInfoPct' ||
+        row.setting_key === 'costReviewWarnPct'
+      ) {
+        const parsed = Number(row.setting_value)
+        if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 100) {
+          existing[row.setting_key] = parsed
+        }
       }
       this.settings.set(row.tenant_id, existing)
     }
@@ -123,6 +138,13 @@ export class TenantSettingsStore {
     if (updates.retentionDays !== undefined) {
       if (!Number.isFinite(updates.retentionDays) || updates.retentionDays <= 0) {
         throw new Error('retentionDays must be a positive number')
+      }
+    }
+    for (const key of ['costNoiseDebugPct', 'costReviewInfoPct', 'costReviewWarnPct'] as const) {
+      if (updates[key] !== undefined) {
+        if (!Number.isFinite(updates[key]) || updates[key] < 0 || updates[key] > 100) {
+          throw new Error(`${key} must be a number between 0 and 100`)
+        }
       }
     }
     const existing = this.settings.get(tenantId) ?? {}
