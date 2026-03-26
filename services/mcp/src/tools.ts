@@ -897,3 +897,55 @@ export async function logweaveListAlerts(
 
   return text
 }
+
+// ---------------------------------------------------------------------------
+// Cost optimization tool
+// ---------------------------------------------------------------------------
+
+export async function logweaveCostOptimizer(
+  client: LogWeaveClient,
+  args: { hours?: number; service?: string },
+): Promise<string> {
+  const res = (await client.get('/cost/analysis', {
+    hours: args.hours,
+    service: args.service,
+  })) as {
+    data: {
+      summary: { totalPatternsAnalyzed: number; noiseCount: number; reviewCount: number; keepCount: number; potentialReductionPct: number }
+      patterns: Array<{ classification: string; template: string; service: string; volumePct: number; level: string; count: number; suggestion: string }>
+      thresholds: { noiseDebugPct: number; reviewInfoPct: number; reviewWarnPct: number }
+    }
+    meta: Record<string, unknown>
+  }
+
+  const { summary, patterns, thresholds } = res.data
+
+  let text = `## Log Cost Analysis\n\n`
+  text += `Analyzed ${summary.totalPatternsAnalyzed} patterns: ${summary.noiseCount} noise, ${summary.reviewCount} review, ${summary.keepCount} keep\n\n`
+  text += `**Potential volume reduction:** ${summary.potentialReductionPct}%\n\n`
+  text += `Thresholds: noise DEBUG/TRACE > ${thresholds.noiseDebugPct}%, review INFO > ${thresholds.reviewInfoPct}%, review WARN > ${thresholds.reviewWarnPct}%\n`
+
+  const noisePatterns = patterns.filter((p) => p.classification === 'noise')
+  const reviewPatterns = patterns.filter((p) => p.classification === 'review')
+
+  if (noisePatterns.length > 0) {
+    text += `\n### Noise Patterns (consider removing)\n\n`
+    for (const p of noisePatterns) {
+      text += `- **${p.template}** [${p.service}] — ${p.volumePct}% of volume (${p.level}, ${p.count} events) — ${p.suggestion}\n`
+    }
+  }
+
+  if (reviewPatterns.length > 0) {
+    text += `\n### Review Patterns (consider sampling)\n\n`
+    for (const p of reviewPatterns) {
+      text += `- **${p.template}** [${p.service}] — ${p.volumePct}% of volume (${p.level}, ${p.count} events) — ${p.suggestion}\n`
+    }
+  }
+
+  if (noisePatterns.length === 0 && reviewPatterns.length === 0) {
+    text += `\nNo optimization suggestions found.\n`
+  }
+
+  text += formatMeta(res.meta)
+  return text
+}
