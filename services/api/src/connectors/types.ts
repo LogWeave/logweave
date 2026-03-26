@@ -25,8 +25,53 @@ export interface S3ConnectorConfig {
   secretAccessKey?: string
 }
 
-export type ConnectorConfig = S3ConnectorConfig
-// Future: | AzureBlobConnectorConfig | GCSConnectorConfig | LocalConnectorConfig
+export interface ElasticsearchConnectorConfig {
+  type: 'elasticsearch'
+  /** Base URL of the ES/OpenSearch cluster, e.g. https://es.example.com:9200 */
+  url: string
+  /** Index name or pattern to search, e.g. 'logs-*' */
+  index: string
+  /** Optional basic-auth username */
+  username?: string
+  /** Optional basic-auth password */
+  password?: string
+  /** Optional API key (alternative to username/password) */
+  apiKey?: string
+  /** Field name containing the log message (default: 'message') */
+  messageField?: string
+  /** Field name containing the timestamp (default: '@timestamp') */
+  timestampField?: string
+}
+
+export interface LokiConnectorConfig {
+  type: 'loki'
+  /** Base URL of the Loki server, e.g. http://loki:3100 */
+  url: string
+  /** LogQL stream selector, e.g. '{app="payments"}' */
+  streamSelector: string
+  /** Multi-tenant org ID header (X-Scope-OrgID). Leave blank for single-tenant. */
+  orgId?: string
+  /** Optional basic-auth username */
+  username?: string
+  /** Optional basic-auth password */
+  password?: string
+}
+
+export interface FilesystemConnectorConfig {
+  type: 'filesystem'
+  /** Absolute base directory path containing log files */
+  basePath: string
+  /** Glob pattern within basePath for matching log files */
+  filePattern: string
+  /** Log format: text (one line per entry) or jsonl */
+  logFormat: 'jsonl' | 'text'
+}
+
+export type ConnectorConfig =
+  | S3ConnectorConfig
+  | ElasticsearchConnectorConfig
+  | LokiConnectorConfig
+  | FilesystemConnectorConfig
 
 // ---------------------------------------------------------------------------
 // Adapter interface

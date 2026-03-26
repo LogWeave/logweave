@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
-import { s3Adapter } from '../connectors/shared.js'
+import { getAdapter } from '../connectors/shared.js'
 import type { ConnectorConfig } from '../connectors/types.js'
 import { decrypt } from '../crypto.js'
 import { SCAN_DEFAULTS } from '../connectors/types.js'
@@ -121,7 +121,7 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
         } as RawLogsData, {
           hours: params.hours,
           count: 0,
-          message: 'Raw log drill-down unavailable — no S3 connector configured. Connect a log source in Settings > Connectors to enable.',
+          message: 'Raw log drill-down unavailable — no connector configured. Connect a log source in Settings > Connectors to enable.',
         })
         return
       }
@@ -139,7 +139,8 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
       const now = new Date()
       const start = new Date(now.getTime() - params.hours * 3_600_000)
 
-      const result = await s3Adapter.fetchRawLogs({
+      const adapter = getAdapter(connectorConfig.type)
+      const result = await adapter.fetchRawLogs({
         config: connectorConfig,
         templateText,
         service: params.service,
