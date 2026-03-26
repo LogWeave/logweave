@@ -1,5 +1,32 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/).
+
+## 0.2.0 (2026-03-26) — Pre-Launch Hardening
+
+### Features
+- **Landing page** for GitHub Pages — hero section, features overview, MCP showcase
+- **CSRF protection** — double-submit cookie pattern on all state-changing endpoints
+- **ClickHouse authentication** — defense-in-depth with database-level credentials
+- **Session idle timeout** — 30-minute inactivity limit with rolling cookie renewal
+- **Audit trail expansion** — data access operations now logged (settings, connectors, rules, deploys)
+- **Server-side log-level filtering** — drop unwanted log levels at ingestion before storage
+- **MCP tools** — `clustering_health` and `compare_periods` for AI agent diagnostics
+
+### Fixes
+- Landing page: remove pricing section, add beta badge, add SEO metadata + Open Graph tags + structured data
+- Pre-launch improvements from persona review feedback
+
+### Documentation
+- Data handling transparency statement and complement positioning
+
+### Security
+- CSRF double-submit cookie on all mutating routes
+- ClickHouse credentials enforced in production Docker Compose
+- 30-minute idle timeout with automatic session invalidation
+- Audit logging for all data access operations (not just authentication)
+
 ## 0.1.0 (2026-03-25) — Initial Pre-Release
 
 ### Features
