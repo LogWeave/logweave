@@ -27,6 +27,7 @@ export const queryKeys = {
   alerts: (hours: number) => ['alerts', hours] as const,
   slackSettings: () => ['settings', 'slack'] as const,
   tagSettings: () => ['settings', 'tags'] as const,
+  connectors: () => ['connectors'] as const,
   onboardingStatus: () => ['settings', 'onboarding'] as const,
 } as const
 

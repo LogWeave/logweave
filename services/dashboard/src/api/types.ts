@@ -181,3 +181,23 @@ export interface AlertHistoryEntry {
   details: Record<string, unknown>
   channelsNotified: string[]
 }
+
+// ---------------------------------------------------------------------------
+// Connectors
+// ---------------------------------------------------------------------------
+
+export type ConnectorType = 's3' | 'elasticsearch' | 'loki' | 'filesystem'
+
+export interface ConnectorEntry {
+  connectorId: string
+  name: string
+  type: ConnectorType
+  config: Record<string, unknown>
+  createdAt: string
+}
+
+export interface ConnectionTestResult {
+  success: boolean
+  message: string
+  filesFound?: number
+}

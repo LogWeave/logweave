@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Input } from '../../components/ui/input'
 import { cn } from '../../lib/cn'
 import { ClusteringSettings } from './clustering-settings'
+import { ConnectorSettings } from './connector-settings'
 import { TeamSettings } from './team-settings'
 
 const TAG_KEY_PATTERN = /^[a-zA-Z0-9_.-]+$/
@@ -159,6 +160,8 @@ export function SettingsPage() {
       </Card>
 
       <ClusteringSettings />
+
+      <ConnectorSettings />
 
       <Card>
         <CardHeader>
