@@ -6,7 +6,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { createGunzip } from 'node:zlib'
 import { Readable } from 'node:stream'
-import { createInterface } from 'node:readline'
+import { scanStream } from './line-scanner.js'
 import { templateToRegex } from './template-regex.js'
 import {
   type ConnectionTestResult,
@@ -265,56 +265,14 @@ export class S3Adapter implements LogSourceAdapter {
       return { matches: [], bytesRead: 0 }
     }
 
-    let stream: NodeJS.ReadableStream = result.Body as Readable
+    let stream: Readable = result.Body as Readable
 
     // Decompress if gzipped
     if (config.compression === 'gzip' || key.endsWith('.gz')) {
       const gunzip = createGunzip()
-      stream = (stream as Readable).pipe(gunzip)
+      stream = stream.pipe(gunzip)
     }
 
-    const rl = createInterface({ input: stream as Readable, crlfDelay: Number.POSITIVE_INFINITY })
-    const matches: Array<{ message: string; timestamp?: string }> = []
-    let bytesRead = 0
-
-    try {
-      for await (const line of rl) {
-        bytesRead += Buffer.byteLength(line, 'utf8')
-
-        let message: string | undefined
-        let timestamp: string | undefined
-        if (config.logFormat === 'jsonl') {
-          const fields = extractJsonFields(line)
-          message = fields?.message
-          timestamp = fields?.timestamp
-        } else {
-          message = line
-        }
-
-        if (message && regex.test(message)) {
-          matches.push({ message, timestamp })
-          if (matches.length >= remaining) break
-        }
-      }
-    } finally {
-      rl.close()
-    }
-    return { matches, bytesRead }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// JSON helpers
-// ---------------------------------------------------------------------------
-
-function extractJsonFields(line: string): { message?: string; timestamp?: string } | undefined {
-  try {
-    const obj = JSON.parse(line)
-    return {
-      message: obj.message ?? obj.msg ?? undefined,
-      timestamp: obj.timestamp ?? obj['@timestamp'] ?? obj.time ?? undefined,
-    }
-  } catch {
-    return undefined
+    return scanStream({ stream, regex, logFormat: config.logFormat, remaining })
   }
 }
