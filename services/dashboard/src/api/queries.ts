@@ -8,6 +8,8 @@ import type {
   AlertRule,
   ApiResponse,
   ClusteringHealthData,
+  ConnectionTestResult,
+  ConnectorEntry,
   DeployEntry,
   LevelCount,
   OverviewData,
@@ -386,6 +388,46 @@ export function useSaveTagSettings() {
     mutationFn: (extractTags: string[]) => api.put('/v1/settings/tags', { extractTags }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagSettings() })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Connectors
+// ---------------------------------------------------------------------------
+
+export function useConnectors() {
+  return useQuery({
+    queryKey: queryKeys.connectors(),
+    queryFn: () => api.get<ApiResponse<ConnectorEntry[]>>('/v1/connectors'),
+    staleTime: 30_000,
+  })
+}
+
+export function useCreateConnector() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { name: string; config: Record<string, unknown> }) =>
+      api.post<ApiResponse<ConnectorEntry>>('/v1/connectors', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.connectors() })
+    },
+  })
+}
+
+export function useTestConnector() {
+  return useMutation({
+    mutationFn: (connectorId: string) =>
+      api.post<ApiResponse<ConnectionTestResult>>(`/v1/connectors/${connectorId}/test`),
+  })
+}
+
+export function useDeleteConnector() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (connectorId: string) => api.del(`/v1/connectors/${connectorId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.connectors() })
     },
   })
 }
