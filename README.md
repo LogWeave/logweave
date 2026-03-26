@@ -105,7 +105,7 @@ Your AI assistant gets structured access to your production runtime:
 | `correlations` | Statistically correlated patterns (Pearson r) |
 | `related_patterns` | Co-occurring patterns in the same request |
 | `trace_details` | Cross-service trace timeline |
-| `raw_logs` | S3-backed raw log drill-down |
+| `raw_logs` | Raw log drill-down (S3, Elasticsearch, Loki, local filesystem) |
 | `live_tail` | Real-time event stream |
 | `deploys` | Deployment markers for change correlation |
 | `cost_optimizer` | Identify noisy patterns and volume reduction opportunities |
@@ -147,7 +147,20 @@ Set up alerts in minutes from the dashboard — no config files, no YAML.
 
 ### Self-Hosted and Private
 
-LogWeave runs entirely in your infrastructure. Raw logs never leave your environment — LogWeave reads them on demand from your S3 bucket for drill-down, but only stores extracted patterns and metadata. Nothing is sent to external services.
+LogWeave runs entirely in your infrastructure. Raw logs never leave your environment — LogWeave reads them on demand for drill-down, but only stores extracted patterns and metadata. Nothing is sent to external services.
+
+### Raw Log Connectors
+
+Connect your log source in Settings for raw log drill-down from any pattern:
+
+| Connector | Setup | Auth |
+|-----------|-------|------|
+| **S3 / MinIO** | Bucket, region, path pattern | IAM / access keys |
+| **Elasticsearch / OpenSearch** | URL, index pattern | None, API key, or basic auth |
+| **Grafana Loki** | URL, label selector | Optional bearer token |
+| **Local Filesystem** | Directory path, file pattern | None (Docker volume mount) |
+
+One connector per tenant. Configured by admins in Settings — paste a URL and test.
 
 ### Data Handling
 
