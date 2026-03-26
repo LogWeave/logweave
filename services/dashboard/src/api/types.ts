@@ -181,3 +181,35 @@ export interface AlertHistoryEntry {
   details: Record<string, unknown>
   channelsNotified: string[]
 }
+
+export interface CostPattern {
+  templateId: string
+  template: string
+  service: string
+  level: string
+  count: number
+  volumePct: number
+  classification: 'noise' | 'review'
+  suggestion: string
+}
+
+export interface CostAnalysisSummary {
+  totalPatternsAnalyzed: number
+  noiseCount: number
+  reviewCount: number
+  keepCount: number
+  potentialReductionPct: number
+}
+
+export interface CostThresholds {
+  noiseDebugPct: number
+  reviewInfoPct: number
+  reviewWarnPct: number
+  isCustom: boolean
+}
+
+export interface CostAnalysisData {
+  summary: CostAnalysisSummary
+  patterns: CostPattern[]
+  thresholds: CostThresholds
+}

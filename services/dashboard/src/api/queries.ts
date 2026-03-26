@@ -8,6 +8,8 @@ import type {
   AlertRule,
   ApiResponse,
   ClusteringHealthData,
+  CostAnalysisData,
+  CostThresholds,
   DeployEntry,
   LevelCount,
   OverviewData,
@@ -386,6 +388,46 @@ export function useSaveTagSettings() {
     mutationFn: (extractTags: string[]) => api.put('/v1/settings/tags', { extractTags }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagSettings() })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Cost optimizer
+// ---------------------------------------------------------------------------
+
+export function useCostAnalysis() {
+  const timeRange = useDashboardStore((s) => s.timeRange)
+  const serviceFilter = useDashboardStore((s) => s.serviceFilter)
+  const hours = timeRangeToHours(timeRange)
+  return useQuery({
+    queryKey: queryKeys.costAnalysis(hours, serviceFilter),
+    queryFn: () =>
+      api.get<ApiResponse<CostAnalysisData>>('/v1/cost/analysis', {
+        hours,
+        service: serviceFilter ?? undefined,
+      }),
+    refetchInterval: pollUnlessError,
+    staleTime: config.staleTimeMs,
+  })
+}
+
+export function useCostThresholds() {
+  return useQuery({
+    queryKey: queryKeys.costThresholds(),
+    queryFn: () => api.get<ApiResponse<CostThresholds>>('/v1/settings/cost-thresholds'),
+    staleTime: 30_000,
+  })
+}
+
+export function useSaveCostThresholds() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { noiseDebugPct: number; reviewInfoPct: number; reviewWarnPct: number }) =>
+      api.put('/v1/settings/cost-thresholds', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.costThresholds() })
+      queryClient.invalidateQueries({ queryKey: ['cost'] })
     },
   })
 }
