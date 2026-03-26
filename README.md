@@ -80,11 +80,17 @@ LogWeave finds statistically correlated patterns across services using Pearson r
 
 Search patterns by meaning, not just keywords. *"database slow"* matches *"connection pool exhausted"*. Your AI uses this automatically when investigating issues.
 
+### Log Cost Optimizer
+
+Identify noisy, high-volume log patterns that drive up your logging costs. LogWeave classifies every pattern by volume percentage and level — DEBUG patterns consuming 60% of a service's volume are flagged as noise, high-volume INFO patterns are flagged for sampling review. Configurable per-tenant thresholds let each team tune what "noisy" means for them.
+
+Available via dashboard widget, REST API (`GET /v1/cost/analysis`), and MCP tool (`cost_optimizer`). Your AI can tell you exactly where to cut logging costs.
+
 ### Pattern Clustering
 
 Millions of individual log lines become hundreds of meaningful patterns with occurrence counts, sparkline trends, and anomaly scores. You see signals, not noise.
 
-### 23 MCP Tools
+### 24 MCP Tools
 
 Your AI assistant gets structured access to your production runtime:
 
@@ -102,6 +108,7 @@ Your AI assistant gets structured access to your production runtime:
 | `raw_logs` | S3-backed raw log drill-down |
 | `live_tail` | Real-time event stream |
 | `deploys` | Deployment markers for change correlation |
+| `cost_optimizer` | Identify noisy patterns and volume reduction opportunities |
 | `create_rule` | Create threshold alerts programmatically |
 | ...and 8 more | See `services/mcp/src/tools.ts` for all tools |
 
@@ -112,6 +119,7 @@ Your AI assistant gets structured access to your production runtime:
 - KPI strip — spikes, error rate, event volume at a glance
 - What Changed — new patterns, spikes, resolved issues
 - Volume chart — per-service log volume over time
+- Cost optimizer — noisy patterns flagged with volume reduction estimates
 - Pattern table — sortable, searchable, with sparkline trends
 - Service health cards — error rates and top patterns per service
 
