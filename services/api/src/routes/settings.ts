@@ -7,7 +7,7 @@ import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
 import { sendSlackTestMessage } from '../watches/slack-observer.js'
-import type { TenantSettingsStore } from '../watches/tenant-settings.js'
+import type { TenantSettings, TenantSettingsStore } from '../watches/tenant-settings.js'
 
 export interface SettingsDeps {
   settingsStore: TenantSettingsStore
@@ -336,7 +336,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const tenantId = getTenantId(res)
       const body = req.body as z.infer<typeof costThresholdsSchema>
 
-      const updates: Record<string, number> = {}
+      const updates: Partial<TenantSettings> = {}
       if (body.noiseDebugPct !== undefined) updates.costNoiseDebugPct = body.noiseDebugPct
       if (body.reviewInfoPct !== undefined) updates.costReviewInfoPct = body.reviewInfoPct
       if (body.reviewWarnPct !== undefined) updates.costReviewWarnPct = body.reviewWarnPct
