@@ -247,6 +247,24 @@
       border: 1px solid var(--border);
       box-shadow: 0 10px 40px rgba(0,0,0,0.4);
     }
+    .showcase-section {
+      max-width: var(--max-w); margin: 100px auto; padding: 0 24px;
+    }
+    .showcase {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center;
+    }
+    .showcase.reverse { direction: rtl; }
+    .showcase.reverse > * { direction: ltr; }
+    .showcase-text h2 { font-size: 28px; margin-bottom: 16px; }
+    .showcase-text p { color: var(--text-secondary); font-size: 15px; margin-bottom: 12px; line-height: 1.7; }
+    .showcase-image img {
+      width: 100%; border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    }
+    @media (max-width: 768px) {
+      .showcase, .showcase.reverse { grid-template-columns: 1fr; direction: ltr; }
+    }
 
     /* Pricing teaser */
     .pricing {
@@ -416,6 +434,34 @@
         <div class="feature-icon">&#x1F3E0;</div>
         <h3>Self-Hosted</h3>
         <p>Three Docker containers, 5-minute setup. Runs on a $40/month VM. No cloud dependency, no vendor lock-in, no data leaving your network.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- What Changed Showcase -->
+  <section class="showcase-section">
+    <div class="showcase">
+      <div class="showcase-text">
+        <h2>See exactly what changed after a deploy</h2>
+        <p>Anchor any query to a deployment marker and instantly see new patterns, spikes, and resolved issues. No manual log trawling — LogWeave shows you the signal.</p>
+        <p>New patterns are tagged <strong>NEW</strong>. Existing patterns with sudden volume increases are tagged <strong>SPIKE</strong>. Patterns that went quiet are marked resolved.</p>
+      </div>
+      <div class="showcase-image">
+        <img src="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/what-changed.png" alt="What Changed panel showing new log patterns after a deployment">
+      </div>
+    </div>
+  </section>
+
+  <!-- Cost Optimizer Showcase -->
+  <section class="showcase-section">
+    <div class="showcase reverse">
+      <div class="showcase-text">
+        <h2>Cut your logging bill without guessing</h2>
+        <p>LogWeave automatically identifies high-volume patterns that are driving up your Datadog, CloudWatch, or Loki costs. Every pattern is scored by volume percentage — the noisy ones surface to the top.</p>
+        <p><em>"Email sent: 46.5% of notifications-svc volume"</em> — one pattern, nearly half your bill. Your AI can query this directly and recommend exactly where to add sampling.</p>
+      </div>
+      <div class="showcase-image">
+        <img src="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/log-cost-optimizer.png" alt="Log Cost Optimizer showing high-volume patterns with volume reduction estimates">
       </div>
     </div>
   </section>

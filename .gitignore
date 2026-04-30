@@ -29,8 +29,7 @@ build/
 *.egg-info/
 *.tsbuildinfo
 
-# Screenshots (from browser automation — root level only)
-/screenshots/
+# Screenshots — tracked intentionally (product/marketing assets)
 
 # Docker
 docker-compose.override.yml
