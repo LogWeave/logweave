@@ -5,7 +5,7 @@ Get LogWeave running on your own infrastructure in 5 minutes.
 ## Prerequisites
 
 - Docker Engine 24+ and Docker Compose v2
-- 2 GB RAM minimum (4 GB recommended)
+- 6 GB RAM minimum (8 GB recommended) — see [Resource Limits](#resource-limits) for the per-container breakdown
 - 10 GB disk for ClickHouse data
 - A machine with ports 3000 (API + dashboard) accessible
 
@@ -14,7 +14,7 @@ Get LogWeave running on your own infrastructure in 5 minutes.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/RobertDicker/logweave.git
+git clone https://github.com/logweave/logweave.git
 cd logweave
 ```
 
@@ -37,9 +37,11 @@ ENC_KEY=$(openssl rand -hex 16)
 
 Update these lines in `.env`:
 ```
-LOGWEAVE_API_KEYS={"<your-api-key>":"<your-org-name>"}
+LOGWEAVE_API_KEYS={"<your-api-key>":"<tenant-id>"}
 LOGWEAVE_ENCRYPTION_KEY=<your-encryption-key>
 ```
+
+The tenant ID is a short label for your organisation (e.g. `acme`). It groups all logs and patterns under one namespace and appears in the dashboard. You can have multiple API keys mapped to different tenant IDs for team isolation.
 
 **Save your API key** — you'll need it to send logs and access the dashboard.
 
@@ -147,6 +149,12 @@ Add to your editor's MCP config (Claude Code, Cursor, Windsurf):
 ```
 
 Then ask your AI: *"What error patterns are happening in my services?"*
+
+To verify the connection is working, ask:
+
+> *"Use the LogWeave overview tool to show me the system status."*
+
+If your AI responds with event counts, pattern totals, or an "no data yet" message, the MCP server is connected. If it says the tool doesn't exist, restart your editor after updating the config.
 
 ## Production Hardening
 

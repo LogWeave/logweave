@@ -1,6 +1,6 @@
 # @logweave/transport
 
-Winston transport for [LogWeave](https://github.com/RobertDicker/logweave) — buffers log events and sends them in batches to the LogWeave API. Non-blocking, retry-aware, and drop-safe.
+Winston transport for [LogWeave](https://github.com/logweave/logweave) — buffers log events and sends them in batches to the LogWeave API. Non-blocking, retry-aware, and drop-safe.
 
 ## Install
 
@@ -25,7 +25,7 @@ const logger = winston.createLogger({
 
     // LogWeave — buffer + batch + retry in the background
     new LogWeaveTransport({
-      apiKey: process.env.LOGWEAVE_API_KEY!,
+      apiKey: process.env.LOGWEAVE_API_KEY ?? '',
       service: 'payment-service',
       environment: 'production',
     }),
@@ -173,4 +173,6 @@ Service and environment are sent at the **batch level** (not per-event) to reduc
 
 ## License
 
-MIT
+MIT — this package only.
+
+The LogWeave server that this transport connects to is licensed under the [Business Source License 1.1](https://github.com/logweave/logweave/blob/main/LICENSE) (free to self-host, converts to Apache 2.0 in 2030).
