@@ -28,6 +28,7 @@ import {
   logweaveCreateRule,
   logweaveListAlerts,
   logweaveSearchByTag,
+  logweaveIncidentPostmortem,
 } from './tools.js'
 
 // ---------------------------------------------------------------------------
@@ -577,6 +578,36 @@ server.registerTool(
     logweaveSearchByTag(
       client,
       args as { key: string; value: string; hours?: number; limit?: number },
+    ),
+  ),
+)
+
+server.registerTool(
+  'incident_postmortem',
+  {
+    title: 'Incident Post-Mortem',
+    description:
+      'Generate a structured post-mortem timeline for an incident on a given service. ' +
+      'Combines deploy markers, pattern changes (new/spiking), outlier detection, and cross-service correlations ' +
+      'into a single report. Use this after an incident to understand what happened, when, and what was affected. ' +
+      'Provide since (ISO8601) to anchor the window to a deploy time or alert trigger.',
+    inputSchema: {
+      service: z.string().describe('Service that experienced the incident'),
+      since: z
+        .string()
+        .optional()
+        .describe('ISO8601 timestamp to start the window from (e.g. deploy time or alert trigger)'),
+      hours: z
+        .number()
+        .optional()
+        .describe('Window length in hours (default: 2). Ignored if since is provided.'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveIncidentPostmortem(
+      client,
+      args as { service: string; since?: string; hours?: number },
     ),
   ),
 )

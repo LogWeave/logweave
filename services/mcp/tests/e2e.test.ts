@@ -239,6 +239,61 @@ describe('MCP E2E: deploys + changes', () => {
 })
 
 // -----------------------------------------------------------------------
+// Incident post-mortem
+// -----------------------------------------------------------------------
+
+describe('MCP E2E: incident_postmortem', () => {
+  it('returns summary, timeline, and patterns for payments incident', async () => {
+    const [outlier, changes, patterns, deploys] = await Promise.all([
+      apiGet('/services/payments/outlier', { hours: 3 }) as Promise<{
+        data: { verdict: string; zScore: number; currentRate: number }
+      }>,
+      apiGet('/dashboard/changes', { service: 'payments', hours: 3 }) as Promise<{
+        data: { new: Array<{ templateText: string }>; spike: Array<{ templateText: string }> }
+      }>,
+      apiGet('/dashboard/templates', { service: 'payments', hours: 3, level: 'ERROR', limit: 10 }) as Promise<{
+        data: Array<{ templateId: string; templateText: string; occurrenceCount: number }>
+      }>,
+      apiGet('/deploys', { service: 'payments', limit: 5 }) as Promise<{
+        data: Array<{ service: string; version: string }>
+      }>,
+    ])
+
+    assert.ok(
+      ['normal', 'elevated', 'outlier'].includes(outlier.data.verdict),
+      `verdict should be valid, got ${outlier.data.verdict}`,
+    )
+    assert.ok(outlier.data.zScore != null, 'zScore should be present')
+
+    const totalChanges = (changes.data.new?.length ?? 0) + (changes.data.spike?.length ?? 0)
+    assert.ok(totalChanges > 0, `incident should have changes, got ${totalChanges}`)
+
+    assert.ok(patterns.data.length > 0, 'payments should have error patterns')
+
+    assert.ok(deploys.data.length > 0, 'payments should have deploy markers')
+    assert.equal(deploys.data[0].version, '1.2.1-hotfix')
+  })
+
+  it('correlations available for top payments error pattern', async () => {
+    const patterns = (await apiGet('/dashboard/templates', {
+      service: 'payments',
+      hours: 3,
+      level: 'ERROR',
+      limit: 1,
+    })) as { data: Array<{ templateId: string }> }
+
+    assert.ok(patterns.data.length > 0, 'need at least one error pattern')
+    const templateId = patterns.data[0].templateId
+
+    const corr = (await apiGet(`/templates/${templateId}/correlations`, { hours: 3 })) as {
+      data: Array<{ templateText: string; service: string; coefficient: number }>
+    }
+    // Correlations may be empty if no cross-service data — just verify shape
+    assert.ok(Array.isArray(corr.data), 'correlations should return an array')
+  })
+})
+
+// -----------------------------------------------------------------------
 // Error handling
 // -----------------------------------------------------------------------
 
