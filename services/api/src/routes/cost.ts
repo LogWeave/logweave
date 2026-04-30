@@ -59,17 +59,31 @@ function classify(
   return null
 }
 
-function buildPatterns(rows: CostAnalysisRow[], thresholds: CostThresholds): {
+function buildPatterns(
+  rows: CostAnalysisRow[],
+  thresholds: CostThresholds,
+): {
   patterns: CostPattern[]
   totalPatternsAnalyzed: number
   noiseCount: number
   reviewCount: number
   keepCount: number
+  potentialReductionPct: number
 } {
   const patterns: CostPattern[] = []
   let noiseCount = 0
   let reviewCount = 0
   let keepCount = 0
+  let reducibleCount = 0
+
+  // Deduplicate service totals — each service appears once in the window function result
+  const serviceTotals = new Map<string, number>()
+  for (const row of rows) {
+    if (!serviceTotals.has(row.service)) {
+      serviceTotals.set(row.service, Number(row.service_total))
+    }
+  }
+  const totalEvents = [...serviceTotals.values()].reduce((sum, v) => sum + v, 0)
 
   for (const row of rows) {
     const count = Number(row.count)
@@ -80,6 +94,7 @@ function buildPatterns(rows: CostAnalysisRow[], thresholds: CostThresholds): {
     if (result) {
       if (result.classification === 'noise') noiseCount++
       else reviewCount++
+      reducibleCount += count
 
       patterns.push({
         templateId: row.template_id,
@@ -104,7 +119,10 @@ function buildPatterns(rows: CostAnalysisRow[], thresholds: CostThresholds): {
     return b.volumePct - a.volumePct
   })
 
-  return { patterns, totalPatternsAnalyzed: rows.length, noiseCount, reviewCount, keepCount }
+  const potentialReductionPct =
+    totalEvents > 0 ? Math.round((reducibleCount / totalEvents) * 1000) / 10 : 0
+
+  return { patterns, totalPatternsAnalyzed: rows.length, noiseCount, reviewCount, keepCount, potentialReductionPct }
 }
 
 export function costRoutes(deps: CostDeps): Router {
@@ -127,18 +145,8 @@ export function costRoutes(deps: CostDeps): Router {
         service: params.service,
       })
 
-      const { patterns, totalPatternsAnalyzed, noiseCount, reviewCount, keepCount } = buildPatterns(
-        rows,
-        thresholds,
-      )
-
-      const noiseVolume = patterns
-        .filter((p) => p.classification === 'noise')
-        .reduce((sum, p) => sum + p.volumePct, 0)
-      const reviewVolume = patterns
-        .filter((p) => p.classification === 'review')
-        .reduce((sum, p) => sum + p.volumePct, 0)
-      const potentialReductionPct = Math.round((noiseVolume + reviewVolume) * 10) / 10
+      const { patterns, totalPatternsAnalyzed, noiseCount, reviewCount, keepCount, potentialReductionPct } =
+        buildPatterns(rows, thresholds)
 
       const data: CostAnalysisData = {
         summary: {
