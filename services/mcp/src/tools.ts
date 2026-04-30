@@ -817,14 +817,50 @@ export async function logweaveCreateRule(
   client: LogWeaveClient,
   args: {
     name: string
-    metric: string
-    service: string
-    operator: string
-    value: number
-    window_minutes: number
+    rule_type?: string
+    metric?: string
+    service?: string
+    operator?: string
+    value?: number
+    window_minutes?: number
+    template_id?: string
+    template_text?: string
     channels?: string[]
   },
 ): Promise<string> {
+  const ruleType = args.rule_type === 'template_watch' ? 'template_watch' : 'threshold'
+
+  if (ruleType === 'template_watch') {
+    if (!args.template_id) return 'Error: template_id is required for template_watch rules. Get the ID from error_patterns or search_templates.'
+    if (!args.template_text) return 'Error: template_text is required for template_watch rules. Copy the pattern text from the pattern listing.'
+
+    const body = {
+      name: args.name,
+      ruleType: 'template_watch',
+      config: { templateId: args.template_id, templateText: args.template_text },
+      channels: args.channels ?? [],
+    }
+    const res = (await client.post('/rules', body)) as ApiResponse
+    const rule = res.data as Record<string, unknown>
+
+    let text = `## Rule Created\n\n`
+    text += `- Name: ${rule.name}\n`
+    text += `- Rule ID: ${rule.ruleId}\n`
+    text += `- Type: template_watch\n`
+    text += `- Pattern: ${args.template_text}\n`
+    text += `- Enabled: ${rule.enabled}\n`
+    const channels = (rule.channels as string[]) ?? []
+    text += `- Channels: ${channels.length > 0 ? `${channels.length} webhook(s)` : 'tenant default'}\n`
+    return text
+  }
+
+  // threshold rule
+  if (!args.metric) return 'Error: metric is required for threshold rules.'
+  if (!args.service) return 'Error: service is required for threshold rules.'
+  if (!args.operator) return 'Error: operator is required for threshold rules.'
+  if (args.value === undefined) return 'Error: value is required for threshold rules.'
+  if (!args.window_minutes) return 'Error: window_minutes is required for threshold rules.'
+
   const body = {
     name: args.name,
     ruleType: 'threshold',
@@ -844,6 +880,7 @@ export async function logweaveCreateRule(
   let text = `## Rule Created\n\n`
   text += `- Name: ${rule.name}\n`
   text += `- Rule ID: ${rule.ruleId}\n`
+  text += `- Type: threshold\n`
   text += `- Condition: ${args.service} ${args.metric} ${args.operator} ${args.value} (${args.window_minutes}min window)\n`
   text += `- Enabled: ${rule.enabled}\n`
 

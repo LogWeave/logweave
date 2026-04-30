@@ -26,6 +26,10 @@ import { WatchStore } from './watches/watch-store.js'
 
 const config = loadConfig()
 const logger = createLogger(config.logLevel)
+
+if (!config.clickhouseUser) {
+  logger.warn('LOGWEAVE_CLICKHOUSE_USER is not set — ClickHouse is running without authentication. This is insecure in production.')
+}
 const clickhouse = createClickHouseClient(config.clickhouseUrl, config.clickhouseUser, config.clickhousePassword)
 const db = new DbClient(clickhouse)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)

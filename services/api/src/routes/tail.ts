@@ -5,7 +5,7 @@ import { insertAuditEvent } from '../db/audit-queries.js'
 import type { DbClient } from '../db/client.js'
 import { HttpStatus } from '../http-status.js'
 import { unauthorized } from '../errors.js'
-import { getTenantId, getKeyId } from '../middleware/auth.js'
+import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import type { TailBuffer } from '../tail/buffer.js'
 import type { TailTokenStore } from '../tail/token-store.js'
@@ -174,7 +174,6 @@ export function tailRoutes(deps: TailDeps): Router {
 /**
  * SSE tail route — mounted separately from auth middleware.
  * Authenticates via short-lived ?token= param from POST /tail/token.
- * Also accepts ?api_key= for backward compatibility (will be removed).
  */
 export function tailSseRoute(deps: TailDeps): Router {
   const router = Router()
@@ -191,22 +190,6 @@ export function tailSseRoute(deps: TailDeps): Router {
       if (!tenantId) {
         next(unauthorized('Invalid or expired tail token'))
         return
-      }
-    }
-
-    // Legacy fallback: api_key query param (deprecated)
-    if (!tenantId) {
-      const apiKeyParam = req.query.api_key
-      if (typeof apiKeyParam === 'string' && apiKeyParam.length > 0) {
-        // Fall through to standard auth if api_key is provided
-        // This maintains backward compat but should be removed in a future release
-        try {
-          tenantId = getTenantId(res)
-          keyId = getKeyId(res)
-        } catch {
-          next(unauthorized('Invalid API key'))
-          return
-        }
       }
     }
 

@@ -501,21 +501,33 @@ server.registerTool(
   {
     title: 'Create Alert Rule',
     description:
-      'Create a threshold alert rule. Example: "alert if payments has >10 errors in 5 minutes." ' +
-      'The rule will be evaluated every 60 seconds. Use list_rules to verify creation.',
+      'Create an alert rule. Two types: ' +
+      '(1) threshold — alert when a service metric exceeds a value (e.g. "alert if payments has >10 errors in 5 minutes"). ' +
+      '(2) template_watch — alert whenever a specific log pattern appears (use after finding a pattern with error_patterns or search_templates). ' +
+      'Use list_rules to verify creation.',
     inputSchema: {
-      name: z.string().describe('Human-readable rule name (e.g. "High error rate on payments")'),
+      name: z.string().describe('Human-readable rule name'),
+      rule_type: z
+        .enum(['threshold', 'template_watch'])
+        .default('threshold')
+        .describe('Rule type: "threshold" for metric-based alerts, "template_watch" to alert on a specific log pattern'),
+      // threshold fields
       metric: z
         .enum(['error_count', 'warn_count', 'log_count'])
-        .describe('Metric to monitor'),
-      service: z.string().describe('Service name to monitor'),
-      operator: z.enum(['>', '>=', '<', '<=']).describe('Comparison operator'),
-      value: z.number().describe('Threshold value'),
-      window_minutes: z.number().describe('Evaluation window in minutes (1-60)'),
+        .optional()
+        .describe('(threshold only) Metric to monitor'),
+      service: z.string().optional().describe('(threshold only) Service name to monitor'),
+      operator: z.enum(['>', '>=', '<', '<=']).optional().describe('(threshold only) Comparison operator'),
+      value: z.number().optional().describe('(threshold only) Threshold value'),
+      window_minutes: z.number().optional().describe('(threshold only) Evaluation window in minutes (1-60)'),
+      // template_watch fields
+      template_id: z.string().optional().describe('(template_watch only) Template ID to watch — get this from error_patterns or search_templates'),
+      template_text: z.string().optional().describe('(template_watch only) Template text for display — copy from the pattern listing'),
+      // shared
       channels: z
         .array(z.string())
         .optional()
-        .describe('Slack webhook URLs for notifications (empty = tenant default)'),
+        .describe('Webhook URLs or PagerDuty routing keys for notifications (empty = tenant default)'),
     },
     annotations: WRITE_OP,
   },
@@ -524,11 +536,14 @@ server.registerTool(
       client,
       args as {
         name: string
-        metric: string
-        service: string
-        operator: string
-        value: number
-        window_minutes: number
+        rule_type?: string
+        metric?: string
+        service?: string
+        operator?: string
+        value?: number
+        window_minutes?: number
+        template_id?: string
+        template_text?: string
         channels?: string[]
       },
     ),
@@ -693,34 +708,47 @@ server.registerTool(
       baseline_hours?: number
     }
 
-    const serviceFilter = service ? `&service=${encodeURIComponent(service)}` : ''
+    type TemplateRow = { templateId: string; template: string; count: number; errorCount: number; service: string }
 
-    // Fetch both periods in parallel
-    const [recentData, baselineData] = await Promise.all([
-      client.get(`/v1/templates?hours=${recent_hours}${serviceFilter}`),
-      client.get(`/v1/templates?hours=${recent_hours + baseline_hours}${serviceFilter}`),
+    const params: Record<string, string | number | undefined> = { service }
+
+    // Fetch combined window (recent + baseline) and recent window in parallel.
+    // Baseline counts are derived as: combined - recent (avoids double-counting the recent period).
+    const [combinedData, recentData] = await Promise.all([
+      client.get('/dashboard/templates', { ...params, hours: recent_hours + baseline_hours }),
+      client.get('/dashboard/templates', { ...params, hours: recent_hours }),
     ])
 
-    const recent = ((recentData as { data: Array<{ templateId: string; template: string; count: number; errorCount: number; service: string }> }).data) ?? []
-    const baseline = ((baselineData as { data: Array<{ templateId: string; template: string; count: number; errorCount: number; service: string }> }).data) ?? []
+    const combined = ((combinedData as { data: TemplateRow[] }).data) ?? []
+    const recent = ((recentData as { data: TemplateRow[] }).data) ?? []
 
+    const combinedMap = new Map(combined.map((t) => [t.templateId, t]))
     const recentMap = new Map(recent.map((t) => [t.templateId, t]))
-    const baselineMap = new Map(baseline.map((t) => [t.templateId, t]))
 
-    const newPatterns = recent.filter((t) => !baselineMap.has(t.templateId))
-    const resolvedPatterns = baseline.filter((t) => !recentMap.has(t.templateId))
+    // New: appeared only in the recent window (zero occurrences in baseline)
+    const newPatterns = recent.filter((t) => {
+      const c = combinedMap.get(t.templateId)
+      const baselineCount = c ? c.count - t.count : 0
+      return baselineCount <= 0
+    })
+
+    // Resolved: active in baseline window but absent from recent window
+    const resolvedPatterns = combined.filter((t) => !recentMap.has(t.templateId))
+
     const changed: Array<{ template: string; service: string; recentCount: number; baselineCount: number; ratio: number }> = []
 
     for (const t of recent) {
-      const b = baselineMap.get(t.templateId)
-      if (b && b.count > 0) {
-        const ratio = t.count / b.count
+      const c = combinedMap.get(t.templateId)
+      if (!c) continue
+      const baselineCount = c.count - t.count
+      if (baselineCount > 0) {
+        const ratio = t.count / baselineCount
         if (ratio > 2 || ratio < 0.5) {
           changed.push({
             template: t.template,
             service: t.service,
             recentCount: t.count,
-            baselineCount: b.count,
+            baselineCount,
             ratio,
           })
         }

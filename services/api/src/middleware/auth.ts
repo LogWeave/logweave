@@ -68,7 +68,7 @@ export class KeyStore {
 
 /**
  * Create auth middleware that validates Bearer tokens and session cookies.
- * Auth priority: Bearer header → session cookie → api_key query param → 401.
+ * Auth priority: Bearer header → session cookie → 401.
  * Accepts either a KeyStore (hot-reloadable) or a static Map (legacy).
  */
 export function createAuthMiddleware(
@@ -141,19 +141,6 @@ export function createAuthMiddleware(
           next()
           return
         }
-      }
-    }
-
-    // 3. Query param fallback (legacy SSE, deprecated)
-    const queryKey = req.query.api_key
-    if (typeof queryKey === 'string' && queryKey.length > 0) {
-      const result = store.validate(queryKey.trim())
-      if (result) {
-        res.locals[TENANT_ID_KEY] = result.tenantId
-        res.locals[KEY_ID_KEY] = result.keyId
-        res.locals[ROLE_KEY] = 'admin'
-        next()
-        return
       }
     }
 

@@ -5,6 +5,11 @@
 #   docker compose -f docker-compose.prod.yml up -d
 #
 # Prerequisites: Docker Engine 24+, Docker Compose v2
+#
+# Security note: all three containers (api, clusterer, clickhouse) share the default
+# bridge network and can reach each other freely. ClickHouse ports are not exposed
+# to the host. For stricter isolation, define explicit networks: blocks and restrict
+# cross-container access so only api can reach clickhouse/clusterer.
 
 services:
   clickhouse:

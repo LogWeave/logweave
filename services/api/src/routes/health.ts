@@ -73,16 +73,23 @@ export function healthRoutes(deps: HealthDeps): Router {
   })
 
   // GET /metrics — Prometheus exposition format (unauthenticated, like health endpoints)
+  // NOTE: counters are in-memory and reset on process restart. Use process_start_time_seconds
+  // to detect restarts and exclude the post-restart window from rate() alerts.
   router.get('/metrics', (_req, res) => {
     const snap = metrics.snapshot()
     const uptime = process.uptime()
+    const startTimeSecs = Math.floor((Date.now() - uptime * 1000) / 1000)
 
     const lines: string[] = [
-      '# HELP logweave_events_ingested_total Total events ingested',
+      '# HELP logweave_process_start_time_seconds Unix timestamp when the process started',
+      '# TYPE logweave_process_start_time_seconds gauge',
+      `logweave_process_start_time_seconds ${startTimeSecs}`,
+      '',
+      '# HELP logweave_events_ingested_total Total events ingested since last restart',
       '# TYPE logweave_events_ingested_total counter',
       `logweave_events_ingested_total ${snap.events_ingested ?? 0}`,
       '',
-      '# HELP logweave_events_dropped_total Events dropped due to parse errors',
+      '# HELP logweave_events_dropped_total Events dropped due to parse errors since last restart',
       '# TYPE logweave_events_dropped_total counter',
       `logweave_events_dropped_total ${snap.events_dropped ?? 0}`,
       '',
