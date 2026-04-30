@@ -763,7 +763,11 @@ export async function logweaveSearchByTag(
   const events = (res.data as Array<Record<string, unknown>>) ?? []
 
   if (events.length === 0) {
-    return `No events found with ${args.key} = "${args.value}" in the last ${args.hours ?? 24} hours.`
+    return (
+      `No events found with ${args.key} = "${args.value}" in the last ${args.hours ?? 24} hours.\n\n` +
+      `This can mean: (a) no events matched, or (b) tag extraction for "${args.key}" is not configured. ` +
+      `Check Settings → Tag Extraction to confirm the tag is set up.`
+    )
   }
 
   let text = `## Events with ${args.key} = "${args.value}" (${events.length} results)\n\n`

@@ -39,7 +39,7 @@ export function StepSendLogs({ complete }: StepSendLogsProps) {
   const [polling, setPolling] = useState(!complete)
   const [copied, setCopied] = useState(false)
 
-  const apiUrl = config.apiUrl || window.location.origin
+  const apiUrl = config.apiUrl || 'http://localhost:3000'
   const apiKey = config.apiKey
 
   // Poll for first event

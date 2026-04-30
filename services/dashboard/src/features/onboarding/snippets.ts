@@ -77,6 +77,7 @@ service:
 
 export function mcpSnippet(apiUrl: string, apiKey: string): string {
   const endpoint = apiUrl || 'http://localhost:3000'
+  const key = apiKey || 'YOUR_API_KEY'
   return `{
   "mcpServers": {
     "logweave": {
@@ -84,7 +85,7 @@ export function mcpSnippet(apiUrl: string, apiKey: string): string {
       "args": ["@logweave/mcp"],
       "env": {
         "LOGWEAVE_API_URL": "${endpoint}",
-        "LOGWEAVE_API_KEY": "${apiKey}"
+        "LOGWEAVE_API_KEY": "${key}"
       }
     }
   }

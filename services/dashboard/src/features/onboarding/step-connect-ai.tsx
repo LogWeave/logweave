@@ -19,8 +19,9 @@ export function StepConnectAi({ complete }: StepConnectAiProps) {
   const [copied, setCopied] = useState(false)
   const [showRest, setShowRest] = useState(false)
 
-  const apiUrl = config.apiUrl || window.location.origin
+  const apiUrl = config.apiUrl || 'http://localhost:3000'
   const apiKey = config.apiKey
+  const hasApiKey = apiKey.length > 0
   const snippet = mcpSnippet(apiUrl, apiKey)
 
   const handleCopy = async () => {
@@ -77,6 +78,12 @@ export function StepConnectAi({ complete }: StepConnectAiProps) {
 
       {/* MCP config snippet */}
       <div>
+        {!hasApiKey && (
+          <div className="mb-2 rounded-[var(--radius-md)] border border-warning-500/30 bg-warning-500/10 px-3 py-2 text-xs text-warning-400">
+            Replace <code className="font-mono">YOUR_API_KEY</code> with a key from your{' '}
+            <code className="font-mono">LOGWEAVE_API_KEYS</code> environment variable.
+          </div>
+        )}
         <p className="text-xs text-text-muted mb-2">
           Paste into your editor's MCP config (Claude Code, Cursor, Windsurf, VS Code):
         </p>
