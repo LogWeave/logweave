@@ -318,6 +318,27 @@ describe('GET /v1/cost/analysis', () => {
     assert.equal(res.body.data.summary.potentialReductionPct, 50)
   })
 
+  it('computes potentialReductionPct correctly across multiple services', async () => {
+    // svc-a: 300 noise out of 1000 total (30%)
+    // svc-b: 600 review out of 2000 total (30% > 10% INFO threshold)
+    // potentialReductionPct = (300 + 600) / (1000 + 2000) = 900/3000 = 30%
+    // Old (buggy) code would sum per-service percentages: 30 + 30 = 60 — wrong
+    const rows = [
+      makeRow({ template_id: 't1', service: 'svc-a', level: 'DEBUG', count: '300', service_total: '1000' }),
+      makeRow({ template_id: 't2', service: 'svc-a', level: 'ERROR', count: '700', service_total: '1000' }),
+      makeRow({ template_id: 't3', service: 'svc-b', level: 'INFO', count: '600', service_total: '2000' }),
+      makeRow({ template_id: 't4', service: 'svc-b', level: 'ERROR', count: '1400', service_total: '2000' }),
+    ]
+    const { app } = createTestApp({ queryResults: rows })
+
+    const res = await request(app)
+      .get('/v1/cost/analysis')
+      .set('Authorization', `Bearer ${KEY_A}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.summary.potentialReductionPct, 30)
+  })
+
   it('requires authentication', async () => {
     const { app } = createTestApp({ queryResults: [] })
 
