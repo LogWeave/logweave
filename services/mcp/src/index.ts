@@ -329,13 +329,13 @@ server.registerTool(
   {
     title: 'Raw Log Samples',
     description:
-      'Fetch actual raw log lines that match a template pattern from the customer\'s S3 storage. ' +
+      'Fetch actual raw log lines that match a template pattern from the configured log source (S3, Elasticsearch, Loki, or local filesystem). ' +
       'Use this to see real log content when investigating an error — actual IPs, user IDs, error messages. ' +
-      'Requires a configured S3 connector. If none is configured, this tool will tell you. ' +
+      'Requires a connector to be configured in Settings. If none is configured, this tool will tell you. ' +
       'Always specify both template_id (from error_patterns, changes, or search_templates) and service.',
     inputSchema: {
       template_id: z.string().describe('Template ID to match against raw logs'),
-      service: z.string().describe('Service name — required to locate the correct S3 path'),
+      service: z.string().describe('Service name — required to locate the correct log source path'),
       hours: z.number().optional().describe('Time window in hours (default: 1, max: 24)'),
       limit: z.number().optional().describe('Max lines to return (default: 20, max: 100)'),
     },

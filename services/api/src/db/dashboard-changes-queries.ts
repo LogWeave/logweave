@@ -170,7 +170,7 @@ LIMIT {limit:UInt32}`
 SELECT
     template_id,
     any(template_text) AS template_text,
-    any(service) AS service_name,
+    any(service) AS service,
     count() AS occurrence_count,
     countIf(level = 'ERROR') AS error_count,
     min(timestamp) AS first_seen

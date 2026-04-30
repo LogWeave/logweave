@@ -397,7 +397,8 @@ export async function logweaveServiceOutlier(
   const d = res.data as Record<string, unknown>
 
   const verdictLabel = d.verdict === 'outlier' ? '**OUTLIER**' :
-    d.verdict === 'elevated' ? '**ELEVATED**' : 'Normal'
+    d.verdict === 'elevated' ? '**ELEVATED**' :
+    d.verdict === 'insufficient_data' ? '**INSUFFICIENT DATA**' : 'Normal'
 
   let text = `## Service Outlier: ${d.service}\n\n`
   text += `- Verdict: ${verdictLabel}\n`
@@ -586,7 +587,8 @@ export async function logweaveDiagnoseService(
   let text = `## Diagnostic: ${args.service}\n\n`
 
   // Outlier status
-  text += `### Status: ${(outlier.verdict as string).toUpperCase()}`
+  const diagnoseVerdict = outlier.verdict === 'insufficient_data' ? 'INSUFFICIENT DATA (baseline building)' : (outlier.verdict as string).toUpperCase()
+  text += `### Status: ${diagnoseVerdict}`
   if (outlier.zScore != null) {
     text += ` (z-score: ${(outlier.zScore as number).toFixed(1)})`
   }

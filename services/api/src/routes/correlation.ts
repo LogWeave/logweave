@@ -82,7 +82,7 @@ export interface ServiceOutlier {
   baselineMean: number
   baselineStddev: number
   zScore: number
-  verdict: 'normal' | 'elevated' | 'outlier'
+  verdict: 'normal' | 'elevated' | 'outlier' | 'insufficient_data'
   dataPoints: number
   warning?: string
 }
@@ -126,6 +126,7 @@ function computeOutlier(
   }
 
   if (dataPoints < MIN_DATA_POINTS) {
+    result.verdict = 'insufficient_data'
     result.warning = `Only ${dataPoints} hourly data points available (${MIN_DATA_POINTS} recommended for reliable z-score)`
   }
 
