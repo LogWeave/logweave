@@ -19,6 +19,10 @@ export function unauthorized(message: string): AppError {
   return new AppError(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', message)
 }
 
+export function forbidden(message: string): AppError {
+  return new AppError(HttpStatus.FORBIDDEN, 'FORBIDDEN', message)
+}
+
 export function notFound(message: string): AppError {
   return new AppError(HttpStatus.NOT_FOUND, 'NOT_FOUND', message)
 }

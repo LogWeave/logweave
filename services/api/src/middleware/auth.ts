@@ -5,10 +5,11 @@ import type { SessionProvider } from '../auth/session.js'
 import { SESSION_COOKIE_NAME } from '../auth/session.js'
 import type { UserStore } from '../auth/user-store.js'
 import { SESSION_COOKIE_OPTIONS } from '../auth/session.js'
-import { unauthorized } from '../errors.js'
+import { forbidden, unauthorized } from '../errors.js'
 
 const TENANT_ID_KEY = 'tenantId'
 const KEY_ID_KEY = 'keyId'
+const ROLE_KEY = 'role'
 
 function sha256(value: string): Buffer {
   return createHash('sha256').update(value).digest()
@@ -92,6 +93,7 @@ export function createAuthMiddleware(
         if (result) {
           res.locals[TENANT_ID_KEY] = result.tenantId
           res.locals[KEY_ID_KEY] = result.keyId
+          res.locals[ROLE_KEY] = 'admin'
           next()
           return
         }
@@ -127,6 +129,7 @@ export function createAuthMiddleware(
           }
           res.locals[TENANT_ID_KEY] = session.tenantId
           res.locals[KEY_ID_KEY] = `session:${session.userId}`
+          res.locals[ROLE_KEY] = session.role
           // Refresh cookie to extend idle timeout
           const refreshed = sessionProvider.createSession({
             userId: session.userId,
@@ -148,6 +151,7 @@ export function createAuthMiddleware(
       if (result) {
         res.locals[TENANT_ID_KEY] = result.tenantId
         res.locals[KEY_ID_KEY] = result.keyId
+        res.locals[ROLE_KEY] = 'admin'
         next()
         return
       }
@@ -175,4 +179,18 @@ export function getKeyId(res: Response): string {
     throw new Error('getKeyId called without auth middleware — programming error')
   }
   return keyId
+}
+
+/** Read the authenticated role from res.locals. Returns 'admin' for API key auth. */
+export function getRole(res: Response): string {
+  return typeof res.locals[ROLE_KEY] === 'string' ? (res.locals[ROLE_KEY] as string) : 'viewer'
+}
+
+/** Middleware: rejects non-admin sessions with 403. API keys are always admin. */
+export const requireAdmin: RequestHandler = (_req, res, next): void => {
+  if (getRole(res) !== 'admin') {
+    next(forbidden('Admin role required'))
+    return
+  }
+  next()
 }

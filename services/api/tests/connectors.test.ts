@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import cookieParser from 'cookie-parser'
 import express, { Router } from 'express'
 import pino from 'pino'
 import request from 'supertest'
 import type { DbClient } from '../src/db/client.js'
+import { SESSION_COOKIE_NAME, HmacSessionProvider } from '../src/auth/session.js'
 import { createAuthMiddleware } from '../src/middleware/auth.js'
 import { createConcurrentQueryGuard } from '../src/middleware/concurrent-query-guard.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
@@ -17,6 +19,18 @@ import { connectorRoutes } from '../src/routes/connectors.js'
 const KEY_A = 'key-a'
 const TENANT_A = 'tenant-a'
 const keyMap = new Map([[KEY_A, TENANT_A]])
+
+const SESSION_KEY = Buffer.alloc(32, 0x42)
+const sessionProvider = new HmacSessionProvider(SESSION_KEY)
+
+function viewerCookie(): string {
+  return sessionProvider.createSession({
+    userId: 'viewer-1',
+    tenantId: TENANT_A,
+    role: 'viewer',
+    sessionVersion: 1,
+  })
+}
 
 // ---------------------------------------------------------------------------
 // Mock data
@@ -75,8 +89,9 @@ function createTestApp(queryResults?: Map<string, unknown>) {
   const db = createMockDb(queryResults)
   const app = express()
   app.use(express.json())
+  app.use(cookieParser())
   const v1 = Router()
-  v1.use(createAuthMiddleware(new Map(keyMap)))
+  v1.use(createAuthMiddleware(new Map(keyMap), sessionProvider))
   v1.use(createRateLimiter({ keyRpm: 1000, tenantRpm: 2000, ingestKeyRpm: 3000 }))
   v1.use(createConcurrentQueryGuard({ maxConcurrent: 100 }))
   v1.use(connectorRoutes({ db, logger }))
@@ -229,5 +244,55 @@ describe('DELETE /v1/connectors/:id', () => {
     const app = createTestApp()
     const res = await request(app).delete('/v1/connectors/019abc-conn-1')
     assert.equal(res.status, 401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin guard — viewer sessions must be rejected on mutating routes
+// ---------------------------------------------------------------------------
+
+describe('admin guard', () => {
+  it('rejects POST /connectors from viewer session with 403', async () => {
+    const app = createTestApp()
+
+    const res = await request(app)
+      .post('/v1/connectors')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+      .send({
+        name: 'Should Fail',
+        config: {
+          type: 's3',
+          bucket: 'logweave-logs',
+          prefix: '',
+          pathPattern: '{prefix}{service}/{year}/{month}/{day}/{hour}/',
+          region: 'us-east-1',
+          logFormat: 'jsonl',
+          compression: 'none',
+        },
+      })
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('rejects DELETE /connectors/:id from viewer session with 403', async () => {
+    const app = createTestApp()
+
+    const res = await request(app)
+      .delete('/v1/connectors/019abc-conn-1')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('allows GET /connectors from viewer session', async () => {
+    const app = createTestApp(connectorQueryMap())
+
+    const res = await request(app)
+      .get('/v1/connectors')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 200)
   })
 })

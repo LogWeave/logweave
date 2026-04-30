@@ -12,7 +12,7 @@ import {
 import { getAdapter } from '../connectors/shared.js'
 import type { ConnectorConfig } from '../connectors/types.js'
 import { HttpStatus } from '../http-status.js'
-import { getTenantId } from '../middleware/auth.js'
+import { getTenantId, requireAdmin } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { uuidv7 } from '../uuid.js'
 
@@ -144,7 +144,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
   const router = Router()
 
   // POST /connectors — create a connector
-  router.post('/connectors', validateBody(createConnectorSchema), async (req, res, next) => {
+  router.post('/connectors', requireAdmin, validateBody(createConnectorSchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const body = req.body as z.infer<typeof createConnectorSchema>
@@ -222,7 +222,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
   })
 
   // DELETE /connectors/:id — remove connector
-  router.delete('/connectors/:id', async (req, res, next) => {
+  router.delete('/connectors/:id', requireAdmin, async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const connectorId = req.params.id as string
