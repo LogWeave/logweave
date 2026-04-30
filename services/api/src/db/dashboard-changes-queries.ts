@@ -242,6 +242,7 @@ SELECT
 FROM current c
 LEFT JOIN previous p ON c.template_id = p.template_id
 WHERE spike_ratio > {threshold:Float32}
+  AND previous_count > 0
 ORDER BY spike_ratio DESC
 LIMIT {limit:UInt32}`
 
@@ -291,6 +292,7 @@ SELECT
 FROM current c
 LEFT JOIN previous p ON c.template_id = p.template_id
 WHERE spike_ratio > {threshold:Float32}
+  AND previous_count > 0
 ORDER BY spike_ratio DESC
 LIMIT {limit:UInt32}`
 
