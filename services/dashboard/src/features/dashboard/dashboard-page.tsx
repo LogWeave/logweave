@@ -3,6 +3,7 @@ import { ErrorBoundary } from '../../components/error-boundary'
 import { useUrlSync } from '../../hooks/use-url-sync'
 import { OnboardingCard } from '../onboarding/onboarding-card'
 import { ChangesPanel } from './changes-panel'
+import { CostWidget } from './cost-widget'
 import { KpiStrip } from './kpi-strip'
 import { ServiceHealthCards } from './service-health-cards'
 import { TemplateTable } from './template-table'
@@ -34,7 +35,12 @@ export function DashboardPage() {
         <VolumeChart />
       </ErrorBoundary>
 
-      {/* Row 4: Template table + Service cards */}
+      {/* Row 4: Cost optimizer */}
+      <ErrorBoundary name="Cost Optimizer" key={`cost-${location.key}`}>
+        <CostWidget />
+      </ErrorBoundary>
+
+      {/* Row 5: Template table + Service cards */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
         <ErrorBoundary name="Template Table" key={`tpl-${location.key}`}>
           <TemplateTable className="xl:col-span-3" />

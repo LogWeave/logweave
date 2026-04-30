@@ -80,11 +80,17 @@ LogWeave finds statistically correlated patterns across services using Pearson r
 
 Search patterns by meaning, not just keywords. *"database slow"* matches *"connection pool exhausted"*. Your AI uses this automatically when investigating issues.
 
+### Log Cost Optimizer
+
+Identify noisy, high-volume log patterns that drive up your logging costs. LogWeave classifies every pattern by volume percentage and level — DEBUG patterns consuming 60% of a service's volume are flagged as noise, high-volume INFO patterns are flagged for sampling review. Configurable per-tenant thresholds let each team tune what "noisy" means for them.
+
+Available via dashboard widget, REST API (`GET /v1/cost/analysis`), and MCP tool (`cost_optimizer`). Your AI can tell you exactly where to cut logging costs.
+
 ### Pattern Clustering
 
 Millions of individual log lines become hundreds of meaningful patterns with occurrence counts, sparkline trends, and anomaly scores. You see signals, not noise.
 
-### 23 MCP Tools
+### 24 MCP Tools
 
 Your AI assistant gets structured access to your production runtime:
 
@@ -99,9 +105,10 @@ Your AI assistant gets structured access to your production runtime:
 | `correlations` | Statistically correlated patterns (Pearson r) |
 | `related_patterns` | Co-occurring patterns in the same request |
 | `trace_details` | Cross-service trace timeline |
-| `raw_logs` | S3-backed raw log drill-down |
+| `raw_logs` | Raw log drill-down (S3, Elasticsearch, Loki, local filesystem) |
 | `live_tail` | Real-time event stream |
 | `deploys` | Deployment markers for change correlation |
+| `cost_optimizer` | Identify noisy patterns and volume reduction opportunities |
 | `create_rule` | Create threshold alerts programmatically |
 | ...and 8 more | See `services/mcp/src/tools.ts` for all tools |
 
@@ -112,6 +119,7 @@ Your AI assistant gets structured access to your production runtime:
 - KPI strip — spikes, error rate, event volume at a glance
 - What Changed — new patterns, spikes, resolved issues
 - Volume chart — per-service log volume over time
+- Cost optimizer — noisy patterns flagged with volume reduction estimates
 - Pattern table — sortable, searchable, with sparkline trends
 - Service health cards — error rates and top patterns per service
 
@@ -139,7 +147,20 @@ Set up alerts in minutes from the dashboard — no config files, no YAML.
 
 ### Self-Hosted and Private
 
-LogWeave runs entirely in your infrastructure. Raw logs never leave your environment — LogWeave reads them on demand from your S3 bucket for drill-down, but only stores extracted patterns and metadata. Nothing is sent to external services.
+LogWeave runs entirely in your infrastructure. Raw logs never leave your environment — LogWeave reads them on demand for drill-down, but only stores extracted patterns and metadata. Nothing is sent to external services.
+
+### Raw Log Connectors
+
+Connect your log source in Settings for raw log drill-down from any pattern:
+
+| Connector | Setup | Auth |
+|-----------|-------|------|
+| **S3 / MinIO** | Bucket, region, path pattern | IAM / access keys |
+| **Elasticsearch / OpenSearch** | URL, index pattern | None, API key, or basic auth |
+| **Grafana Loki** | URL, label selector | Optional bearer token |
+| **Local Filesystem** | Directory path, file pattern | None (Docker volume mount) |
+
+One connector per tenant. Configured by admins in Settings — paste a URL and test.
 
 ### Data Handling
 

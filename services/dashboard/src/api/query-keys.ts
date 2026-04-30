@@ -29,6 +29,8 @@ export const queryKeys = {
   tagSettings: () => ['settings', 'tags'] as const,
   connectors: () => ['connectors'] as const,
   onboardingStatus: () => ['settings', 'onboarding'] as const,
+  costAnalysis: (hours: number, service: string | null) => ['cost', 'analysis', hours, service] as const,
+  costThresholds: () => ['settings', 'cost-thresholds'] as const,
 } as const
 
 /** Convert level filter array to stable query param string. */

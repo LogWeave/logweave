@@ -28,6 +28,7 @@ import { authRoutes } from './routes/auth.js'
 import { connectorRoutes } from './routes/connectors.js'
 import { correlationRoutes } from './routes/correlation.js'
 import { compositeRoutes } from './routes/composite.js'
+import { costRoutes } from './routes/cost.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { deployRoutes } from './routes/deploys.js'
 import { healthRoutes } from './routes/health.js'
@@ -227,6 +228,13 @@ export function createApp(deps: AppDependencies): express.Express {
       db: deps.db,
       clusterClient: deps.clusterClient,
       logger: deps.logger,
+    }),
+  )
+  v1.use(
+    costRoutes({
+      db: deps.db,
+      logger: deps.logger,
+      settingsStore: deps.settingsStore,
     }),
   )
   v1.use(

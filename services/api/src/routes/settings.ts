@@ -301,6 +301,64 @@ export function settingsRoutes(deps: SettingsDeps): Router {
     }
   })
 
+  // GET /settings/cost-thresholds -- returns cost optimizer thresholds or defaults
+  router.get('/settings/cost-thresholds', async (_req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const settings = deps.settingsStore.get(tenantId)
+
+      res.status(HttpStatus.OK).json({
+        data: {
+          noiseDebugPct: settings.costNoiseDebugPct ?? 5,
+          reviewInfoPct: settings.costReviewInfoPct ?? 10,
+          reviewWarnPct: settings.costReviewWarnPct ?? 20,
+          isCustom:
+            settings.costNoiseDebugPct !== undefined ||
+            settings.costReviewInfoPct !== undefined ||
+            settings.costReviewWarnPct !== undefined,
+        },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // PUT /settings/cost-thresholds -- update cost optimizer thresholds
+  const costThresholdsSchema = z.object({
+    noiseDebugPct: z.number().min(0).max(100).optional(),
+    reviewInfoPct: z.number().min(0).max(100).optional(),
+    reviewWarnPct: z.number().min(0).max(100).optional(),
+  })
+
+  router.put('/settings/cost-thresholds', validateBody(costThresholdsSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const body = req.body as z.infer<typeof costThresholdsSchema>
+
+      const updates: Record<string, number> = {}
+      if (body.noiseDebugPct !== undefined) updates.costNoiseDebugPct = body.noiseDebugPct
+      if (body.reviewInfoPct !== undefined) updates.costReviewInfoPct = body.reviewInfoPct
+      if (body.reviewWarnPct !== undefined) updates.costReviewWarnPct = body.reviewWarnPct
+
+      await deps.settingsStore.set(tenantId, updates)
+      deps.logger.info({ tenantId, ...updates }, 'Cost optimizer thresholds updated')
+
+      const settings = deps.settingsStore.get(tenantId)
+      res.status(HttpStatus.OK).json({
+        data: {
+          noiseDebugPct: settings.costNoiseDebugPct ?? 5,
+          reviewInfoPct: settings.costReviewInfoPct ?? 10,
+          reviewWarnPct: settings.costReviewWarnPct ?? 20,
+          isCustom: true,
+        },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
   // POST /settings/slack/test -- send test message
   router.post('/settings/slack/test', async (_req, res, next) => {
     try {

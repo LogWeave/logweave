@@ -19,7 +19,7 @@ export function setOnUnauthorized(callback: (() => void) | null): void {
 
 function getCsrfToken(): string | undefined {
   const match = document.cookie.match(/logweave_csrf=([^;]+)/)
-  if (!match) return undefined
+  if (!match?.[1]) return undefined
   const value = decodeURIComponent(match[1])
   const dotIndex = value.indexOf('.')
   return dotIndex > 0 ? value.slice(0, dotIndex) : undefined

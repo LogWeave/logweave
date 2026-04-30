@@ -7,6 +7,7 @@ import { type DevToolsConfig, devDataSummary, devHealth, devQuery } from './dev-
 import {
   logweaveChanges,
   logweaveCorrelations,
+  logweaveCostOptimizer,
   logweaveDeploys,
   logweaveErrorPatterns,
   logweaveLiveTail,
@@ -577,6 +578,24 @@ server.registerTool(
       client,
       args as { key: string; value: string; hours?: number; limit?: number },
     ),
+  ),
+)
+
+server.registerTool(
+  'cost_optimizer',
+  {
+    title: 'Log Cost Optimizer',
+    description:
+      'Analyze log patterns to identify noise (high-volume DEBUG/TRACE) and review candidates (high-volume INFO/WARN). ' +
+      'Returns patterns ranked by volume percentage with actionable suggestions for reducing log costs.',
+    inputSchema: {
+      hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
+      service: z.string().optional().describe('Filter to a specific service name'),
+    },
+    annotations: READ_ONLY,
+  },
+  toolHandler((args) =>
+    logweaveCostOptimizer(client, args as { hours?: number; service?: string }),
   ),
 )
 
