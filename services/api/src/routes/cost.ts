@@ -143,6 +143,7 @@ export function costRoutes(deps: CostDeps): Router {
       const rows = await queryCostAnalysis(deps.db, tenantId, {
         hours: params.hours,
         service: params.service,
+        level: params.level,
       })
 
       const { patterns, totalPatternsAnalyzed, noiseCount, reviewCount, keepCount, potentialReductionPct } =

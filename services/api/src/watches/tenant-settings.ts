@@ -18,6 +18,7 @@ export interface TenantSettings {
   costNoiseDebugPct?: number
   costReviewInfoPct?: number
   costReviewWarnPct?: number
+  spikeMinBaseline?: number
 }
 
 interface SettingsRow {
@@ -41,6 +42,7 @@ const SETTING_KEYS: (keyof TenantSettings)[] = [
   'costNoiseDebugPct',
   'costReviewInfoPct',
   'costReviewWarnPct',
+  'spikeMinBaseline',
 ]
 
 export interface TenantSettingsStoreOpts {
@@ -118,6 +120,11 @@ export class TenantSettingsStore {
         if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 100) {
           existing[row.setting_key] = parsed
         }
+      } else if (row.setting_key === 'spikeMinBaseline') {
+        const parsed = Number(row.setting_value)
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          existing.spikeMinBaseline = parsed
+        }
       }
       this.settings.set(row.tenant_id, existing)
     }
@@ -145,6 +152,11 @@ export class TenantSettingsStore {
         if (!Number.isFinite(updates[key]) || updates[key] < 0 || updates[key] > 100) {
           throw new Error(`${key} must be a number between 0 and 100`)
         }
+      }
+    }
+    if (updates.spikeMinBaseline !== undefined) {
+      if (!Number.isFinite(updates.spikeMinBaseline) || updates.spikeMinBaseline < 0) {
+        throw new Error('spikeMinBaseline must be a non-negative number')
       }
     }
     const existing = this.settings.get(tenantId) ?? {}

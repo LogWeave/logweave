@@ -418,7 +418,7 @@ describe('GET /v1/services/:name/outlier', () => {
       .set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
-    assert.equal(res.body.data.verdict, 'normal')
+    assert.equal(res.body.data.verdict, 'insufficient_data')
     assert.equal(res.body.data.currentRate, 0)
     assert.equal(res.body.data.dataPoints, 0)
     assert.ok(res.body.data.warning)

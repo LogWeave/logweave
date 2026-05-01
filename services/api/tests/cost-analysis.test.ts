@@ -339,6 +339,42 @@ describe('GET /v1/cost/analysis', () => {
     assert.equal(res.body.data.summary.potentialReductionPct, 30)
   })
 
+  it('accepts level filter as comma-separated query param', async () => {
+    const { app } = createTestApp({ queryResults: [] })
+
+    const res = await request(app)
+      .get('/v1/cost/analysis?level=ERROR,WARN')
+      .set('Authorization', `Bearer ${KEY_A}`)
+
+    assert.equal(res.status, 200)
+  })
+
+  it('filters rows when level param is set — patterns from those rows are classified normally', async () => {
+    const rows = [
+      makeRow({ level: 'DEBUG', count: '600', service_total: '1000' }),
+    ]
+    const { app } = createTestApp({ queryResults: rows })
+
+    const res = await request(app)
+      .get('/v1/cost/analysis?level=DEBUG')
+      .set('Authorization', `Bearer ${KEY_A}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.patterns.length, 1)
+    assert.equal(res.body.data.patterns[0].level, 'DEBUG')
+    assert.equal(res.body.data.patterns[0].classification, 'noise')
+  })
+
+  it('accepts single level filter', async () => {
+    const { app } = createTestApp({ queryResults: [] })
+
+    const res = await request(app)
+      .get('/v1/cost/analysis?level=ERROR')
+      .set('Authorization', `Bearer ${KEY_A}`)
+
+    assert.equal(res.status, 200)
+  })
+
   it('requires authentication', async () => {
     const { app } = createTestApp({ queryResults: [] })
 

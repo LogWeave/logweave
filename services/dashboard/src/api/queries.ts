@@ -150,7 +150,7 @@ export function useClusteringHealth() {
   })
 }
 
-export function useChanges() {
+export function useChanges(minBaseline?: number) {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
   const levelFilters = useDashboardStore((s) => s.levelFilters)
@@ -163,10 +163,29 @@ export function useChanges() {
         hours,
         service: serviceFilter ?? undefined,
         level: levelApiParam(levelFilters),
+        ...(minBaseline !== undefined ? { minBaseline } : {}),
       }),
     placeholderData: keepPreviousData,
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,
+  })
+}
+
+export function useSpikeBaseline() {
+  return useQuery({
+    queryKey: queryKeys.spikeBaseline(),
+    queryFn: () => api.get<ApiResponse<{ minBaseline: number; isCustom: boolean }>>('/v1/settings/spike-baseline'),
+    staleTime: 30_000,
+  })
+}
+
+export function useSaveSpikeBaseline() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (minBaseline: number) => api.put('/v1/settings/spike-baseline', { minBaseline }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.spikeBaseline() })
+    },
   })
 }
 
@@ -441,13 +460,15 @@ export function useDeleteConnector() {
 export function useCostAnalysis() {
   const timeRange = useDashboardStore((s) => s.timeRange)
   const serviceFilter = useDashboardStore((s) => s.serviceFilter)
+  const levelFilters = useDashboardStore((s) => s.levelFilters)
   const hours = timeRangeToHours(timeRange)
   return useQuery({
-    queryKey: queryKeys.costAnalysis(hours, serviceFilter),
+    queryKey: queryKeys.costAnalysis(hours, serviceFilter, levelParam(levelFilters)),
     queryFn: () =>
       api.get<ApiResponse<CostAnalysisData>>('/v1/cost/analysis', {
         hours,
         service: serviceFilter ?? undefined,
+        level: levelApiParam(levelFilters),
       }),
     refetchInterval: pollUnlessError,
     staleTime: config.staleTimeMs,

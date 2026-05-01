@@ -101,6 +101,7 @@ export const changesQuerySchema = z
     deploy_id: z.string().min(1).optional(),
     service: z.string().optional(),
     threshold: z.coerce.number().min(1).max(100).default(3),
+    minBaseline: z.coerce.number().int().min(0).max(10_000).default(10),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     level: levelFilterField,
   })

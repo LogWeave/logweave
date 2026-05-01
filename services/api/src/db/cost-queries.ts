@@ -13,9 +13,10 @@ export interface CostAnalysisRow {
 export interface CostAnalysisOptions {
   hours?: number
   service?: string
+  level?: string[]
 }
 
-const COST_ANALYSIS_QUERY = `
+const BASE_COST_QUERY = `
 SELECT
     template_id,
     template_text,
@@ -25,24 +26,7 @@ SELECT
     sum(countMerge(occurrence_count)) OVER (PARTITION BY service) AS service_total
 FROM logweave.template_stats
 WHERE tenant_id = {tenant_id:String}
-  AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
-GROUP BY service, template_id, template_text, level
-ORDER BY count DESC`
-
-const COST_ANALYSIS_SERVICE_QUERY = `
-SELECT
-    template_id,
-    template_text,
-    service,
-    level,
-    countMerge(occurrence_count) AS count,
-    sum(countMerge(occurrence_count)) OVER (PARTITION BY service) AS service_total
-FROM logweave.template_stats
-WHERE tenant_id = {tenant_id:String}
-  AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
-  AND service = {service:String}
-GROUP BY service, template_id, template_text, level
-ORDER BY count DESC`
+  AND interval_start > now64(3) - toIntervalHour({hours:UInt32})`
 
 export async function queryCostAnalysis(
   db: DbClient,
@@ -50,12 +34,18 @@ export async function queryCostAnalysis(
   options?: CostAnalysisOptions,
 ): Promise<CostAnalysisRow[]> {
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
+  const serviceFilter = options?.service ? 'AND service = {service:String}' : ''
+  const levelFilter = options?.level?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
-  if (options?.service) {
-    return db.query<CostAnalysisRow>(
-      tenantQuery(COST_ANALYSIS_SERVICE_QUERY, tenantId, { hours, service: options.service }),
-    )
-  }
+  const query = `${BASE_COST_QUERY}
+  ${serviceFilter}
+  ${levelFilter}
+GROUP BY service, template_id, template_text, level
+ORDER BY count DESC`
 
-  return db.query<CostAnalysisRow>(tenantQuery(COST_ANALYSIS_QUERY, tenantId, { hours }))
+  const params: Record<string, unknown> = { hours }
+  if (options?.service) params.service = options.service
+  if (options?.level?.length) params.levels = options.level
+
+  return db.query<CostAnalysisRow>(tenantQuery(query, tenantId, params))
 }

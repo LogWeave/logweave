@@ -3,6 +3,10 @@ import { z } from 'zod'
 export const costAnalysisSchema = z.object({
   hours: z.coerce.number().int().min(1).max(720).default(24),
   service: z.string().min(1).max(256).optional(),
+  level: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : undefined)),
 })
 
 export type CostAnalysisQuery = z.infer<typeof costAnalysisSchema>
