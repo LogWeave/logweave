@@ -166,3 +166,122 @@ describe('PUT /v1/settings/cost-thresholds', () => {
     assert.equal(res.status, 401)
   })
 })
+
+// ---------------------------------------------------------------------------
+// GET /v1/settings/spike-baseline
+// ---------------------------------------------------------------------------
+
+describe('GET /v1/settings/spike-baseline', () => {
+  it('returns default of 10 when no custom baseline set', async () => {
+    const { app } = createTestApp()
+
+    const res = await request(app)
+      .get('/v1/settings/spike-baseline')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.minBaseline, 10)
+    assert.equal(res.body.data.isCustom, false)
+  })
+
+  it('returns custom baseline when set', async () => {
+    const { app, settingsStore } = createTestApp()
+    await settingsStore.set(TENANT_A, { spikeMinBaseline: 25 })
+
+    const res = await request(app)
+      .get('/v1/settings/spike-baseline')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.minBaseline, 25)
+    assert.equal(res.body.data.isCustom, true)
+  })
+
+  it('requires authentication', async () => {
+    const { app } = createTestApp()
+
+    const res = await request(app).get('/v1/settings/spike-baseline')
+
+    assert.equal(res.status, 401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PUT /v1/settings/spike-baseline
+// ---------------------------------------------------------------------------
+
+describe('PUT /v1/settings/spike-baseline', () => {
+  it('persists minBaseline update', async () => {
+    const { app } = createTestApp()
+
+    const res = await request(app)
+      .put('/v1/settings/spike-baseline')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ minBaseline: 20 })
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.minBaseline, 20)
+    assert.equal(res.body.data.isCustom, true)
+  })
+
+  it('accepts zero (suppress nothing)', async () => {
+    const { app } = createTestApp()
+
+    const res = await request(app)
+      .put('/v1/settings/spike-baseline')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ minBaseline: 0 })
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.minBaseline, 0)
+  })
+
+  it('reflects update in subsequent GET', async () => {
+    const { app } = createTestApp()
+
+    await request(app)
+      .put('/v1/settings/spike-baseline')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ minBaseline: 50 })
+
+    const res = await request(app)
+      .get('/v1/settings/spike-baseline')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.minBaseline, 50)
+    assert.equal(res.body.data.isCustom, true)
+  })
+
+  it('rejects negative values', async () => {
+    const { app } = createTestApp()
+
+    const res = await request(app)
+      .put('/v1/settings/spike-baseline')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ minBaseline: -1 })
+
+    assert.equal(res.status, 400)
+  })
+
+  it('rejects values above 10000', async () => {
+    const { app } = createTestApp()
+
+    const res = await request(app)
+      .put('/v1/settings/spike-baseline')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ minBaseline: 99999 })
+
+    assert.equal(res.status, 400)
+  })
+
+  it('requires authentication', async () => {
+    const { app } = createTestApp()
+
+    const res = await request(app)
+      .put('/v1/settings/spike-baseline')
+      .send({ minBaseline: 10 })
+
+    assert.equal(res.status, 401)
+  })
+})

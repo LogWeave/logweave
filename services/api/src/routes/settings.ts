@@ -394,5 +394,42 @@ export function settingsRoutes(deps: SettingsDeps): Router {
     }
   })
 
+  // GET /settings/spike-baseline -- returns spike minimum baseline or default
+  router.get('/settings/spike-baseline', async (_req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const settings = deps.settingsStore.get(tenantId)
+      res.status(HttpStatus.OK).json({
+        data: {
+          minBaseline: settings.spikeMinBaseline ?? 10,
+          isCustom: settings.spikeMinBaseline !== undefined,
+        },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // PUT /settings/spike-baseline -- update spike minimum baseline
+  const spikeBaselineSchema = z.object({
+    minBaseline: z.number().int().min(0).max(10_000),
+  })
+
+  router.put('/settings/spike-baseline', validateBody(spikeBaselineSchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const body = req.body as z.infer<typeof spikeBaselineSchema>
+      await deps.settingsStore.set(tenantId, { spikeMinBaseline: body.minBaseline })
+      deps.logger.info({ tenantId, spikeMinBaseline: body.minBaseline }, 'Spike min baseline updated')
+      res.status(HttpStatus.OK).json({
+        data: { minBaseline: body.minBaseline, isCustom: true },
+        meta: { fetchedAt: new Date().toISOString() },
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
   return router
 }

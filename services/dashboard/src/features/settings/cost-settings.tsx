@@ -1,10 +1,88 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { useCostThresholds, useSaveCostThresholds } from '../../api/queries'
+import { useCostThresholds, useSaveCostThresholds, useSpikeBaseline, useSaveSpikeBaseline } from '../../api/queries'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { cn } from '../../lib/cn'
+
+export function SpikeBaselineSettings() {
+  const { data: baselineResponse } = useSpikeBaseline()
+  const baseline = baselineResponse?.data
+  const saveMutation = useSaveSpikeBaseline()
+
+  const [minBaseline, setMinBaseline] = useState(10)
+
+  useEffect(() => {
+    if (baseline) {
+      setMinBaseline(baseline.minBaseline)
+    }
+  }, [baseline])
+
+  const handleSave = () => {
+    if (minBaseline < 0) {
+      toast.error('Minimum baseline must be non-negative')
+      return
+    }
+    saveMutation.mutate(minBaseline, {
+      onSuccess: () => toast.success('Spike baseline saved'),
+      onError: () => toast.error('Failed to save spike baseline'),
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>What Changed — Spike Minimum Baseline</CardTitle>
+          <span
+            className={cn(
+              'text-[11px] font-medium px-2 py-0.5 rounded-full',
+              baseline?.isCustom
+                ? 'bg-brand-500/10 text-brand-400'
+                : 'bg-surface-elevated text-text-muted',
+            )}
+          >
+            {baseline?.isCustom ? 'Custom' : 'Using defaults'}
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <p className="text-xs text-text-muted">
+            Spikes are only surfaced when the pattern had at least this many events in the
+            previous window. Suppresses 0→1 noise without hiding genuine traffic spikes.
+          </p>
+          <div className="space-y-1">
+            <label className="text-xs text-text-secondary font-medium">
+              Minimum previous-window count
+            </label>
+            <p className="text-[10px] text-text-muted">
+              Patterns with fewer events than this in the prior window are excluded from spikes. Default: 10
+            </p>
+            <Input
+              type="number"
+              min={0}
+              max={10000}
+              step={1}
+              value={minBaseline}
+              onChange={(e) => setMinBaseline(Number(e.target.value))}
+              className="max-w-[120px]"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={handleSave}
+            disabled={saveMutation.isPending}
+          >
+            {saveMutation.isPending ? 'Saving...' : 'Save Baseline'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 export function CostSettings() {
   const { data: thresholdsResponse } = useCostThresholds()

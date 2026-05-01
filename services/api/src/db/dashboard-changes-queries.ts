@@ -39,8 +39,11 @@ interface ChangesOptions {
   level?: string[]
 }
 
+const DEFAULT_SPIKE_MIN_BASELINE = 10
+
 interface SpikesOptions extends ChangesOptions {
   threshold?: number
+  minBaseline?: number
 }
 
 const DEFAULT_CHANGES_LIMIT = 20
@@ -204,6 +207,7 @@ export async function queryTemplateSpikes(
 ): Promise<TemplateSpikeRow[]> {
   const limit = clamp(options?.limit ?? DEFAULT_CHANGES_LIMIT, MAX_CHANGES_LIMIT)
   const threshold = Math.max(1, Math.min(100, options?.threshold ?? 3))
+  const minBaseline = Math.max(0, options?.minBaseline ?? DEFAULT_SPIKE_MIN_BASELINE)
   const service = options?.service
   const levels = options?.level
   const { serviceFilter, levelFilter } = buildFilters(service, levels)
@@ -242,13 +246,14 @@ SELECT
 FROM current c
 LEFT JOIN previous p ON c.template_id = p.template_id
 WHERE spike_ratio > {threshold:Float32}
-  AND previous_count > 0
+  AND previous_count >= {min_baseline:UInt32}
 ORDER BY spike_ratio DESC
 LIMIT {limit:UInt32}`
 
     const params: Record<string, unknown> = {
       limit,
       threshold,
+      min_baseline: minBaseline,
       current_start: toClickHouseDateTime(tw.currentStart),
       current_end: toClickHouseDateTime(tw.currentEnd),
       previous_start: toClickHouseDateTime(tw.previousStart),
@@ -292,11 +297,11 @@ SELECT
 FROM current c
 LEFT JOIN previous p ON c.template_id = p.template_id
 WHERE spike_ratio > {threshold:Float32}
-  AND previous_count > 0
+  AND previous_count >= {min_baseline:UInt32}
 ORDER BY spike_ratio DESC
 LIMIT {limit:UInt32}`
 
-  const params: Record<string, unknown> = { hours, limit, threshold, window }
+  const params: Record<string, unknown> = { hours, limit, threshold, min_baseline: minBaseline, window }
   addFilterParams(params, service, levels)
   return db.query<TemplateSpikeRow>(tenantQuery(query, tenantId, params))
 }

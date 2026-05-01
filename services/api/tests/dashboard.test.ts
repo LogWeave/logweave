@@ -978,6 +978,47 @@ describe('GET /v1/dashboard/changes', () => {
     assert.deepEqual(res.body.data, { new: [], spike: [], resolved: [] })
     assert.equal(res.body.meta.count, 0)
   })
+
+  it('accepts minBaseline query param and returns 200', async () => {
+    const app = createTestApp(changesQueryMap())
+
+    const res = await request(app)
+      .get('/v1/dashboard/changes?minBaseline=20')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+  })
+
+  it('defaults minBaseline to 10', async () => {
+    const app = createTestApp(changesQueryMap())
+
+    // No minBaseline param — should succeed with default
+    const res = await request(app)
+      .get('/v1/dashboard/changes')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+  })
+
+  it('rejects minBaseline below 0', async () => {
+    const app = createTestApp(changesQueryMap())
+
+    const res = await request(app)
+      .get('/v1/dashboard/changes?minBaseline=-1')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 400)
+  })
+
+  it('rejects minBaseline above 10000', async () => {
+    const app = createTestApp(changesQueryMap())
+
+    const res = await request(app)
+      .get('/v1/dashboard/changes?minBaseline=99999')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 400)
+  })
 })
 
 // ---------------------------------------------------------------------------

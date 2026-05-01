@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { useChanges, useOverview } from '../../api/queries'
+import { useChanges, useOverview, useSpikeBaseline } from '../../api/queries'
 import type { ChangeEvent } from '../../api/types'
 import { QueryError } from '../../components/ui/query-error'
 import { Badge } from '../../components/ui/badge'
@@ -76,7 +76,9 @@ const ChangeEventRow = memo(function ChangeEventRow({
 })
 
 export function ChangesPanel({ className }: { className?: string }) {
-  const { data: response, isLoading, isError, refetch } = useChanges()
+  const { data: baselineResponse } = useSpikeBaseline()
+  const minBaseline = baselineResponse?.data?.minBaseline
+  const { data: response, isLoading, isError, refetch } = useChanges(minBaseline)
   const { data: overviewResponse } = useOverview()
   const changesData = response?.data
   const spikes = changesData?.spike ?? []
