@@ -1,87 +1,275 @@
-# LogWeave — Self-Hosted Install Guide
+# LogWeave — Install Guide
 
-Get LogWeave running on your own infrastructure in 5 minutes.
+LogWeave runs as a self-hosted Docker stack. Pick the profile that matches how you'll use it:
 
-## Prerequisites
+- **[Local](#local-profile)** — everything on your laptop, MCP at localhost. Good for solo dev or evaluation.
+- **[Team / Remote](#team--remote-profile)** — backend on a server (EC2, VPS, etc.), dashboard at a real URL, MCP from any developer's machine.
+
+---
+
+## Local Profile
+
+### Prerequisites
 
 - Docker Engine 24+ and Docker Compose v2
-- 6 GB RAM minimum (8 GB recommended) — see [Resource Limits](#resource-limits) for the per-container breakdown
+- 6 GB RAM minimum (8 GB recommended)
 - 10 GB disk for ClickHouse data
-- A machine with ports 3000 (API + dashboard) accessible
 
-## Quick Start
-
-### 1. Clone the repository
+### 1. Clone and configure
 
 ```bash
 git clone https://github.com/logweave/logweave.git
 cd logweave
-```
-
-### 2. Configure environment
-
-```bash
 cp .env.production.example .env
 ```
 
-Edit `.env` and set the **required** values:
+Edit `.env` — the two required values:
 
 ```bash
 # Generate a secure API key
-API_KEY=$(openssl rand -hex 32)
-echo "Your API key: $API_KEY"
+LOGWEAVE_API_KEYS={"$(openssl rand -hex 32)":"my-org"}
 
-# Generate encryption key for connector secrets
-ENC_KEY=$(openssl rand -hex 16)
+# Generate an encryption key (enables dashboard login + TOTP)
+LOGWEAVE_ENCRYPTION_KEY=$(openssl rand -hex 16)
 ```
 
-Update these lines in `.env`:
-```
-LOGWEAVE_API_KEYS={"<your-api-key>":"<tenant-id>"}
-LOGWEAVE_ENCRYPTION_KEY=<your-encryption-key>
-```
-
-The tenant ID is a short label for your organisation (e.g. `acme`). It groups all logs and patterns under one namespace and appears in the dashboard. You can have multiple API keys mapped to different tenant IDs for team isolation.
-
-**Save your API key** — you'll need it to send logs and access the dashboard.
-
-### 3. Start the stack
+### 2. Start the stack
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-This starts three containers:
-- **ClickHouse** — metadata store (internal, not exposed)
-- **Clusterer** — log pattern extraction (internal, not exposed)
-- **API** — HTTP API + dashboard on port 3000
+### 3. Open the dashboard
 
-### 4. Verify
+Navigate to `http://localhost:3000`.
 
-```bash
-# Health check
-curl http://localhost:3000/healthz
-# Expected: {"status":"ok"}
+**First login:** username `admin`, password `admin`. You will be prompted to change your password immediately.
 
-# Or use the included script
-chmod +x scripts/healthcheck.sh
-./scripts/healthcheck.sh
+### 4. Connect your AI (MCP)
+
+Add to your editor's MCP config (Claude Code, Cursor, Windsurf):
+
+```json
+{
+  "mcpServers": {
+    "logweave": {
+      "command": "npx",
+      "args": ["@logweave/mcp"],
+      "env": {
+        "LOGWEAVE_API_URL": "http://localhost:3000",
+        "LOGWEAVE_API_KEY": "your-api-key-from-env"
+      }
+    }
+  }
+}
 ```
 
-### 5. Open the dashboard
+Then ask your AI: *"What error patterns are happening in my services?"*
 
-Navigate to `http://localhost:3000` in your browser. The onboarding checklist will guide you through:
+---
 
-1. **Send your first logs** — copy-paste a curl command or SDK snippet
-2. **Connect your AI assistant** — paste the MCP config into Claude Code / Cursor
-3. **Tune clustering** — choose how specific your patterns should be
+## Team / Remote Profile
+
+The backend (API + ClickHouse + Clusterer) runs on a server. The dashboard is served from the same server at a public HTTPS URL. MCP runs on each developer's machine and calls out to that URL.
+
+```
+Developer laptop                    Your server (EC2, VPS, etc.)
+─────────────────                   ──────────────────────────────
+Editor + MCP client ──HTTPS──────►  Caddy (TLS termination)
+Browser             ──HTTPS──────►    └─► API + Dashboard :3000
+Your services       ──HTTPS──────►    └─► ClickHouse (internal)
+                                      └─► Clusterer (internal)
+```
+
+### Prerequisites
+
+- A server with 8 GB RAM / 2+ vCPU (AWS t3.large or equivalent)
+- 10 GB disk for ClickHouse data
+- Docker Engine 24+ and Docker Compose v2
+- A domain name (or subdomain) you control — e.g. `logweave.acme.com`
+- Ports 80 and 443 open inbound (80 is needed for Let's Encrypt ACME challenge)
+
+### 1. Point your domain at the server
+
+Create an A record at your DNS provider:
+
+```
+logweave.acme.com  →  <your-server-public-ip>
+```
+
+DNS propagation takes a few minutes. Caddy will fail to get a TLS cert until this is live.
+
+### 2. Clone and configure
+
+On the server:
+
+```bash
+git clone https://github.com/logweave/logweave.git
+cd logweave
+cp .env.production.example .env
+```
+
+Edit `.env`:
+
+```bash
+# REQUIRED — one key per service/integration (not per user — users log in with password)
+LOGWEAVE_API_KEYS={"$(openssl rand -hex 32)":"my-org"}
+
+# REQUIRED — enables dashboard login, TOTP, and connector encryption
+LOGWEAVE_ENCRYPTION_KEY=$(openssl rand -hex 16)
+
+# REQUIRED for production — ClickHouse authentication
+LOGWEAVE_CLICKHOUSE_USER=logweave
+LOGWEAVE_CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)
+CLICKHOUSE_PASSWORD_SHA256=$(echo -n "your-password-here" | sha256sum | cut -d' ' -f1)
+
+# RECOMMENDED — checkpoint integrity
+LOGWEAVE_CHECKPOINT_HMAC_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+```
+
+### 3. Configure Caddy
+
+Create a `Caddyfile` in the repo root:
+
+```
+logweave.acme.com {
+    reverse_proxy localhost:3000
+}
+```
+
+Install and start Caddy (Debian/Ubuntu):
+
+```bash
+sudo apt install -y caddy
+sudo cp Caddyfile /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+Caddy automatically obtains and renews a Let's Encrypt certificate for your domain.
+
+### 4. Start the stack
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### 5. Verify
+
+```bash
+curl https://logweave.acme.com/healthz
+# Expected: {"status":"ok"}
+```
+
+### 6. Open the dashboard
+
+Navigate to `https://logweave.acme.com` in your browser.
+
+**First login:** username `admin`, password `admin`. You will be prompted to change your password immediately.
+
+---
+
+## User Management
+
+The dashboard has two roles: **admin** (can manage users and API keys) and **viewer** (read-only).
+
+### Add a team member
+
+In the dashboard: **Settings → Users → Add User**. Set a temporary password — the user will be prompted to change it on first login.
+
+Alternatively via API (admin session required):
+
+```bash
+curl -X POST https://logweave.acme.com/v1/auth/users \
+  -H "Content-Type: application/json" \
+  -b "logweave_session=<your-session-cookie>" \
+  -d '{
+    "username": "alice",
+    "password": "TemporaryPassword123!",
+    "tenantId": "my-org",
+    "role": "viewer"
+  }'
+```
+
+### Enable TOTP (recommended for team deployments)
+
+Each user can enable TOTP from their profile: **Settings → Security → Enable Authenticator App**. Scan the QR code with any TOTP app (Google Authenticator, 1Password, etc.) and save the recovery codes.
+
+---
+
+## API Keys
+
+API keys are for **machine-to-machine access only** — ingest endpoints, SDK, and MCP. They are not for logging into the dashboard.
+
+**Issue one key per service or integration** so you can revoke individually:
+
+```bash
+# Generate a key
+openssl rand -hex 32
+```
+
+Add it to `LOGWEAVE_API_KEYS` in `.env` and restart the API:
+
+```bash
+# .env
+LOGWEAVE_API_KEYS={"key-for-auth-service":"my-org","key-for-payments":"my-org","key-for-alice-mcp":"my-org"}
+
+docker compose -f docker-compose.prod.yml restart api
+```
+
+---
+
+## Connecting AI (MCP)
+
+Each developer configures MCP on their own machine. The MCP server runs locally and calls the hosted API — nothing extra to deploy.
+
+**Local profile:**
+```json
+{
+  "mcpServers": {
+    "logweave": {
+      "command": "npx",
+      "args": ["@logweave/mcp"],
+      "env": {
+        "LOGWEAVE_API_URL": "http://localhost:3000",
+        "LOGWEAVE_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Team / Remote profile:**
+```json
+{
+  "mcpServers": {
+    "logweave": {
+      "command": "npx",
+      "args": ["@logweave/mcp"],
+      "env": {
+        "LOGWEAVE_API_URL": "https://logweave.acme.com",
+        "LOGWEAVE_API_KEY": "your-personal-api-key"
+      }
+    }
+  }
+}
+```
+
+Give each developer their own API key (see [API Keys](#api-keys) above) so you can revoke access individually.
+
+To verify the connection, ask your AI:
+
+> *"Use the LogWeave overview tool to show me the system status."*
+
+---
 
 ## Sending Logs
+
+Replace `https://logweave.acme.com` with `http://localhost:3000` for the local profile.
 
 ### HTTP API (any language)
 
 ```bash
-curl -X POST http://localhost:3000/v1/ingest/batch \
+curl -X POST https://logweave.acme.com/v1/ingest/batch \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -106,7 +294,7 @@ import winston from "winston";
 const logger = winston.createLogger({
   transports: [
     new LogWeaveTransport({
-      endpoint: "http://localhost:3000",
+      endpoint: "https://logweave.acme.com",
       apiKey: "YOUR_API_KEY",
       service: "my-service",
     }),
@@ -119,7 +307,7 @@ const logger = winston.createLogger({
 ```yaml
 exporters:
   otlphttp:
-    endpoint: http://localhost:3000/v1/logs
+    endpoint: https://logweave.acme.com/v1/logs
     headers:
       authorization: "Bearer YOUR_API_KEY"
 
@@ -129,105 +317,27 @@ service:
       exporters: [otlphttp]
 ```
 
-## Connecting AI (MCP)
+---
 
-Add to your editor's MCP config (Claude Code, Cursor, Windsurf):
+## Backups
 
-```json
-{
-  "mcpServers": {
-    "logweave": {
-      "command": "npx",
-      "args": ["@logweave/mcp"],
-      "env": {
-        "LOGWEAVE_API_URL": "http://localhost:3000",
-        "LOGWEAVE_API_KEY": "YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
-
-Then ask your AI: *"What error patterns are happening in my services?"*
-
-To verify the connection is working, ask:
-
-> *"Use the LogWeave overview tool to show me the system status."*
-
-If your AI responds with event counts, pattern totals, or an "no data yet" message, the MCP server is connected. If it says the tool doesn't exist, restart your editor after updating the config.
-
-## Production Hardening
-
-### HTTPS with Caddy (recommended)
-
-The simplest way to add TLS. Create a `Caddyfile`:
-
-```
-your-domain.com {
-    reverse_proxy localhost:3000
-}
-```
+**Online backup (no downtime) — recommended:**
 
 ```bash
-# Install Caddy (Debian/Ubuntu)
-sudo apt install -y caddy
-
-# Start — automatically obtains Let's Encrypt certificate
-sudo systemctl start caddy
-```
-
-Then update your MCP config and SDK endpoints to use `https://your-domain.com`.
-
-### Backups
-
-**Online backup (no downtime)** — recommended for production:
-
-```bash
-# Create a ClickHouse-native backup (runs while the stack is up)
 docker compose -f docker-compose.prod.yml exec clickhouse \
   clickhouse-client --query "BACKUP DATABASE logweave TO Disk('backups', 'logweave-$(date +%Y%m%d).zip')"
 ```
 
-ClickHouse native backups are consistent without stopping the server. To restore:
+To restore:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec clickhouse \
   clickhouse-client --query "RESTORE DATABASE logweave FROM Disk('backups', 'logweave-YYYYMMDD.zip')"
 ```
 
-**Volume-level backup (requires brief stop)** — simpler but causes downtime:
+Schedule via cron. LogWeave data is bounded by TTL (30-day metadata, 365-day audit) so backups stay small.
 
-```bash
-docker compose -f docker-compose.prod.yml stop
-docker run --rm -v logweave_clickhouse_data:/data -v $(pwd):/backup \
-  alpine tar czf /backup/clickhouse-backup-$(date +%Y%m%d).tar.gz /data
-docker compose -f docker-compose.prod.yml up -d
-```
-
-Schedule either method via cron. LogWeave data is bounded by TTL (30-day metadata, 365-day audit) so backups stay small.
-
-### Resource Limits
-
-The production compose file sets memory and CPU limits:
-
-| Service | Memory | CPU |
-|---------|--------|-----|
-| ClickHouse | 4 GB | 2 cores |
-| API | 512 MB | 1 core |
-| Clusterer | 512 MB | 1 core |
-| **Total** | **5 GB** | **4 cores** |
-
-ClickHouse needs headroom for merges, materialized views, and large scans. 4 GB is the minimum for production workloads — increase to 8 GB if you have 50+ services or high log volume. Adjust in `docker-compose.prod.yml` under `deploy.resources.limits`. An 8 GB / 4 vCPU VM is recommended.
-
-### Logs
-
-```bash
-# All services
-docker compose -f docker-compose.prod.yml logs -f
-
-# Single service
-docker compose -f docker-compose.prod.yml logs -f api
-```
+---
 
 ## Updating
 
@@ -238,6 +348,21 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 ClickHouse data persists across updates. Schema migrations run automatically on startup.
 
+---
+
+## Resource Limits
+
+| Service | Memory | CPU |
+|---------|--------|-----|
+| ClickHouse | 4 GB | 2 cores |
+| API | 512 MB | 1 core |
+| Clusterer | 512 MB | 1 core |
+| **Total** | **5 GB** | **4 cores** |
+
+An 8 GB / 2 vCPU server is the minimum for production. Increase ClickHouse to 8 GB if you have 50+ services or high log volume. Adjust in `docker-compose.prod.yml` under `deploy.resources.limits`.
+
+---
+
 ## Environment Variable Reference
 
 ### API Server (`LOGWEAVE_*`)
@@ -245,7 +370,7 @@ ClickHouse data persists across updates. Schema migrations run automatically on 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `LOGWEAVE_API_KEYS` | Yes | — | JSON mapping API keys to tenant IDs |
-| `LOGWEAVE_ENCRYPTION_KEY` | Recommended | — | 16+ char key for encrypting connector secrets |
+| `LOGWEAVE_ENCRYPTION_KEY` | Yes | — | 16+ char key — enables dashboard login, TOTP, connector encryption |
 | `LOGWEAVE_PORT` | No | `3000` | API server port |
 | `LOGWEAVE_LOG_LEVEL` | No | `info` | Log level (fatal/error/warn/info/debug/trace) |
 | `LOGWEAVE_CLUSTERER_TIMEOUT_MS` | No | `500` | Clusterer call timeout (raise for Docker) |
@@ -273,9 +398,10 @@ ClickHouse data persists across updates. Schema migrations run automatically on 
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `VITE_LOGWEAVE_API_URL` | No | `""` (same origin) | API URL (empty = served by API) |
-| `VITE_LOGWEAVE_API_KEY` | No | — | API key (baked into JS bundle) |
+| `VITE_LOGWEAVE_API_URL` | No | `""` (same origin) | API URL — leave empty when dashboard is served by the API |
 | `VITE_POLL_INTERVAL_MS` | No | `60000` | Dashboard polling interval |
+
+---
 
 ## Troubleshooting
 
@@ -286,14 +412,30 @@ docker compose -f docker-compose.prod.yml logs
 Look for errors in ClickHouse first — the API and clusterer depend on it.
 
 **API returns 401:**
-Check that `LOGWEAVE_API_KEYS` is valid JSON and your key matches.
+Check that `LOGWEAVE_API_KEYS` is valid JSON and your key matches exactly.
+
+**Dashboard login fails / login page not shown:**
+`LOGWEAVE_ENCRYPTION_KEY` must be set. Without it, dashboard auth is disabled and the API logs an error on startup. Check with:
+```bash
+docker compose -f docker-compose.prod.yml logs api | grep ENCRYPTION
+```
+
+**Caddy can't get a TLS certificate:**
+Ensure your domain's A record points at the server and ports 80/443 are open. Check Caddy logs:
+```bash
+sudo journalctl -u caddy -f
+```
 
 **Dashboard shows "Waiting for data":**
-Send a test log with curl (see above), then refresh. The onboarding card will update.
+Send a test log with curl (see [Sending Logs](#sending-logs)), then refresh.
 
 **Clusterer timeout errors:**
-Increase `LOGWEAVE_CLUSTERER_TIMEOUT_MS` (default 500ms is tight for Docker networks).
-The production template uses 2000ms.
+Increase `LOGWEAVE_CLUSTERER_TIMEOUT_MS` (default 500ms is tight for Docker networks). The production template uses 2000ms.
 
 **ClickHouse out of memory:**
 Increase the memory limit in `docker-compose.prod.yml` or add swap.
+
+**MCP can't connect to remote API:**
+- Confirm `LOGWEAVE_API_URL` uses `https://` not `http://`
+- Check the API key is in `LOGWEAVE_API_KEYS` on the server
+- If the server is inside a private VPC with no public ingress, developers need VPN or SSH tunnel access
