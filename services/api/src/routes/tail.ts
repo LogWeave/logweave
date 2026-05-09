@@ -179,6 +179,12 @@ export function tailSseRoute(deps: TailDeps): Router {
   const router = Router()
   const maxConn = deps.maxConnections ?? 20
 
+  // Single shared SIGTERM listener fans out to all open SSE connections via an
+  // AbortController. Avoids accumulating one process listener per open
+  // connection (would trigger MaxListenersExceededWarning at maxConn=20). #167.
+  const shutdownController = new AbortController()
+  process.on('SIGTERM', () => shutdownController.abort())
+
   router.get('/tail', validateQuery(tailFilterSchema), (req: Request, res: Response, next) => {
     // Resolve tenant from token param (preferred) or api_key (legacy)
     let tenantId: string | undefined
@@ -308,7 +314,7 @@ export function tailSseRoute(deps: TailDeps): Router {
       clearInterval(heartbeat)
       unsubscribe()
       decrementConnections(resolvedTenantId)
-      process.removeListener('SIGTERM', onShutdown)
+      shutdownController.signal.removeEventListener('abort', onShutdown)
 
       const durationMs = Date.now() - startTime
       deps.logger.info(
@@ -330,7 +336,12 @@ export function tailSseRoute(deps: TailDeps): Router {
 
     req.on('close', () => cleanup('client'))
     res.on('error', () => cleanup('error'))
-    process.on('SIGTERM', onShutdown)
+    // If the server is already shutting down, fire immediately.
+    if (shutdownController.signal.aborted) {
+      onShutdown()
+    } else {
+      shutdownController.signal.addEventListener('abort', onShutdown, { once: true })
+    }
 
     deps.logger.info(
       { tenantId: resolvedTenantId, keyId, filters },

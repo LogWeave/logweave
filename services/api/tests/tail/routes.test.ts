@@ -270,4 +270,38 @@ describe('GET /v1/tail (SSE)', () => {
     const res = await request(app).get('/v1/tail')
     assert.equal(res.status, 401)
   })
+
+  // Bug #167 regression: a fresh process.on('SIGTERM', ...) was registered per
+  // open SSE connection. With maxConn=20 per tenant this trips Node's default
+  // 10-listener warning. Fix: a single shared SIGTERM listener (one per
+  // tailSseRoute factory) fans out to each connection via an AbortController.
+  //
+  // We assert that opening many SSE requests does NOT add SIGTERM listeners
+  // beyond the single one registered when the route was created.
+  it('does not register a SIGTERM listener per SSE connection', async () => {
+    const { app, tailTokenStore } = createTestApp({ tailMode: 'metadata' })
+    const baseline = process.listenerCount('SIGTERM')
+
+    // Issue 30 SSE connections in parallel. With the old per-connection
+    // process.on('SIGTERM',...), this would add 30 listeners. With the fix,
+    // the listener count should not grow.
+    const connections = Array.from({ length: 30 }, async () => {
+      const token = tailTokenStore.issue(TENANT_A)
+      // Don't await — we just need to trigger the handler; supertest will
+      // close immediately after the response since SSE is long-lived.
+      await request(app)
+        .get(`/v1/tail?token=${token}`)
+        .buffer(false)
+        .timeout({ deadline: 100 })
+        .catch(() => { /* expected — connection drops */ })
+    })
+    await Promise.all(connections)
+
+    const after = process.listenerCount('SIGTERM')
+    assert.equal(
+      after,
+      baseline,
+      `expected SIGTERM listener count unchanged after 30 SSE requests, baseline=${baseline} after=${after}`,
+    )
+  })
 })
