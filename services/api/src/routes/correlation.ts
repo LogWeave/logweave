@@ -109,11 +109,7 @@ function computeOutlier(
     zScore = (currentRate - baselineMean) / baselineStddev
   }
 
-  let verdict: 'normal' | 'elevated' | 'outlier' = 'normal'
-  if (zScore > 2.0) verdict = 'outlier'
-  else if (zScore > 1.5) verdict = 'elevated'
-
-  const result: ServiceOutlier = {
+  const base = {
     service,
     currentRate: Math.round(currentRate * 100) / 100,
     currentErrors,
@@ -121,16 +117,22 @@ function computeOutlier(
     baselineMean: Math.round(baselineMean * 100) / 100,
     baselineStddev: Math.round(baselineStddev * 100) / 100,
     zScore: Math.round(zScore * 100) / 100,
-    verdict,
     dataPoints,
   }
 
   if (dataPoints < MIN_DATA_POINTS) {
-    result.verdict = 'insufficient_data'
-    result.warning = `Only ${dataPoints} hourly data points available (${MIN_DATA_POINTS} recommended for reliable z-score)`
+    return {
+      ...base,
+      verdict: 'insufficient_data',
+      warning: `Only ${dataPoints} hourly data points available (${MIN_DATA_POINTS} recommended for reliable z-score)`,
+    }
   }
 
-  return result
+  let verdict: 'normal' | 'elevated' | 'outlier' = 'normal'
+  if (zScore > 2.0) verdict = 'outlier'
+  else if (zScore > 1.5) verdict = 'elevated'
+
+  return { ...base, verdict }
 }
 
 // ---------------------------------------------------------------------------
@@ -248,16 +250,20 @@ export function correlationRoutes(deps: CorrelationDeps): Router {
       const rows = await queryServiceOutlier(deps.db, tenantId, { service, hours })
 
       const row = rows[0]
-      const data = row
+      const data: ServiceOutlier = row
         ? computeOutlier(service, row)
-        : computeOutlier(service, {
-            data_points: '0',
-            baseline_mean: '0',
-            baseline_stddev: '0',
-            current_rate: '0',
-            current_errors: '0',
-            current_logs: '0',
-          })
+        : {
+            service,
+            currentRate: 0,
+            currentErrors: 0,
+            currentLogs: 0,
+            baselineMean: 0,
+            baselineStddev: 0,
+            zScore: 0,
+            verdict: 'insufficient_data',
+            dataPoints: 0,
+            warning: `Only 0 hourly data points available (${MIN_DATA_POINTS} recommended for reliable z-score)`,
+          }
 
       respond(res, data, { hours, count: 1 })
     } catch (err) {

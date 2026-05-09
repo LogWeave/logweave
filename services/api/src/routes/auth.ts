@@ -9,7 +9,7 @@ import { insertAuditEvent } from '../db/audit-queries.js'
 import { HttpStatus } from '../http-status.js'
 import { validateBody } from '../middleware/validate.js'
 import { LockoutTracker } from '../auth/lockout.js'
-import { dummyVerify, hashPassword, validatePasswordPolicy, verifyPassword } from '../auth/passwords.js'
+import { dummyVerify, generateRecoveryCodes, hashPassword, validatePasswordPolicy, verifyPassword } from '../auth/passwords.js'
 import {
   type SessionProvider,
   SESSION_COOKIE_NAME,
@@ -312,7 +312,7 @@ export function authRoutes(deps: AuthDeps): Router {
     const qrCodeDataUrl = await QRCode.toDataURL(uri)
 
     // Store secret temporarily (not enabled yet — user must confirm)
-    const encryptedSecret = encryptTotpSecret(secret.base32, deps.totpEncryptionKey)
+    const encryptedSecret = encrypt(secret.base32, deps.totpEncryptionKey.toString('hex'))
     await deps.userStore.updateTotp(user.userId, encryptedSecret, user.recoveryCodes, false)
 
     res.status(HttpStatus.OK).json({
@@ -353,7 +353,6 @@ export function authRoutes(deps: AuthDeps): Router {
     }
 
     // Generate recovery codes
-    const { generateRecoveryCodes } = await import('../auth/passwords.js')
     const { display, hashed } = await generateRecoveryCodes()
     await deps.userStore.updateTotp(user.userId, user.totpSecret, JSON.stringify(hashed), true)
 
@@ -538,7 +537,7 @@ function getSessionFromCookie(req: { cookies?: Record<string, string> }, deps: A
 
 function verifyTotp(encryptedSecret: string, code: string, encryptionKey: Buffer): boolean {
   try {
-    const secret = decryptTotpSecret(encryptedSecret, encryptionKey)
+    const secret = decrypt(encryptedSecret, encryptionKey.toString('hex'))
     const totp = new TOTP({
       secret: Secret.fromBase32(secret),
       algorithm: 'SHA1',
@@ -550,15 +549,6 @@ function verifyTotp(encryptedSecret: string, code: string, encryptionKey: Buffer
   } catch {
     return false
   }
-}
-
-function encryptTotpSecret(secret: string, key: Buffer): string {
-  // Use AES-256-GCM via the existing crypto module, with HKDF-derived key as hex string
-  return encrypt(secret, key.toString('hex'))
-}
-
-function decryptTotpSecret(encrypted: string, key: Buffer): string {
-  return decrypt(encrypted, key.toString('hex'))
 }
 
 function delay(ms: number): Promise<void> {
