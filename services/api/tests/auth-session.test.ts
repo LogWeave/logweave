@@ -19,11 +19,15 @@ import type { DbClient } from '../src/db/client.js'
 class InMemoryUserStore implements UserStore {
   private users = new Map<string, DashboardUser>()
 
-  async findByUsername(_tenantId: string, username: string): Promise<DashboardUser | null> {
+  async findByUsername(tenantId: string, username: string): Promise<DashboardUser | null> {
     for (const u of this.users.values()) {
-      if (u.username === username) return u
+      if (u.username === username && u.tenantId === tenantId) return u
     }
     return null
+  }
+
+  async findAllByUsername(username: string): Promise<DashboardUser[]> {
+    return [...this.users.values()].filter((u) => u.username === username)
   }
 
   async findById(userId: string): Promise<DashboardUser | null> {
@@ -123,7 +127,7 @@ async function createTestApp() {
     role: 'admin',
   })
   // Clear mustChangePassword for easier testing
-  const admin = await userStore.findByUsername('', 'admin')
+  const admin = await userStore.findByUsername('test-tenant', 'admin')
   if (admin) await userStore.clearMustChangePassword(admin.userId)
 
   const app = express()
@@ -229,28 +233,40 @@ describe('HmacSessionProvider', () => {
 // ---------------------------------------------------------------------------
 
 describe('LockoutTracker', () => {
+  const ip = '10.0.0.1'
+
   it('is not locked initially', () => {
     const tracker = new LockoutTracker()
-    assert.equal(tracker.isLocked('alice'), false)
+    assert.equal(tracker.isLocked('alice', ip), false)
   })
 
   it('locks after 5 failures', () => {
     const tracker = new LockoutTracker()
-    for (let i = 0; i < 5; i++) tracker.recordFailure('alice')
-    assert.equal(tracker.isLocked('alice'), true)
+    for (let i = 0; i < 5; i++) tracker.recordFailure('alice', ip)
+    assert.equal(tracker.isLocked('alice', ip), true)
   })
 
   it('clears on success', () => {
     const tracker = new LockoutTracker()
-    for (let i = 0; i < 4; i++) tracker.recordFailure('alice')
-    tracker.recordSuccess('alice')
-    assert.equal(tracker.isLocked('alice'), false)
+    for (let i = 0; i < 4; i++) tracker.recordFailure('alice', ip)
+    tracker.recordSuccess('alice', ip)
+    assert.equal(tracker.isLocked('alice', ip), false)
   })
 
   it('locks after 3 TOTP failures', () => {
     const tracker = new LockoutTracker()
-    for (let i = 0; i < 3; i++) tracker.recordFailure('alice', true)
-    assert.equal(tracker.isLocked('alice'), true)
+    for (let i = 0; i < 3; i++) tracker.recordFailure('alice', ip, true)
+    assert.equal(tracker.isLocked('alice', ip), true)
+  })
+
+  // Bug #166 regression: lockouts must not bleed across IPs.
+  it('lockout for one IP does not affect another IP', () => {
+    const tracker = new LockoutTracker()
+    const attackerIp = '203.0.113.1'
+    const victimIp = '198.51.100.1'
+    for (let i = 0; i < 5; i++) tracker.recordFailure('alice', attackerIp)
+    assert.equal(tracker.isLocked('alice', attackerIp), true)
+    assert.equal(tracker.isLocked('alice', victimIp), false)
   })
 })
 
@@ -311,6 +327,27 @@ describe('POST /v1/auth/session', () => {
     const res = await request(app)
       .post('/v1/auth/session')
       .send({ username: 'nobody', password: 'doesntmatter1' })
+
+    assert.equal(res.status, 401)
+    assert.equal(res.body.error.code, 'INVALID_CREDENTIALS')
+  })
+
+  // Bug #166 regression: when the same username exists in multiple tenants,
+  // login must reject ambiguously rather than silently picking one tenant.
+  it('rejects login when username exists in multiple tenants', async () => {
+    const { app, userStore } = await createTestApp()
+    // 'admin' already exists in test-tenant; create a colliding admin in another tenant
+    await userStore.createUser({
+      username: 'admin',
+      password: 'otherpassword12',
+      tenantId: 'other-tenant',
+      role: 'admin',
+    })
+
+    // Even with the correct password for one of the tenants, login must fail
+    const res = await request(app)
+      .post('/v1/auth/session')
+      .send({ username: 'admin', password: 'adminpassword1' })
 
     assert.equal(res.status, 401)
     assert.equal(res.body.error.code, 'INVALID_CREDENTIALS')

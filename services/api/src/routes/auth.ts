@@ -59,24 +59,39 @@ export function authRoutes(deps: AuthDeps): Router {
     const { username, password, totpCode } = req.body as z.infer<typeof loginSchema>
     const sourceIp = req.ip ?? ''
 
-    // Check lockout
-    if (lockout.isLocked(username)) {
-      const retryAfter = lockout.lockoutSecondsRemaining(username)
+    // Check lockout (keyed on username+sourceIp — see LockoutTracker)
+    if (lockout.isLocked(username, sourceIp)) {
+      const retryAfter = lockout.lockoutSecondsRemaining(username, sourceIp)
       res.status(HttpStatus.TOO_MANY_REQUESTS)
         .set('Retry-After', String(retryAfter))
         .json({ error: { code: 'LOCKED_OUT', message: 'Too many failed attempts. Try again later.' } })
       return
     }
 
-    // Find user across all tenants (login doesn't scope by tenant — user provides username only)
-    // Query all non-deleted users with this username
-    const user = await deps.userStore.findByUsername('', username)
+    // Find user across tenants. Multiple matches → ambiguous; reject without
+    // an oracle (treat like invalid credentials).
+    const candidates = await deps.userStore.findAllByUsername(username)
+    if (candidates.length > 1) {
+      deps.logger.warn(
+        { username, tenantCount: candidates.length },
+        'Ambiguous login: username exists in multiple tenants — rejecting',
+      )
+      await dummyVerify()
+      await delay(FAILED_LOGIN_DELAY_MS)
+      lockout.recordFailure(username, sourceIp)
+      auditLogin(deps, '', username, sourceIp, false, 'ambiguous_username')
+      res.status(HttpStatus.UNAUTHORIZED).json({
+        error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
+      })
+      return
+    }
+    const user = candidates[0] ?? null
 
     // Timing normalization: always run scrypt
     if (!user) {
       await dummyVerify()
       await delay(FAILED_LOGIN_DELAY_MS)
-      lockout.recordFailure(username)
+      lockout.recordFailure(username, sourceIp)
       auditLogin(deps, '', username, sourceIp, false, 'user_not_found')
       res.status(HttpStatus.UNAUTHORIZED).json({
         error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
@@ -88,7 +103,7 @@ export function authRoutes(deps: AuthDeps): Router {
     const passwordValid = await verifyPassword(password, user.passwordHash)
     if (!passwordValid) {
       await delay(FAILED_LOGIN_DELAY_MS)
-      lockout.recordFailure(username)
+      lockout.recordFailure(username, sourceIp)
       auditLogin(deps, user.tenantId, username, sourceIp, false, 'wrong_password')
       res.status(HttpStatus.UNAUTHORIZED).json({
         error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
@@ -100,7 +115,7 @@ export function authRoutes(deps: AuthDeps): Router {
     if (user.totpEnabled) {
       if (!totpCode) {
         await delay(FAILED_LOGIN_DELAY_MS)
-        lockout.recordFailure(username, true)
+        lockout.recordFailure(username, sourceIp, true)
         auditLogin(deps, user.tenantId, username, sourceIp, false, 'totp_required')
         res.status(HttpStatus.UNAUTHORIZED).json({
           error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
@@ -134,7 +149,7 @@ export function authRoutes(deps: AuthDeps): Router {
 
         if (!recoveryUsed) {
           await delay(FAILED_LOGIN_DELAY_MS)
-          lockout.recordFailure(username, true)
+          lockout.recordFailure(username, sourceIp, true)
           auditLogin(deps, user.tenantId, username, sourceIp, false, 'wrong_totp')
           res.status(HttpStatus.UNAUTHORIZED).json({
             error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
@@ -145,7 +160,7 @@ export function authRoutes(deps: AuthDeps): Router {
     }
 
     // Success
-    lockout.recordSuccess(username)
+    lockout.recordSuccess(username, sourceIp)
     await deps.userStore.updateLastLogin(user.userId)
     auditLogin(deps, user.tenantId, username, sourceIp, true)
 
