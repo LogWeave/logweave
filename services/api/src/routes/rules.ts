@@ -104,11 +104,31 @@ function serializeRule(rule: AlertRule) {
   }
 }
 
-function safeJsonParse(value: string): unknown {
+function parseJsonObject(value: string, fallback: Record<string, unknown> | null, ctx: { logger: pino.Logger; alertId: string; field: string }): Record<string, unknown> | null {
+  if (!value) return fallback
   try {
-    return JSON.parse(value)
-  } catch {
-    return value
+    const parsed = JSON.parse(value) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+    ctx.logger.warn({ alertId: ctx.alertId, field: ctx.field }, 'Alert row JSON not an object — using fallback')
+    return fallback
+  } catch (err) {
+    ctx.logger.warn({ alertId: ctx.alertId, field: ctx.field, err }, 'Failed to parse alert row JSON — using fallback')
+    return fallback
+  }
+}
+
+function parseJsonArray(value: string, ctx: { logger: pino.Logger; alertId: string; field: string }): unknown[] {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (Array.isArray(parsed)) return parsed
+    ctx.logger.warn({ alertId: ctx.alertId, field: ctx.field }, 'Alert row JSON not an array — using []')
+    return []
+  } catch (err) {
+    ctx.logger.warn({ alertId: ctx.alertId, field: ctx.field, err }, 'Failed to parse alert row JSON — using []')
+    return []
   }
 }
 
@@ -275,8 +295,8 @@ export function ruleRoutes(deps: RuleDeps): Router {
         firedAt: r.fired_at,
         metricValue: r.metric_value,
         thresholdValue: r.threshold_value,
-        details: safeJsonParse(r.details),
-        channelsNotified: safeJsonParse(r.channels_notified),
+        details: parseJsonObject(r.details, null, { logger: deps.logger, alertId: r.alert_id, field: 'details' }),
+        channelsNotified: parseJsonArray(r.channels_notified, { logger: deps.logger, alertId: r.alert_id, field: 'channels_notified' }),
       }))
 
       res.status(HttpStatus.OK).json({
