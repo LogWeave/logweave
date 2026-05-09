@@ -101,13 +101,13 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
           })
           return
         }
-        connectorConfig = JSON.parse(decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
+        connectorConfig = JSON.parse(await decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
       } else {
         // Use first connector for tenant (default)
         const connectors = await listConnectors(deps.db, tenantId)
         const first = connectors[0]
         if (first) {
-          connectorConfig = JSON.parse(decrypt(first.config, deps.encryptionKey)) as ConnectorConfig
+          connectorConfig = JSON.parse(await decrypt(first.config, deps.encryptionKey)) as ConnectorConfig
         }
       }
 

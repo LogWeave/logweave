@@ -15,7 +15,8 @@ export interface SessionData {
  * Swappable — implement SessionProvider interface for JWT, Redis, etc.
  */
 export interface SessionProvider {
-  createSession(data: Omit<SessionData, 'exp'>): string
+  createSession(data: Omit<SessionData, 'exp' | 'lastActivity'>): string
+  refreshSession(existing: SessionData): string
   validateSession(cookieValue: string): SessionData | null
 }
 
@@ -36,6 +37,20 @@ export class HmacSessionProvider implements SessionProvider {
       exp: now + SESSION_TTL_MS,
       lastActivity: now,
     }
+    return this.encode(payload)
+  }
+
+  // Refreshes the idle timer (lastActivity) without extending the absolute exp.
+  // Use on every authenticated request; createSession only at initial login.
+  refreshSession(existing: SessionData): string {
+    const payload: SessionData = {
+      ...existing,
+      lastActivity: Date.now(),
+    }
+    return this.encode(payload)
+  }
+
+  private encode(payload: SessionData): string {
     const payloadStr = JSON.stringify(payload)
     const payloadB64 = Buffer.from(payloadStr).toString('base64url')
     const sig = this.sign(payloadB64)

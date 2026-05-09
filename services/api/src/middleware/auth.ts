@@ -130,13 +130,8 @@ export function createAuthMiddleware(
           res.locals[TENANT_ID_KEY] = session.tenantId
           res.locals[KEY_ID_KEY] = `session:${session.userId}`
           res.locals[ROLE_KEY] = session.role
-          // Refresh cookie to extend idle timeout
-          const refreshed = sessionProvider.createSession({
-            userId: session.userId,
-            tenantId: session.tenantId,
-            role: session.role,
-            sessionVersion: session.sessionVersion,
-          })
+          // Refresh cookie to extend idle timeout (preserves absolute exp).
+          const refreshed = sessionProvider.refreshSession(session)
           res.cookie(SESSION_COOKIE_NAME, refreshed, SESSION_COOKIE_OPTIONS)
           next()
           return

@@ -72,9 +72,50 @@ const s3ConfigSchema = z
     { message: 'accessKeyId is only allowed with endpoint (MinIO/dev mode)' },
   )
 
+// SSRF prevention — blocks loopback, link-local (incl. AWS/GCP metadata at
+// 169.254.169.254), and RFC1918 private ranges in production. Dev allows them
+// so users can point at local Elasticsearch/Loki on localhost.
+function isInternalHost(hostname: string): boolean {
+  const h = hostname.toLowerCase()
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '0.0.0.0') return true
+  // IPv4 octet check
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (m) {
+    const o = m.slice(1).map(Number)
+    const [a, b] = o as [number, number, number, number]
+    if (a === 127) return true                       // loopback
+    if (a === 10) return true                        // 10.0.0.0/8
+    if (a === 172 && b >= 16 && b <= 31) return true // 172.16.0.0/12
+    if (a === 192 && b === 168) return true          // 192.168.0.0/16
+    if (a === 169 && b === 254) return true          // link-local incl. metadata
+    if (a === 0) return true                         // 0.0.0.0/8
+  }
+  // IPv6 loopback / link-local / unique-local
+  if (h === '::1' || h === '[::1]') return true
+  if (h.startsWith('fe80:') || h.startsWith('[fe80:')) return true
+  if (h.startsWith('fc') || h.startsWith('fd') || h.startsWith('[fc') || h.startsWith('[fd')) return true
+  return false
+}
+
+function externalUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    if (process.env.NODE_ENV !== 'production') return true
+    return !isInternalHost(u.hostname)
+  } catch {
+    return false
+  }
+}
+
+const externalUrlSchema = z
+  .string()
+  .url()
+  .max(1024)
+  .refine(externalUrl, { message: 'URL must point to an external host (loopback, link-local, and RFC1918 ranges are blocked in production — SSRF prevention).' })
+
 const elasticsearchConfigSchema = z.object({
   type: z.literal('elasticsearch'),
-  url: z.string().url().max(1024),
+  url: externalUrlSchema,
   index: z.string().min(1).max(256),
   username: z.string().max(128).optional(),
   password: z.string().max(256).optional(),
@@ -85,7 +126,7 @@ const elasticsearchConfigSchema = z.object({
 
 const lokiConfigSchema = z.object({
   type: z.literal('loki'),
-  url: z.string().url().max(1024),
+  url: externalUrlSchema,
   streamSelector: z.string().min(1).max(1024),
   orgId: z.string().max(128).optional(),
   username: z.string().max(128).optional(),
@@ -154,7 +195,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
         connectorId,
         name: body.name,
         type: body.config.type,
-        config: encrypt(JSON.stringify(body.config), deps.encryptionKey),
+        config: await encrypt(JSON.stringify(body.config), deps.encryptionKey),
       })
 
       res.status(HttpStatus.CREATED).json({
@@ -177,13 +218,15 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
       const tenantId = getTenantId(res)
       const rows = await listConnectors(deps.db, tenantId)
 
-      const data = rows.map((r) => ({
-        connectorId: r.connector_id,
-        name: r.name,
-        type: r.type,
-        config: redactConfig(decrypt(r.config, deps.encryptionKey)),
-        createdAt: r.created_at,
-      }))
+      const data = await Promise.all(
+        rows.map(async (r) => ({
+          connectorId: r.connector_id,
+          name: r.name,
+          type: r.type,
+          config: redactConfig(await decrypt(r.config, deps.encryptionKey)),
+          createdAt: r.created_at,
+        })),
+      )
 
       res.status(HttpStatus.OK).json({
         data,
@@ -208,7 +251,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
         return
       }
 
-      const config = JSON.parse(decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
+      const config = JSON.parse(await decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
       const adapter = getAdapter(config.type)
       const result = await adapter.testConnection(config)
 
