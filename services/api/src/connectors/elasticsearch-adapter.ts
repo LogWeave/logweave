@@ -120,9 +120,10 @@ export class ElasticsearchAdapter implements LogSourceAdapter {
           message: `Cannot reach Elasticsearch at ${baseUrl}. Check the URL and network connectivity.`,
         }
       }
+      // Catch-all: do not echo the raw error back to the user.
       return {
         success: false,
-        message: `Connection failed: ${msg}`,
+        message: 'Connection failed. Check the URL, index, and credentials, then try again.',
       }
     }
   }

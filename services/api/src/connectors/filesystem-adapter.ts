@@ -179,9 +179,10 @@ export class FilesystemAdapter implements LogSourceAdapter {
           message: `Permission denied: cannot access "${fsConfig.basePath}".`,
         }
       }
+      // Catch-all: do not echo the raw error back to the user.
       return {
         success: false,
-        message: `Connection failed: ${msg}`,
+        message: 'Connection failed. Check the base path and file pattern, then try again.',
       }
     }
   }

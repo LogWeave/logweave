@@ -25,6 +25,17 @@ function extractPagerDutyKey(channel: string): string {
   return channel.slice(PAGERDUTY_PREFIX.length)
 }
 
+// Generic webhook URLs may carry tokens in path or query string.
+// Log only the scheme+host so we can correlate failures without leaking secrets.
+function redactWebhookUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    return `${u.protocol}//${u.host}`
+  } catch {
+    return '[invalid-url]'
+  }
+}
+
 import { sleep } from '../lib/sleep.js'
 
 export interface WebhookObserverOptions {
@@ -74,7 +85,7 @@ export class WebhookObserver implements AlertObserver {
       } catch (err) {
         const safeChannel = isPagerDutyChannel(channel)
           ? `pagerduty://***${channel.slice(-4)}`
-          : channel.slice(0, 50)
+          : redactWebhookUrl(channel)
         this.logger.error(
           { err, tenantId: alert.tenantId, channel: safeChannel },
           'Webhook delivery failed after all retries',
@@ -121,7 +132,7 @@ export class WebhookObserver implements AlertObserver {
 
       const body = await resp.text()
       this.logger.error(
-        { url: url.slice(0, 50), status: resp.status, body: body.slice(0, 200) },
+        { url: redactWebhookUrl(url), status: resp.status, body: body.slice(0, 200) },
         'Webhook POST failed after retries',
       )
     } catch (err) {

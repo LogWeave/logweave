@@ -141,9 +141,13 @@ export class S3Adapter implements LogSourceAdapter {
           message: `Bucket "${s3Config.bucket}" does not exist or is not accessible.`,
         }
       }
+      // Catch-all: do not echo the raw SDK error back to the user. AWS error
+      // messages can include account IDs, ARNs, and request fingerprints that
+      // shouldn't surface in a UI. Specific cases (AccessDenied, NoSuchBucket)
+      // are handled above; this fallback covers the long tail.
       return {
         success: false,
-        message: `Connection failed: ${msg}`,
+        message: 'Connection failed. Check the bucket, region, and credentials, then try again.',
       }
     }
   }
