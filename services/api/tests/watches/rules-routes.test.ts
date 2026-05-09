@@ -620,7 +620,10 @@ describe('GET /v1/alerts', () => {
     assert.equal(res.status, 401)
   })
 
-  it('handles corrupted details JSON gracefully', async () => {
+  // Bug #169 regression: corrupted JSON in alert rows used to leak through as
+  // a raw string, breaking clients that expected `details: object | null` and
+  // `channelsNotified: string[]`. Now we fall back to typed defaults.
+  it('handles corrupted details JSON with typed fallbacks', async () => {
     const corruptedRow = [
       { ...mockAlertRows[0], details: 'not-json', channels_notified: 'also-not-json' },
     ]
@@ -629,8 +632,19 @@ describe('GET /v1/alerts', () => {
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.length, 1)
-    // Corrupted JSON should fall back to raw string
-    assert.equal(res.body.data[0].details, 'not-json')
-    assert.equal(res.body.data[0].channelsNotified, 'also-not-json')
+    assert.equal(res.body.data[0].details, null, 'details falls back to null on parse failure')
+    assert.deepEqual(res.body.data[0].channelsNotified, [], 'channelsNotified falls back to [] on parse failure')
+  })
+
+  it('falls back when JSON parses to wrong shape (array as details, object as channels)', async () => {
+    const wrongShapeRow = [
+      { ...mockAlertRows[0], details: '[1,2,3]', channels_notified: '{"foo":"bar"}' },
+    ]
+    const { app } = createTestApp({ queryResults: wrongShapeRow })
+    const res = await request(app).get('/v1/alerts').set('Authorization', `Bearer ${KEY_A}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data[0].details, null, 'array is not a valid details object')
+    assert.deepEqual(res.body.data[0].channelsNotified, [], 'object is not a valid channels_notified array')
   })
 })
