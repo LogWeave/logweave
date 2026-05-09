@@ -10,6 +10,9 @@ const DEFAULT_WARMUP_MS = 60 * 60 * 1000
 const DEFAULT_BASELINE_REFRESH_MS = 60 * 1000
 const DEFAULT_WARMUP_THRESHOLD = 10
 const DEFAULT_STEADY_THRESHOLD = 3
+// Cold-start scoring policy: a never-before-seen template fires an anomaly
+// only if it occurs >20 times in the current 5-minute interval. Below that,
+// it's treated as routine first-occurrence noise rather than a spike.
 const DEFAULT_NEW_TEMPLATE_THRESHOLD = 20
 
 // Null byte delimiter — cannot appear in user-supplied strings (tenantId, service, templateId).
@@ -67,8 +70,9 @@ export class AnomalyScorer {
   /** First-seen time per tenant+service: `{tenant}:{service}` → { firstSeen, lastSeen } */
   private readonly warmupTracker = new Map<string, { firstSeen: number; lastSeen: number }>()
 
-  private intervalHandle: ReturnType<typeof setInterval> | null = null
+  private intervalHandle: ReturnType<typeof setTimeout> | null = null
   private refreshRunning = false
+  private stopped = false
 
   constructor(options: AnomalyScorerOptions) {
     this.db = options.db
@@ -88,18 +92,23 @@ export class AnomalyScorer {
 
   /** Start periodic baseline refresh + counter pruning. */
   start(): void {
-    if (this.intervalHandle) return // already started
-    this.intervalHandle = setInterval(async () => {
+    if (this.intervalHandle || this.stopped) return // already started or stopped
+    const tick = async () => {
       await this.refreshBaselines()
       this.pruneOldCounters()
-    }, this.baselineRefreshMs)
+      if (this.stopped) return
+      this.intervalHandle = setTimeout(tick, this.baselineRefreshMs)
+      this.intervalHandle.unref()
+    }
+    this.intervalHandle = setTimeout(tick, this.baselineRefreshMs)
     this.intervalHandle.unref()
   }
 
   /** Stop periodic refresh. */
   stop(): void {
+    this.stopped = true
     if (this.intervalHandle) {
-      clearInterval(this.intervalHandle)
+      clearTimeout(this.intervalHandle)
       this.intervalHandle = null
     }
   }

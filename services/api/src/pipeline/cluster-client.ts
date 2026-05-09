@@ -150,9 +150,10 @@ export class ClusterClient {
         isNewTemplate: r.is_new,
       }))
     } catch (err) {
-      const isTimeout =
-        err instanceof DOMException &&
-        (err.name === 'TimeoutError' || err.name === 'AbortError')
+      // Some Node runtimes throw a plain Error with name=TimeoutError/AbortError
+      // instead of a DOMException. Check the name field directly.
+      const errName = (err as { name?: string } | undefined)?.name
+      const isTimeout = errName === 'TimeoutError' || errName === 'AbortError'
       this.logger.warn(
         { tenantId, url: this.url, err, isTimeout },
         isTimeout ? 'Clusterer request timed out' : 'Clusterer request failed',
