@@ -19,6 +19,7 @@ export interface DashboardUser {
 
 export interface UserStore {
   findByUsername(tenantId: string, username: string): Promise<DashboardUser | null>
+  findAllByUsername(username: string): Promise<DashboardUser[]>
   findById(userId: string): Promise<DashboardUser | null>
   listByTenant(tenantId: string): Promise<DashboardUser[]>
   createUser(user: {
@@ -73,21 +74,24 @@ export class ClickHouseUserStore implements UserStore {
   ) {}
 
   async findByUsername(tenantId: string, username: string): Promise<DashboardUser | null> {
-    // If tenantId is empty, search across all tenants (login flow)
-    const query = tenantId
-      ? `SELECT * FROM logweave.dashboard_users FINAL
-         WHERE tenant_id = {tenantId:String} AND username = {username:String} AND is_deleted = 0
-         LIMIT 1`
-      : `SELECT * FROM logweave.dashboard_users FINAL
-         WHERE username = {username:String} AND is_deleted = 0
-         ORDER BY tenant_id, username
-         LIMIT 1`
     const rows = await this.db.query<UserRow>({
-      query,
-      query_params: tenantId ? { tenantId, username } : { username },
+      query: `SELECT * FROM logweave.dashboard_users FINAL
+              WHERE tenant_id = {tenantId:String} AND username = {username:String} AND is_deleted = 0
+              LIMIT 1`,
+      query_params: { tenantId, username },
     })
     const first = rows[0]
     return first ? rowToUser(first) : null
+  }
+
+  async findAllByUsername(username: string): Promise<DashboardUser[]> {
+    const rows = await this.db.query<UserRow>({
+      query: `SELECT * FROM logweave.dashboard_users FINAL
+              WHERE username = {username:String} AND is_deleted = 0
+              ORDER BY tenant_id`,
+      query_params: { username },
+    })
+    return rows.map(rowToUser)
   }
 
   async findById(userId: string): Promise<DashboardUser | null> {
