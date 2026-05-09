@@ -122,7 +122,7 @@ export function compositeRoutes(deps: CompositeDeps): Router {
         queryTemplatesAcrossServices(deps.db, tenantId, {
           hours: params.hours,
           service: serviceName,
-          level: levels ? [...levels, 'ERROR'] : ['ERROR'],
+          level: ['ERROR'],
           limit: 5,
         }),
         queryDashboardVolume(deps.db, tenantId, {
@@ -188,7 +188,7 @@ export function compositeRoutes(deps: CompositeDeps): Router {
         }),
         queryTemplatesAcrossServices(deps.db, tenantId, {
           hours: params.hours,
-          level: levels ? [...levels, 'ERROR'] : ['ERROR'],
+          level: ['ERROR'],
           limit: 5,
         }),
       ])
