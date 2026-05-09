@@ -1,0 +1,13 @@
+{
+  "name": "logweave",
+  "version": "0.0.1",
+  "description": "Placeholder for the LogWeave log intelligence platform. Real packages live under the @logweave scope.",
+  "license": "MIT",
+  "files": [
+    "README.md"
+  ],
+  "keywords": [
+    "logweave",
+    "placeholder"
+  ]
+}
