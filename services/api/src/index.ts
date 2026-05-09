@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { createApp } from './app.js'
 import { deriveKeys } from './auth/passwords.js'
 import { HmacSessionProvider } from './auth/session.js'
@@ -84,17 +85,25 @@ if (config.encryptionKey) {
   csrfTokenKey = keys.csrfTokenKey
   userStore = new ClickHouseUserStore(db, logger)
 
-  // Bootstrap default admin if no users exist
+  // Bootstrap default admin if no users exist.
+  // Password is randomly generated and printed once to stdout — never use a static default.
   const userCount = await userStore.countUsers()
   if (userCount === 0) {
     const firstTenantId = [...config.apiKeys.values()][0] ?? 'default'
+    const bootstrapPassword = randomBytes(18).toString('base64url')
     await userStore.createUser({
       username: 'admin',
-      password: 'admin',
+      password: bootstrapPassword,
       tenantId: firstTenantId,
       role: 'admin',
     })
-    logger.info({ tenantId: firstTenantId }, 'Default admin user created (admin/admin) — change password on first login')
+    logger.warn('=================================================================')
+    logger.warn('Default admin user created. Save this password — it is only shown once.')
+    logger.warn(`  Username: admin`)
+    logger.warn(`  Password: ${bootstrapPassword}`)
+    logger.warn(`  Tenant:   ${firstTenantId}`)
+    logger.warn('You will be required to change it on first login.')
+    logger.warn('=================================================================')
   }
 } else {
   logger.error('=================================================================')

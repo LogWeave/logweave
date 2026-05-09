@@ -176,7 +176,7 @@ export function createApp(deps: AppDependencies): express.Express {
   const v1 = Router()
   v1.use(auth)
   if (deps.csrfTokenKey) {
-    const csrf = createCsrfMiddleware(deps.csrfTokenKey)
+    const csrf = createCsrfMiddleware(deps.csrfTokenKey, { isProduction: process.env.NODE_ENV === 'production' })
     v1.use(csrf.tokenSetter)
     v1.use(csrf.tokenValidator)
   }

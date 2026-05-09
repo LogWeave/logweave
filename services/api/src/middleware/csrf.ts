@@ -18,7 +18,7 @@ const TOKEN_BYTES = 32
  *
  * Swappable: replace this middleware for a synchronizer token pattern if needed.
  */
-export function createCsrfMiddleware(signingKey: Buffer): {
+export function createCsrfMiddleware(signingKey: Buffer, options: { isProduction: boolean } = { isProduction: false }): {
   tokenSetter: RequestHandler
   tokenValidator: RequestHandler
 } {
@@ -33,6 +33,7 @@ export function createCsrfMiddleware(signingKey: Buffer): {
     res.cookie(CSRF_COOKIE, `${token}.${sig}`, {
       httpOnly: false, // Must be readable by frontend JS
       sameSite: 'lax',
+      secure: options.isProduction, // mirror session cookie — HTTPS-only in prod
       path: '/',
       maxAge: 8 * 60 * 60 * 1000, // match session TTL
     })

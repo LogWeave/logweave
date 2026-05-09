@@ -8,6 +8,7 @@ import type { DbClient } from '../db/client.js'
 import { insertAuditEvent } from '../db/audit-queries.js'
 import { HttpStatus } from '../http-status.js'
 import { validateBody } from '../middleware/validate.js'
+import { createIpRateLimiter } from '../middleware/ip-rate-limit.js'
 import { LockoutTracker } from '../auth/lockout.js'
 import { dummyVerify, generateRecoveryCodes, hashPassword, validatePasswordPolicy, verifyPassword } from '../auth/passwords.js'
 import {
@@ -54,8 +55,14 @@ export function authRoutes(deps: AuthDeps): Router {
   const router = Router()
   const lockout = new LockoutTracker()
 
+  // Per-IP rate limit on the login endpoint to prevent unauthenticated
+  // username enumeration / credential stuffing across different usernames.
+  // The per-username|IP lockout in LockoutTracker handles single-user brute
+  // force; this guards against high-velocity attacks across many usernames.
+  const loginIpLimiter = createIpRateLimiter(30)
+
   // POST /auth/session — login
-  router.post('/auth/session', validateBody(loginSchema), async (req, res) => {
+  router.post('/auth/session', loginIpLimiter, validateBody(loginSchema), async (req, res) => {
     const { username, password, totpCode } = req.body as z.infer<typeof loginSchema>
     const sourceIp = req.ip ?? ''
 
@@ -123,7 +130,7 @@ export function authRoutes(deps: AuthDeps): Router {
         return
       }
 
-      const totpValid = verifyTotp(user.totpSecret, totpCode, deps.totpEncryptionKey)
+      const totpValid = await verifyTotp(user.totpSecret, totpCode, deps.totpEncryptionKey)
       if (!totpValid) {
         // Try recovery code (strip dashes, verify against stored hashes)
         const stripped = totpCode.replace(/-/g, '')
@@ -312,7 +319,7 @@ export function authRoutes(deps: AuthDeps): Router {
     const qrCodeDataUrl = await QRCode.toDataURL(uri)
 
     // Store secret temporarily (not enabled yet — user must confirm)
-    const encryptedSecret = encrypt(secret.base32, deps.totpEncryptionKey.toString('hex'))
+    const encryptedSecret = await encrypt(secret.base32, deps.totpEncryptionKey.toString('hex'))
     await deps.userStore.updateTotp(user.userId, encryptedSecret, user.recoveryCodes, false)
 
     res.status(HttpStatus.OK).json({
@@ -344,7 +351,7 @@ export function authRoutes(deps: AuthDeps): Router {
       return
     }
 
-    const valid = verifyTotp(user.totpSecret, code, deps.totpEncryptionKey)
+    const valid = await verifyTotp(user.totpSecret, code, deps.totpEncryptionKey)
     if (!valid) {
       res.status(HttpStatus.BAD_REQUEST).json({
         error: { code: 'INVALID_CODE', message: 'Invalid TOTP code — check your authenticator app' },
@@ -535,9 +542,9 @@ function getSessionFromCookie(req: { cookies?: Record<string, string> }, deps: A
   return deps.sessionProvider.validateSession(cookie)
 }
 
-function verifyTotp(encryptedSecret: string, code: string, encryptionKey: Buffer): boolean {
+async function verifyTotp(encryptedSecret: string, code: string, encryptionKey: Buffer): Promise<boolean> {
   try {
-    const secret = decrypt(encryptedSecret, encryptionKey.toString('hex'))
+    const secret = await decrypt(encryptedSecret, encryptionKey.toString('hex'))
     const totp = new TOTP({
       secret: Secret.fromBase32(secret),
       algorithm: 'SHA1',
