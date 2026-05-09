@@ -55,6 +55,13 @@ if (verbose) {
   cmdParts.push('--test-reporter', 'dot')
 }
 
+// Force single-file concurrency. ClickHouse-backed tests (mv, insert, queries)
+// share one ClickHouse instance; running multiple test files concurrently
+// saturates the async insert / MV propagation pipeline and surfaces as
+// flaky "expected at least one row" failures. Pure unit tests don't need
+// the parallelism either — overall wall-time impact is small.
+cmdParts.push('--test-concurrency=1')
+
 if (namePattern) {
   cmdParts.push(`--test-name-pattern=${namePattern.split('=')[1]}`)
 }

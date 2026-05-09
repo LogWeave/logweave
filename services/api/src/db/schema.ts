@@ -376,11 +376,23 @@ export async function initSchema(client: ClickHouseClient, logger: pino.Logger):
         await client.command({ query: migration })
       }
 
-      // Resource guardrails — best-effort. Some ClickHouse configurations (e.g. read-only
-      // user stores, emulators) don't allow ALTER USER. Log a warning but don't crash.
+      // Resource guardrails — best-effort. Skip ALTER USER entirely when the
+      // `default` user lives in a read-only directory (the typical Docker
+      // setup with users.xml). Probing system.user_directories first avoids a
+      // noisy ClickHouseError stack trace in logs/tests on every boot.
       try {
-        await client.command({ query: RESOURCE_GUARDRAILS })
-        logger.info('ClickHouse resource guardrails applied')
+        const probe = await client.query({
+          query: `SELECT count() AS n FROM system.users WHERE name = 'default' AND storage = 'local_directory'`,
+          format: 'JSONEachRow',
+        })
+        const rows = (await probe.json()) as Array<{ n: number | string }>
+        const sqlManaged = Number(rows[0]?.n ?? 0) > 0
+        if (sqlManaged) {
+          await client.command({ query: RESOURCE_GUARDRAILS })
+          logger.info('ClickHouse resource guardrails applied')
+        } else {
+          logger.info('Skipping ClickHouse resource guardrails — default user is in a read-only directory (e.g. users.xml). Rate limiting still protects at the API layer.')
+        }
       } catch (guardrailErr) {
         logger.warn({ err: guardrailErr }, 'Could not apply resource guardrails (non-fatal). Rate limiting still protects at the API layer.')
       }
