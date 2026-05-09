@@ -241,12 +241,12 @@ WITH
 SELECT
     c.template_id, c.template_text, c.service_name AS service,
     c.cnt AS current_count,
-    coalesce(p.cnt, 0) AS previous_count,
-    if(coalesce(p.cnt, 0) > 0, CAST(c.cnt AS Float64) / p.cnt, 999) AS spike_ratio
+    p.cnt AS previous_count,
+    CAST(c.cnt AS Float64) / p.cnt AS spike_ratio
 FROM current c
-LEFT JOIN previous p ON c.template_id = p.template_id
-WHERE spike_ratio > {threshold:Float32}
-  AND previous_count >= {min_baseline:UInt32}
+INNER JOIN previous p ON c.template_id = p.template_id
+WHERE p.cnt >= greatest({min_baseline:UInt32}, 1)
+  AND spike_ratio > {threshold:Float32}
 ORDER BY spike_ratio DESC
 LIMIT {limit:UInt32}`
 
@@ -292,12 +292,12 @@ WITH
 SELECT
     c.template_id, c.template_text, c.service_name AS service,
     c.cnt AS current_count,
-    coalesce(p.cnt, 0) AS previous_count,
-    if(coalesce(p.cnt, 0) > 0, CAST(c.cnt AS Float64) / p.cnt, 999) AS spike_ratio
+    p.cnt AS previous_count,
+    CAST(c.cnt AS Float64) / p.cnt AS spike_ratio
 FROM current c
-LEFT JOIN previous p ON c.template_id = p.template_id
-WHERE spike_ratio > {threshold:Float32}
-  AND previous_count >= {min_baseline:UInt32}
+INNER JOIN previous p ON c.template_id = p.template_id
+WHERE p.cnt >= greatest({min_baseline:UInt32}, 1)
+  AND spike_ratio > {threshold:Float32}
 ORDER BY spike_ratio DESC
 LIMIT {limit:UInt32}`
 

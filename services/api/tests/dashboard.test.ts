@@ -873,7 +873,7 @@ describe('GET /v1/dashboard/changes', () => {
     assert.equal(newEvent.service, 'api')
     assert.equal(newEvent.currentCount, 42)
     assert.equal(newEvent.previousCount, 0)
-    assert.equal(newEvent.ratio, 999)
+    assert.equal(newEvent.ratio, 0)
     assert.equal(newEvent.firstSeen, '2026-03-17T14:30:00.000Z')
   })
 

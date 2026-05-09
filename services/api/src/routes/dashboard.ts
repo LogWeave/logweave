@@ -188,7 +188,7 @@ function mapNewEvents(rows: RawRow[]): ChangeEvent[] {
     service: r.service as string,
     currentCount: Number(r.occurrence_count),
     previousCount: 0,
-    ratio: 999,
+    ratio: 0,
     firstSeen: r.first_seen as string,
   }))
 }
