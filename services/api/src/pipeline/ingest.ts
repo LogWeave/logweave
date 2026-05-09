@@ -33,6 +33,7 @@ export interface IngestResult {
 interface ParsedItem {
   processed: ProcessedEvent
   timestamp: string
+  raw: unknown
 }
 
 /**
@@ -110,7 +111,7 @@ export async function ingestBatch(
   const ingestTime = new Date().toISOString()
 
   // Phase 1: Parse + Preprocess
-  const items: ParsedItem[] = []
+  let items: ParsedItem[] = []
   let parseErrors = 0
 
   for (let i = 0; i < events.length; i++) {
@@ -125,19 +126,16 @@ export async function ingestBatch(
     }
     const timestamp = extractTimestamp(events[i]) ?? ingestTime
     const processed = processEvent(result.event)
-    items.push({ processed, timestamp })
+    items.push({ processed, timestamp, raw: events[i] })
   }
 
   // Filter by minimum ingest level (server-side log-level gating)
   const minLevel = deps.settingsStore?.get(tenantId).minIngestLevel
   let levelFiltered = 0
   if (minLevel) {
-    for (let i = items.length - 1; i >= 0; i--) {
-      if (!levelMeetsSeverity(items[i]!.processed.level, minLevel)) {
-        items.splice(i, 1)
-        levelFiltered++
-      }
-    }
+    const before = items.length
+    items = items.filter((item) => levelMeetsSeverity(item.processed.level, minLevel))
+    levelFiltered = before - items.length
   }
 
   metrics.increment(metrics.EVENTS_DROPPED, parseErrors + levelFiltered)
@@ -209,7 +207,7 @@ export async function ingestBatch(
     const tagRows: Array<Record<string, unknown>> = []
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
-      const rawEvent = events[i]
+      const rawEvent = items[i]?.raw
       if (!row || typeof rawEvent !== 'object' || rawEvent === null) continue
       const obj = rawEvent as Record<string, unknown>
       const fields = (typeof obj.fields === 'object' && obj.fields !== null) ? obj.fields as Record<string, unknown> : undefined
