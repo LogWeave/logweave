@@ -34,10 +34,16 @@ interface ServiceStats5mRow {
   warns: number | string
 }
 
+// template_stats and service_stats have a 30-day TTL — a fixed past date goes
+// stale and rows get TTL'd away during OPTIMIZE FINAL. Always use recent.
+function recentTs(): string {
+  return new Date(Date.now() - 3600_000).toISOString().replace('T', ' ').replace('Z', '')
+}
+
 function makeRow(tenantId: string, overrides?: Partial<LogMetadataRow>): LogMetadataRow {
   return {
     tenant_id: tenantId,
-    timestamp: '2026-03-14 12:00:00.000',
+    timestamp: recentTs(),
     service: 'test-svc',
     level: 'INFO',
     environment: 'test',
