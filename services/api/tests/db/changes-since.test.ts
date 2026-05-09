@@ -234,6 +234,37 @@ describe('queryTemplateSpikes with since', () => {
 
     assert.equal(captured[0].query_params.tenant_id, 'tenant-xyz')
   })
+
+  it('excludes zero-baseline rows (no 999-ratio sentinel, INNER JOIN on previous)', async () => {
+    const { db, captured } = createCapturingDb(mockSpikeRows)
+    const since = new Date(Date.now() - 3_600_000).toISOString()
+
+    await queryTemplateSpikes(db, 'tenant-a', { since, minBaseline: 0 })
+
+    const sql = captured[0].query
+    assert.ok(!sql.includes('999'), 'must not use 999 sentinel for missing previous')
+    assert.ok(sql.includes('INNER JOIN previous'), 'must INNER JOIN previous to drop zero-baseline rows')
+    assert.ok(
+      sql.includes('p.cnt >= greatest({min_baseline:UInt32}, 1)'),
+      'must enforce min_baseline of at least 1 even when caller passes 0',
+    )
+  })
+})
+
+describe('queryTemplateSpikes with hours', () => {
+  it('excludes zero-baseline rows (no 999-ratio sentinel, INNER JOIN on previous)', async () => {
+    const { db, captured } = createCapturingDb(mockSpikeRows)
+
+    await queryTemplateSpikes(db, 'tenant-a', { hours: 1, minBaseline: 0 })
+
+    const sql = captured[0].query
+    assert.ok(!sql.includes('999'), 'must not use 999 sentinel for missing previous')
+    assert.ok(sql.includes('INNER JOIN previous'), 'must INNER JOIN previous to drop zero-baseline rows')
+    assert.ok(
+      sql.includes('p.cnt >= greatest({min_baseline:UInt32}, 1)'),
+      'must enforce min_baseline of at least 1 even when caller passes 0',
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
