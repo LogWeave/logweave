@@ -125,9 +125,10 @@ export class LokiAdapter implements LogSourceAdapter {
           message: `Cannot reach Loki at ${baseUrl}. Check the URL and network connectivity.`,
         }
       }
+      // Catch-all: do not echo the raw error back to the user.
       return {
         success: false,
-        message: `Connection failed: ${msg}`,
+        message: 'Connection failed. Check the URL, stream selector, and credentials, then try again.',
       }
     }
   }

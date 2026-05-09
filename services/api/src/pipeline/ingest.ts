@@ -177,7 +177,15 @@ export async function ingestBatch(
     }
   }
 
-  // Phase 3.5: Publish to event bus (live tail, future: NATS cross-instance)
+  // Phase 4: Write (single batch INSERT). Must succeed before we publish to
+  // the event bus or bump metrics — otherwise live-tail viewers see events
+  // that aren't actually persisted, and counts inflate when ingest fails and
+  // the client retries.
+  const insertStart = Date.now()
+  await batchInsert(deps.db, rows)
+  const insertMs = Date.now() - insertStart
+
+  // Phase 4.1: Publish to event bus (live tail, future: NATS cross-instance)
   if (deps.eventBus) {
     for (const row of rows) {
       deps.eventBus.publishTailEvent(tenantId, {
@@ -195,11 +203,6 @@ export async function ingestBatch(
       })
     }
   }
-
-  // Phase 4: Write (single batch INSERT)
-  const insertStart = Date.now()
-  await batchInsert(deps.db, rows)
-  const insertMs = Date.now() - insertStart
 
   // Phase 4.5: Extract configured tags to event_tags table
   const extractTags = deps.settingsStore?.get(tenantId).extractTags
@@ -234,7 +237,12 @@ export async function ingestBatch(
       try {
         await deps.db.insert({ table: 'logweave.event_tags', values: tagRows, format: 'JSONEachRow' })
       } catch (err) {
-        deps.logger.error({ err, tenantId, tagCount: tagRows.length }, 'Failed to insert event tags')
+        // Tags become permanently desynced from log_metadata. We don't fail the
+        // ingest because metadata write already succeeded, but operators need
+        // visibility — bump a counter that's exposed via /metrics so this can
+        // be alerted on if the failure rate is non-trivial.
+        metrics.increment(metrics.TAG_INSERT_FAILED, tagRows.length)
+        deps.logger.error({ err, tenantId, tagCount: tagRows.length }, 'Failed to insert event tags — metadata kept, tags dropped')
       }
     }
   }

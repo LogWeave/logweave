@@ -13,7 +13,7 @@ interface HealthDeps {
 }
 
 const READY_CACHE_TTL_MS = 5_000
-let readyCache: { ok: boolean; ts: number } = { ok: false, ts: 0 }
+let readyCache: { ok: boolean; clustererOk: boolean; ts: number } = { ok: false, clustererOk: false, ts: 0 }
 
 export function healthRoutes(deps: HealthDeps): Router {
   const router = Router()
@@ -24,48 +24,37 @@ export function healthRoutes(deps: HealthDeps): Router {
 
   router.get('/readyz', async (_req, res) => {
     const now = Date.now()
+    const useCache = now - readyCache.ts < READY_CACHE_TTL_MS
 
-    // Use cached result if fresh (caches both success and failure to prevent hammering)
-    if (now - readyCache.ts < READY_CACHE_TTL_MS) {
-      const clustererStatus = deps.clustererHealth.consecutiveFailures === 0 ? 'ok' : 'degraded'
-      res.status(readyCache.ok ? 200 : HttpStatus.SERVICE_UNAVAILABLE).json({
-        status: readyCache.ok ? 'ready' : 'not_ready',
-        clickhouse: readyCache.ok ? 'ok' : 'error',
-        clusterer: {
-          status: clustererStatus,
-          consecutiveFailures: deps.clustererHealth.consecutiveFailures,
-          circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
-        },
-        metrics: metrics.snapshot(),
-      })
-      return
+    // Active probes — actually contact dependencies. Cache result for READY_CACHE_TTL_MS to avoid hammering.
+    // Without an active clusterer ping, consecutiveFailures stays at 0 on a fresh boot even when the clusterer
+    // is unreachable, and /readyz lies (reports clusterer 'ok' until first ingest call).
+    let chOk: boolean
+    let clustererProbeOk: boolean
+    if (useCache) {
+      chOk = readyCache.ok
+      clustererProbeOk = readyCache.clustererOk
+    } else {
+      ;[chOk, clustererProbeOk] = await Promise.all([
+        pingClickHouse(deps.db),
+        deps.clustererHealth.check(),
+      ])
+      readyCache = { ok: chOk, clustererOk: clustererProbeOk, ts: now }
     }
 
-    const chOk = await pingClickHouse(deps.db)
-    readyCache = { ok: chOk, ts: now }
+    const consecutiveFailures = deps.clustererHealth.consecutiveFailures
+    const clustererStatus = clustererProbeOk
+      ? 'ok'
+      : consecutiveFailures > 0
+        ? 'degraded'
+        : 'unreachable'
 
-    const clustererStatus = deps.clustererHealth.consecutiveFailures === 0 ? 'ok' : 'degraded'
-
-    if (!chOk) {
-      res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
-        status: 'not_ready',
-        clickhouse: 'error',
-        clusterer: {
-          status: clustererStatus,
-          consecutiveFailures: deps.clustererHealth.consecutiveFailures,
-          circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
-        },
-        metrics: metrics.snapshot(),
-      })
-      return
-    }
-
-    res.json({
-      status: 'ready',
-      clickhouse: 'ok',
+    res.status(chOk ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE).json({
+      status: chOk ? 'ready' : 'not_ready',
+      clickhouse: chOk ? 'ok' : 'error',
       clusterer: {
         status: clustererStatus,
-        consecutiveFailures: deps.clustererHealth.consecutiveFailures,
+        consecutiveFailures,
         circuitOpen: deps.clusterClient?.isCircuitOpen ?? false,
       },
       metrics: metrics.snapshot(),
@@ -129,6 +118,10 @@ export function healthRoutes(deps: HealthDeps): Router {
       '# TYPE logweave_recovery_failed_total counter',
       `logweave_recovery_failed_total ${snap.recovery_failed ?? 0}`,
       '',
+      '# HELP logweave_tag_insert_failed_total Tag rows dropped because event_tags insert failed',
+      '# TYPE logweave_tag_insert_failed_total counter',
+      `logweave_tag_insert_failed_total ${snap.tag_insert_failed ?? 0}`,
+      '',
       '# HELP logweave_process_uptime_seconds Process uptime',
       '# TYPE logweave_process_uptime_seconds gauge',
       `logweave_process_uptime_seconds ${uptime.toFixed(0)}`,
@@ -148,5 +141,5 @@ export function healthRoutes(deps: HealthDeps): Router {
 
 /** Reset cache — for testing only */
 export function _resetReadyCache(): void {
-  readyCache = { ok: false, ts: 0 }
+  readyCache = { ok: false, clustererOk: false, ts: 0 }
 }
