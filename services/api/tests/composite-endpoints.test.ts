@@ -249,6 +249,43 @@ describe('GET /v1/services/:name/health', () => {
     const res = await request(app).get('/v1/services/api/health')
     assert.equal(res.status, 401)
   })
+
+  // Bug #168 regression: topErrorPatterns must always use ['ERROR'], even when
+  // the user passes ?level=. Previously the route did [...levels, 'ERROR'],
+  // so ?level=DEBUG returned DEBUG patterns alongside ERROR.
+  it('topErrorPatterns is hard-coded to ERROR regardless of ?level filter', async () => {
+    const queryMap = serviceHealthQueryMap()
+    const captured: Array<Record<string, unknown>> = []
+    const logger = pino({ level: 'silent' })
+    const db = {
+      query: async (params: { query: string; query_params: Record<string, unknown> }) => {
+        if (params.query.includes('groupArray(DISTINCT')) {
+          captured.push(params.query_params)
+        }
+        for (const [key, value] of queryMap) {
+          if (params.query.includes(key)) return value
+        }
+        return []
+      },
+      insert: async () => {},
+      command: async () => {},
+      ping: async () => true,
+      close: async () => {},
+    } as unknown as DbClient
+    const app = express()
+    app.use(express.json())
+    const auth = createAuthMiddleware(keyMap)
+    app.use('/v1', auth, dashboardRoutes({ db, logger }), compositeRoutes({ db, logger }))
+    app.use(createErrorHandler(logger))
+
+    const res = await request(app)
+      .get('/v1/services/api/health?level=DEBUG,INFO')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(captured.length, 1, 'expected one cross-service template query')
+    assert.deepEqual(captured[0]!.levels, ['ERROR'])
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -293,6 +330,42 @@ describe('GET /v1/overview', () => {
     assert.equal(res.status, 200)
     assert.equal(res.body.meta.hours, 12)
     assert.equal(typeof res.body.meta.fetchedAt, 'string')
+  })
+
+  // Bug #168 regression: same as service-health — overview's topErrorPatterns
+  // must always query level=['ERROR'] only.
+  it('topErrorPatterns is hard-coded to ERROR regardless of ?level filter', async () => {
+    const queryMap = overviewQueryMap()
+    const captured: Array<Record<string, unknown>> = []
+    const logger = pino({ level: 'silent' })
+    const db = {
+      query: async (params: { query: string; query_params: Record<string, unknown> }) => {
+        if (params.query.includes('groupArray(DISTINCT')) {
+          captured.push(params.query_params)
+        }
+        for (const [key, value] of queryMap) {
+          if (params.query.includes(key)) return value
+        }
+        return []
+      },
+      insert: async () => {},
+      command: async () => {},
+      ping: async () => true,
+      close: async () => {},
+    } as unknown as DbClient
+    const app = express()
+    app.use(express.json())
+    const auth = createAuthMiddleware(keyMap)
+    app.use('/v1', auth, dashboardRoutes({ db, logger }), compositeRoutes({ db, logger }))
+    app.use(createErrorHandler(logger))
+
+    const res = await request(app)
+      .get('/v1/overview?level=INFO,DEBUG')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(captured.length, 1, 'expected one cross-service template query')
+    assert.deepEqual(captured[0]!.levels, ['ERROR'])
   })
 })
 
