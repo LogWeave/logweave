@@ -69,7 +69,11 @@ export class GenericLogParser implements LogParser {
           fields[output] = n as never
         }
       } else {
-        fields[output] = String(raw) as never
+        // Match JsonLogParser: drop empty strings rather than passing them
+        // through as a non-undefined falsy value (callers treat the field
+        // as missing in either case).
+        const s = String(raw)
+        if (s.length > 0) fields[output] = s as never
       }
     }
 
