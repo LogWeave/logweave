@@ -67,9 +67,20 @@ LIMIT {batch_size:UInt32}`
  * template_stats_mv (WHERE template_id != '0') fires correctly only on
  * the recovery INSERT, which is the desired behavior.
  */
+// After this many consecutive DELETE failures for a tenant, recovery is
+// disabled for that tenant until the process restarts. Prevents the
+// INSERT-then-DELETE pattern from re-recovering the same rows every sweep
+// (and unboundedly duplicating them) when the ClickHouse user lacks ALTER
+// privilege or the table is otherwise un-DELETE-able.
+const TENANT_DELETE_FAILURE_THRESHOLD = 5
+
 export class RecoverySweep {
   private sweepRunning = false
   private intervalHandle: ReturnType<typeof setInterval> | null = null
+  // tenantId -> consecutive DELETE failures (any successful DELETE resets to 0)
+  private tenantDeleteFailures = new Map<string, number>()
+  // tenantId -> true once permanently disabled this process lifetime
+  private skippedTenants = new Set<string>()
 
   constructor(
     private deps: RecoveryDependencies,
@@ -175,6 +186,7 @@ export class RecoverySweep {
         let backpressureTriggered = false
 
         for (const [tenantId, tenantRows] of byTenant) {
+          if (this.skippedTenants.has(tenantId)) continue
           const recovered = await this.recoverTenantBatch(tenantId, tenantRows)
           if (recovered < 0) {
             // Backpressure triggered
@@ -265,11 +277,29 @@ export class RecoverySweep {
         query: `DELETE FROM logweave.log_metadata WHERE id IN {ids:Array(String)} AND tenant_id = {tenant_id:String}`,
         query_params: { ids: oldIds, tenant_id: tenantId },
       })
+      // Success — clear consecutive failure counter for this tenant
+      this.tenantDeleteFailures.delete(tenantId)
     } catch (err) {
-      this.deps.logger.warn(
-        { err, tenantId, count: oldIds.length },
-        'Recovery DELETE failed after INSERT — duplicates until next merge',
-      )
+      const failures = (this.tenantDeleteFailures.get(tenantId) ?? 0) + 1
+      this.tenantDeleteFailures.set(tenantId, failures)
+
+      if (failures >= TENANT_DELETE_FAILURE_THRESHOLD) {
+        // Permanently disable recovery for this tenant. Without this, every
+        // sweep cycle would re-insert the same recovered rows, doubling them
+        // each pass until the table is exhausted.
+        this.skippedTenants.add(tenantId)
+        this.tenantDeleteFailures.delete(tenantId)
+        metrics.increment(metrics.RECOVERY_TENANTS_SKIPPED)
+        this.deps.logger.error(
+          { err, tenantId, failures, count: oldIds.length },
+          'Recovery DELETE failed repeatedly — disabling recovery for this tenant until process restart. Check ClickHouse ALTER permissions.',
+        )
+      } else {
+        this.deps.logger.warn(
+          { err, tenantId, failures, count: oldIds.length },
+          'Recovery DELETE failed after INSERT — duplicates until next merge',
+        )
+      }
     }
 
     return recoverable.length
