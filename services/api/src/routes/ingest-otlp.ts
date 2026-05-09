@@ -135,7 +135,7 @@ export function otlpIngestRoutes(deps: IngestDeps): Router {
         res.status(HttpStatus.OK).json({
           partialSuccess: {
             rejectedLogRecords: rejected,
-            errorMessage: rejected > 0 ? `${rejected} log records could not be parsed` : '',
+            errorMessage: rejected > 0 ? `${rejected} log records could not be ingested` : '',
           },
         })
       } catch (err) {
