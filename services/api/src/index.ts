@@ -97,13 +97,21 @@ if (config.encryptionKey) {
       tenantId: firstTenantId,
       role: 'admin',
     })
-    logger.warn('=================================================================')
-    logger.warn('Default admin user created. Save this password — it is only shown once.')
-    logger.warn(`  Username: admin`)
-    logger.warn(`  Password: ${bootstrapPassword}`)
-    logger.warn(`  Tenant:   ${firstTenantId}`)
-    logger.warn('You will be required to change it on first login.')
-    logger.warn('=================================================================')
+    // Write the bootstrap password directly to stderr (unstructured) instead
+    // of through the structured logger. Most log-shipping pipelines (Loki,
+    // CloudWatch agent, fluent-bit) consume the JSON stdout stream — keeping
+    // the password out of structured logs reduces the chance it gets indexed
+    // by downstream log infrastructure. Operators can still capture stderr
+    // manually if needed.
+    logger.info({ tenantId: firstTenantId }, 'Default admin user created — see stderr for one-time password')
+    process.stderr.write('\n')
+    process.stderr.write('=================================================================\n')
+    process.stderr.write('LOGWEAVE BOOTSTRAP — save this admin password now (shown once).\n')
+    process.stderr.write(`  Username: admin\n`)
+    process.stderr.write(`  Password: ${bootstrapPassword}\n`)
+    process.stderr.write(`  Tenant:   ${firstTenantId}\n`)
+    process.stderr.write('You will be required to change it on first login.\n')
+    process.stderr.write('=================================================================\n\n')
   }
 } else {
   logger.error('=================================================================')
@@ -117,7 +125,7 @@ const tailBuffer = new TailBuffer()
 tailBuffer.start()
 const eventBus = new LocalEventBus(tailBuffer, settingsStore)
 
-const app = createApp({
+const { app, tailTokenStore } = createApp({
   config,
   logger,
   db,
@@ -200,6 +208,9 @@ async function shutdown(signal: string): Promise<void> {
   anomalyScorer.stop()
   await recovery.stop()
   await retention.stop()
+  // Stop tail-related background timers (token cleanup, buffer eviction)
+  tailTokenStore.stop()
+  tailBuffer.stop()
   logger.info('Background sweeps stopped')
 
   // Stop accepting new connections and drain in-flight requests

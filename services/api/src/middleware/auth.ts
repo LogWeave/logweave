@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
+import type pino from 'pino'
 import type { SessionValidationCache } from '../auth/session-cache.js'
 import type { SessionProvider } from '../auth/session.js'
 import { SESSION_COOKIE_NAME } from '../auth/session.js'
@@ -76,6 +77,7 @@ export function createAuthMiddleware(
   sessionProvider?: SessionProvider,
   sessionCache?: SessionValidationCache,
   userStore?: UserStore,
+  logger?: pino.Logger,
 ): RequestHandler {
   const store = source instanceof KeyStore ? source : new KeyStore(source)
 
@@ -120,7 +122,11 @@ export function createAuthMiddleware(
                   user?.sessionVersion ?? 0,
                   !user,
                 )
-              }).catch(() => {})
+              }).catch((err) => {
+                // Silently swallowing this would mean every request takes the slow
+                // path with no signal in logs. Log it so DB outages are observable.
+                logger?.warn({ err, userId: session.userId }, 'Session cache populate failed')
+              })
             } else if (cached.isDeleted || cached.sessionVersion !== session.sessionVersion) {
               // User deleted or session version mismatch — reject
               next(unauthorized('Session expired'))
