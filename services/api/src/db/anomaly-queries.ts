@@ -7,6 +7,9 @@ export interface BaselineRow {
   avg_count_per_interval: number
 }
 
+// Hard cap on the (template_id, service) cardinality returned. Anomaly
+// scoring is per-template, so a tenant with millions of templates can grow
+// the result set unboundedly. 50k covers all realistic deployments.
 const BASELINE_QUERY = `
 SELECT
   template_id,
@@ -15,7 +18,8 @@ SELECT
 FROM logweave.template_stats
 WHERE tenant_id = {tenant_id:String}
   AND interval_start > now64(3) - toIntervalHour(1)
-GROUP BY template_id, service`
+GROUP BY template_id, service
+LIMIT 50000`
 
 /**
  * Fetch rolling 1-hour baseline averages for all templates belonging to a tenant.

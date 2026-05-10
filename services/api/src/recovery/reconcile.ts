@@ -198,8 +198,11 @@ export class RecoverySweep {
 
         if (backpressureTriggered) break
 
-        // Advance cursor to last row's id
-        cursor = rows[rows.length - 1]!.id
+        // Advance cursor to last row's id. rows.length > 0 already proven by
+        // the early `break` on line above; narrow explicitly instead of `!`.
+        const last = rows[rows.length - 1]
+        if (!last) break
+        cursor = last.id
       }
 
       return totalRecovered
@@ -230,8 +233,11 @@ export class RecoverySweep {
     // Filter out rows that are still unclustered (clusterer still failing)
     const recoverable: Array<{ row: UnclusteredRow; result: (typeof results)[0] }> = []
     for (let i = 0; i < rows.length; i++) {
-      if (results[i]!.templateId !== '0') {
-        recoverable.push({ row: rows[i]!, result: results[i]! })
+      const result = results[i]
+      const row = rows[i]
+      if (!result || !row) continue
+      if (result.templateId !== '0') {
+        recoverable.push({ row, result })
       }
     }
 

@@ -37,10 +37,16 @@ export class WatchStore {
   async loadFromDb(): Promise<{ watchCount: number; tenantCount: number }> {
     if (!this.db) return { watchCount: 0, tenantCount: 0 }
 
+    // Hard cap on the boot-time load. A pathological tenant or a bug that
+    // wrote millions of rows would otherwise OOM startup. Per-tenant overflow
+    // is logged and skipped via the maxPerTenant check below.
+    const STARTUP_LOAD_LIMIT = 100_000
     const rows = await this.db.query<WatchRow>({
       query: `SELECT tenant_id, template_id, template_text
               FROM logweave.watches FINAL
-              WHERE is_deleted = 0`,
+              WHERE is_deleted = 0
+              LIMIT {limit:UInt32}`,
+      query_params: { limit: STARTUP_LOAD_LIMIT },
     })
 
     for (const row of rows) {

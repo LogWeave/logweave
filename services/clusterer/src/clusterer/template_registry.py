@@ -262,8 +262,5 @@ class TemplateRegistry:
         )
 
     def ensure_schema(self) -> None:
-        """Create template_registry table if not exists. Idempotent.
-
-        TODO: Replace with versioned migration runner in Week 1b.
-        """
+        """Create template_registry table if not exists. Idempotent."""
         self._client.command(_CREATE_TABLE_SQL)

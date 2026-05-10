@@ -19,9 +19,11 @@ export function tenantQuery(
   tenantId: string,
   extraParams?: Record<string, unknown>,
 ): QueryWithParams {
+  // Spread extraParams first, then tenant_id last — guarantees the trusted
+  // value cannot be shadowed by a caller passing tenant_id in extraParams.
   return {
     query,
-    query_params: { tenant_id: tenantId, ...extraParams },
+    query_params: { ...extraParams, tenant_id: tenantId },
   }
 }
 

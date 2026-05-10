@@ -10,6 +10,9 @@ import { queryDeployById } from '../db/deploy-queries.js'
 import { truncateTemplateText } from '../format.js'
 import { respond } from '../lib/respond.js'
 import {
+  type ClusteringHealthSnapshotRow,
+  type OverviewAggregatesRow,
+  type OverviewCountsRow,
   queryClusteringHealthSnapshot,
   queryClusteringHealthTrend,
   queryDashboardOverviewAggregates,
@@ -316,23 +319,17 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       const params = getQuery<OverviewQuery>(req)
       const queryOpts = { hours: params.hours, level: params.level }
 
-      const queries: Promise<unknown>[] = [
+      const [agg, counts, prevAgg, prevCounts] = await Promise.all([
         queryDashboardOverviewAggregates(deps.db, tenantId, queryOpts),
         queryDashboardOverviewCounts(deps.db, tenantId, queryOpts),
-      ]
+        params.compare
+          ? queryDashboardOverviewAggregates(deps.db, tenantId, { ...queryOpts, offsetHours: params.hours })
+          : (Promise.resolve(undefined) as Promise<OverviewAggregatesRow | undefined>),
+        params.compare
+          ? queryDashboardOverviewCounts(deps.db, tenantId, { ...queryOpts, offsetHours: params.hours })
+          : (Promise.resolve(undefined) as Promise<OverviewCountsRow | undefined>),
+      ])
 
-      if (params.compare) {
-        const prevOpts = { ...queryOpts, offsetHours: params.hours }
-        queries.push(
-          queryDashboardOverviewAggregates(deps.db, tenantId, prevOpts),
-          queryDashboardOverviewCounts(deps.db, tenantId, prevOpts),
-        )
-      }
-
-      const results = await Promise.all(queries)
-
-      const agg = results[0] as unknown as RawRow
-      const counts = results[1] as unknown as RawRow
       const totalEvents = Number(agg.total_events)
       const errorCount = Number(agg.error_count)
 
@@ -345,9 +342,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         serviceCount: Number(counts.service_count),
       }
 
-      if (params.compare && results.length === 4) {
-        const prevAgg = results[2] as unknown as RawRow
-        const prevCounts = results[3] as unknown as RawRow
+      if (prevAgg && prevCounts) {
         const prevTotalEvents = Number(prevAgg.total_events)
         const prevErrorCount = Number(prevAgg.error_count)
 
@@ -400,12 +395,11 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         const tenantId = getTenantId(res)
         const params = getQuery<ClusteringHealthQuery>(req)
 
-        const [snapshotRaw, trendRows] = await Promise.all([
+        const [snapshot, trendRows]: [ClusteringHealthSnapshotRow, unknown[]] = await Promise.all([
           queryClusteringHealthSnapshot(deps.db, tenantId, { hours: params.hours, level: params.level }),
           queryClusteringHealthTrend(deps.db, tenantId, { hours: params.hours, level: params.level }),
         ])
 
-        const snapshot = snapshotRaw as unknown as RawRow
         const totalEvents = Number(snapshot.total_events)
         const uniqueTemplates = Number(snapshot.unique_templates)
 
