@@ -133,10 +133,13 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
       let hasEvents = false
       if (deps.db) {
+        // Bound to last 24h so partition pruning kicks in. Onboarding cares
+        // about "have you ingested anything recently?", not lifetime history.
         const rows = await deps.db.query<{ has_data: number }>({
           query: `SELECT 1 AS has_data
                   FROM logweave.log_metadata
                   WHERE tenant_id = {tenantId:String}
+                    AND timestamp > now64(3) - toIntervalDay(1)
                   LIMIT 1`,
           query_params: { tenantId },
         })
@@ -234,12 +237,14 @@ export function settingsRoutes(deps: SettingsDeps): Router {
         return
       }
 
-      // Fetch recent pre-processed messages from ClickHouse
+      // Fetch recent pre-processed messages from ClickHouse. Bound to last 7
+      // days so the ORDER BY DESC doesn't pay to sort the full 30-day partition.
       const rows = await deps.db.query<{ pre_processed_message: string }>({
         query: `SELECT pre_processed_message
                 FROM logweave.log_metadata
                 WHERE tenant_id = {tenantId:String}
                   AND pre_processed_message != ''
+                  AND timestamp > now64(3) - toIntervalDay(7)
                 ORDER BY timestamp DESC
                 LIMIT 1000`,
         query_params: { tenantId },

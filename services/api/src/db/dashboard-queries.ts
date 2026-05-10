@@ -43,17 +43,17 @@ interface DashboardVolumeRow {
   error_count: number
 }
 
-interface OverviewAggregatesRow {
-  total_events: number
-  error_count: number
-  warn_count: number
-  new_template_count: number
+export interface OverviewAggregatesRow {
+  total_events: number | string
+  error_count: number | string
+  warn_count: number | string
+  new_template_count: number | string
 }
 
-interface OverviewCountsRow {
-  unique_templates: number
-  unclustered_count: number
-  service_count: number
+export interface OverviewCountsRow {
+  unique_templates: number | string
+  unclustered_count: number | string
+  service_count: number | string
 }
 
 interface TemplateSparklineRow {
@@ -62,11 +62,11 @@ interface TemplateSparklineRow {
   count: number
 }
 
-interface ClusteringHealthSnapshotRow {
-  total_events: number
-  clustered_events: number
-  unclustered_events: number
-  unique_templates: number
+export interface ClusteringHealthSnapshotRow {
+  total_events: number | string
+  clustered_events: number | string
+  unclustered_events: number | string
+  unique_templates: number | string
 }
 
 interface ClusteringHealthTrendRow {
@@ -405,7 +405,9 @@ export async function queryTemplateSparklines(
   options: { hours?: number; templateIds: string[]; level?: string[] },
 ): Promise<TemplateSparklineRow[]> {
   const hours = clamp(options.hours ?? DEFAULT_HOURS, MAX_HOURS)
-  const templateIds = options.templateIds
+  // Cap caller-supplied template_ids to bound the IN-list and the result
+  // set. 500 sparklines is well beyond any realistic dashboard render.
+  const templateIds = options.templateIds.slice(0, 500)
   const levels = options.level
 
   if (templateIds.length === 0) return []
@@ -423,7 +425,8 @@ WHERE tenant_id = {tenant_id:String}
   AND template_id IN ({template_ids:Array(String)})
   ${levelFilter}
 GROUP BY template_id, interval_start
-ORDER BY template_id, interval_start ASC`
+ORDER BY template_id, interval_start ASC
+LIMIT 50000`
 
   const params: Record<string, unknown> = { hours, template_ids: templateIds }
   if (levels?.length) params.levels = levels
@@ -675,11 +678,18 @@ LIMIT {limit:UInt32}`
   const params: Record<string, unknown> = {
     hours,
     limit,
-    search_pattern: `%${options.q}%`,
+    search_pattern: `%${escapeLikePattern(options.q)}%`,
   }
   if (levels?.length) params.levels = levels
 
   return db.query<CrossServiceTemplateRow>(tenantQuery(query, tenantId, params))
+}
+
+// Escape ClickHouse LIKE/ILIKE metacharacters so user input cannot force a
+// full table scan via leading wildcards (e.g. "%" or "_") or break the
+// surrounding "%...%" wrap with a backslash.
+function escapeLikePattern(input: string): string {
+  return input.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
 
 /**

@@ -37,11 +37,14 @@ export async function queryCostAnalysis(
   const serviceFilter = options?.service ? 'AND service = {service:String}' : ''
   const levelFilter = options?.level?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
+  // Hard cap — cost analysis presents top-N results in the UI; no caller
+  // needs more than ~10k templates and unbounded result sets are a DoS shape.
   const query = `${BASE_COST_QUERY}
   ${serviceFilter}
   ${levelFilter}
 GROUP BY service, template_id, template_text, level
-ORDER BY count DESC`
+ORDER BY count DESC
+LIMIT 10000`
 
   const params: Record<string, unknown> = { hours }
   if (options?.service) params.service = options.service

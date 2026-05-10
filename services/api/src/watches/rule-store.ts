@@ -70,10 +70,15 @@ export class RuleStore {
   async loadFromDb(): Promise<{ ruleCount: number; tenantCount: number }> {
     if (!this.db) return { ruleCount: 0, tenantCount: 0 }
 
+    // Hard cap on boot-time load. Prevents a pathological tenant from OOMing
+    // startup. Per-tenant overflow is handled by maxPerTenant below.
+    const STARTUP_LOAD_LIMIT = 100_000
     const rows = await this.db.query<AlertRuleRow>({
       query: `SELECT tenant_id, rule_id, name, rule_type, enabled, config, channels, cooldown_minutes
               FROM logweave.alert_rules FINAL
-              WHERE is_deleted = 0`,
+              WHERE is_deleted = 0
+              LIMIT {limit:UInt32}`,
+      query_params: { limit: STARTUP_LOAD_LIMIT },
     })
 
     for (const row of rows) {

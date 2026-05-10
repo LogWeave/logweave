@@ -70,10 +70,15 @@ export class TenantSettingsStore {
   async loadFromDb(): Promise<{ settingCount: number; tenantCount: number }> {
     if (!this.db) return { settingCount: 0, tenantCount: 0 }
 
+    // Hard cap on boot-time load. Prevents pathological tenant counts from
+    // OOMing startup. ~20 settings per tenant means this caps at ~5k tenants.
+    const STARTUP_LOAD_LIMIT = 100_000
     const rows = await this.db.query<SettingsRow>({
       query: `SELECT tenant_id, setting_key, setting_value
               FROM logweave.tenant_settings FINAL
-              WHERE is_deleted = 0`,
+              WHERE is_deleted = 0
+              LIMIT {limit:UInt32}`,
+      query_params: { limit: STARTUP_LOAD_LIMIT },
     })
 
     for (const row of rows) {
