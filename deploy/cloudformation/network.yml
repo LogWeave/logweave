@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  LogWeave — network/persistent stack. Provisions resources that should
+  outlive any individual EC2 instance: Elastic IP, EBS data volume,
+  Secrets Manager secret (with auto-generated values), and the IAM
+  instance role used by the app stack.
+
+  Outputs are exported so the companion app stack
+  (deploy/cloudformation/app.yml) can import them.
+
+  Pair with: deploy/cloudformation/app.yml
+  Docs: deploy/cloudformation/README.md
+
+Parameters:
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: >
+      AZ that holds the EBS data volume. The app stack must launch its
+      EC2 instance into the SAME AZ — EBS volumes are AZ-local.
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # Elastic IP — stable public address. Created up-front so the user can
+  # update DNS BEFORE the app stack runs (and before Caddy attempts ACME).
+  # ---------------------------------------------------------------------------
+  Eip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-eip"
+        - Key: Project
+          Value: LogWeave
+
+  # ---------------------------------------------------------------------------
+  # EBS data volume — holds /var/lib/clickhouse via /data/clickhouse.
+  # gp3, 50 GB, snapshot-on-delete so accidental stack deletion does not
+  # destroy customer data.
+  # ---------------------------------------------------------------------------
+  DataVolume:
+    Type: AWS::EC2::Volume
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone
+      Size: 50
+      VolumeType: gp3
+      Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-data"
+        - Key: Project
+          Value: LogWeave
+
+  # ---------------------------------------------------------------------------
+  # Secret generation Lambda — produces three independent random values
+  # (clickhousePassword, encryptionKey, apiKey) and stores them as a single
+  # JSON secret. Inline ZipFile so this template is fully self-contained.
+  # ---------------------------------------------------------------------------
+  SecretGeneratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  SecretGeneratorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 30
+      Role: !GetAtt SecretGeneratorRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import secrets
+          import urllib.request
+
+          def send(event, status, data=None, reason="OK"):
+              body = json.dumps({
+                  "Status": status,
+                  "Reason": reason,
+                  "PhysicalResourceId": event.get("PhysicalResourceId") or "logweave-secret-gen",
+                  "StackId": event["StackId"],
+                  "RequestId": event["RequestId"],
+                  "LogicalResourceId": event["LogicalResourceId"],
+                  "NoEcho": True,
+                  "Data": data or {},
+              }).encode()
+              req = urllib.request.Request(
+                  event["ResponseURL"], data=body, method="PUT",
+                  headers={"content-type": "", "content-length": str(len(body))},
+              )
+              urllib.request.urlopen(req).read()
+
+          def handler(event, context):
+              try:
+                  if event["RequestType"] == "Delete":
+                      return send(event, "SUCCESS")
+                  payload = {
+                      "clickhousePassword": secrets.token_hex(24),
+                      "encryptionKey": secrets.token_hex(16),
+                      "apiKey": secrets.token_hex(32),
+                  }
+                  send(event, "SUCCESS", {"Secret": json.dumps(payload)})
+              except Exception as exc:  # noqa: BLE001
+                  send(event, "FAILED", reason=str(exc))
+
+  GeneratedSecretValues:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt SecretGeneratorFunction.Arn
+
+  Secret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}-logweave"
+      Description: >
+        LogWeave runtime secrets — clickhousePassword, encryptionKey, apiKey.
+        Generated once by the network stack; consumed at boot by the app
+        stack via the EC2 instance role.
+      SecretString: !GetAtt GeneratedSecretValues.Secret
+      Tags:
+        - Key: Project
+          Value: LogWeave
+
+  # ---------------------------------------------------------------------------
+  # Instance role — SSM Session Manager + read-only access to the one secret.
+  # No SSH key pair, no broad IAM rights. Scoped per least-privilege.
+  # ---------------------------------------------------------------------------
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: ReadLogWeaveSecret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Ref Secret
+      Tags:
+        - Key: Project
+          Value: LogWeave
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+Outputs:
+  ElasticIp:
+    Description: Public IP — point your DNS A record at this address before launching the app stack.
+    Value: !Ref Eip
+    Export:
+      Name: !Sub "${AWS::StackName}-ElasticIp"
+
+  EipAllocationId:
+    Description: Allocation ID — used by the app stack's EIPAssociation.
+    Value: !GetAtt Eip.AllocationId
+    Export:
+      Name: !Sub "${AWS::StackName}-EipAllocationId"
+
+  DataVolumeId:
+    Description: EBS volume ID — used by the app stack's VolumeAttachment.
+    Value: !Ref DataVolume
+    Export:
+      Name: !Sub "${AWS::StackName}-DataVolumeId"
+
+  AvailabilityZone:
+    Description: AZ where the EBS volume lives — the app stack must launch the EC2 instance here.
+    Value: !Ref AvailabilityZone
+    Export:
+      Name: !Sub "${AWS::StackName}-AvailabilityZone"
+
+  SecretArn:
+    Description: ARN of the LogWeave secret — read at boot by the app stack instance role.
+    Value: !Ref Secret
+    Export:
+      Name: !Sub "${AWS::StackName}-SecretArn"
+
+  InstanceProfileArn:
+    Description: Instance profile ARN — used by the app stack EC2 IamInstanceProfile.
+    Value: !GetAtt InstanceProfile.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-InstanceProfileArn"
+
+  InstanceProfileName:
+    Description: Instance profile name — required by AWS::EC2::Instance IamInstanceProfile.
+    Value: !Ref InstanceProfile
+    Export:
+      Name: !Sub "${AWS::StackName}-InstanceProfileName"

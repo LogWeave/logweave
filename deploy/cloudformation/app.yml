@@ -1,0 +1,547 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  LogWeave — application stack. Provisions the EC2 instance that runs
+  the LogWeave Docker stack, attaches the persistent EBS volume and EIP
+  from the network stack, and obtains a Let's Encrypt certificate via
+  Caddy.
+
+  Pair with: deploy/cloudformation/network.yml
+  Docs: deploy/cloudformation/README.md
+
+  REQUIREMENTS:
+    - The network stack must already exist and you must pass its name as
+      NetworkStackName.
+    - DomainName must already resolve (via your DNS registrar) to the
+      ElasticIp output of the network stack BEFORE you launch this stack.
+      The user-data DNS pre-check will fail fast (within ~2 minutes)
+      otherwise.
+
+Parameters:
+  NetworkStackName:
+    Type: String
+    Description: Name of the LogWeave network stack to import resources from.
+    MinLength: 1
+
+  DomainName:
+    Type: String
+    Description: >
+      Fully-qualified domain that already resolves (A record) to the
+      Elastic IP output of the network stack. Used by Caddy for ACME.
+    AllowedPattern: "^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$"
+    ConstraintDescription: Must be a valid fully-qualified domain name (e.g. logs.example.com).
+
+  AdminEmail:
+    Type: String
+    Description: Email registered with Let's Encrypt for cert expiry notices.
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    ConstraintDescription: Must be a valid email address.
+
+  InstanceType:
+    Type: String
+    Default: t3.large
+    AllowedValues:
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+      - m6i.large
+      - m6i.xlarge
+    Description: EC2 instance type. t3.large is the documented minimum (8 GB RAM).
+
+  AllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: >
+      CIDR allowed to reach 80/443. Default is open internet
+      (required for Let's Encrypt HTTP-01); narrow to your office CIDR
+      after the first cert if you want stricter access.
+    AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: AL2023 AMI resolved dynamically from SSM Parameter Store.
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # Security group — 80 + 443 only. NO port 22 (SSM Session Manager only).
+  # ---------------------------------------------------------------------------
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${AWS::StackName} — LogWeave HTTP/HTTPS only, no SSH"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref AllowedCidr
+          Description: HTTP (Let's Encrypt HTTP-01 + redirect to HTTPS)
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref AllowedCidr
+          Description: HTTPS (dashboard + API)
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+          Description: All egress (image pull, ACME, SSM)
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-sg"
+        - Key: Project
+          Value: LogWeave
+
+  # ---------------------------------------------------------------------------
+  # Wait condition — user-data signals SUCCESS only after /healthz responds.
+  # 15-minute timeout covers worst-case package install + image pull.
+  # ---------------------------------------------------------------------------
+  WaitHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+
+  WaitCondition:
+    Type: AWS::CloudFormation::WaitCondition
+    DependsOn: Instance
+    Properties:
+      Handle: !Ref WaitHandle
+      Timeout: "900"
+      Count: 1
+
+  # ---------------------------------------------------------------------------
+  # EC2 instance — runs the LogWeave Docker stack via user-data.
+  # ---------------------------------------------------------------------------
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      AvailabilityZone:
+        Fn::ImportValue: !Sub "${NetworkStackName}-AvailabilityZone"
+      IamInstanceProfile:
+        Fn::ImportValue: !Sub "${NetworkStackName}-InstanceProfileName"
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+            Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}"
+        - Key: Project
+          Value: LogWeave
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            # ----------------------------------------------------------------
+            # LogWeave bootstrap — wrapped in cloud-init-per so it does not
+            # re-run on instance stop/start. The wrapper is the FIRST thing
+            # we do; everything else lives inside the once-only block.
+            # ----------------------------------------------------------------
+            cloud-init-per once logweave-init bash -euo pipefail <<'BOOTSTRAP'
+            set -euo pipefail
+
+            # ---- Logging --------------------------------------------------
+            LOG=/var/log/logweave-init.log
+            exec > >(awk '{ print strftime("[%Y-%m-%dT%H:%M:%S%z]"), $0; fflush() }' >> "$LOG") 2>&1
+            echo "===== logweave-init starting (host=$(hostname)) ====="
+
+            STEP="init"
+            CFN_SIGNAL_URL='${WaitURL}'
+            DOMAIN_NAME='${DomainName}'
+            ADMIN_EMAIL='${AdminEmail}'
+            EXPECTED_IP='${ExpectedIp}'
+            SECRET_ARN='${SecretArn}'
+            REGION='${AWS::Region}'
+
+            # Pinned versions — bump deliberately, never use "latest".
+            CADDY_VERSION="2.8.4"
+            # SHA512 from the upstream release checksums file:
+            # https://github.com/caddyserver/caddy/releases/download/v2.8.4/caddy_2.8.4_checksums.txt
+            # Bumping CADDY_VERSION? Pull the new checksum file and replace this value.
+            CADDY_SHA512="b8bec15d14fb033562af9f207850027bcbaa1f891edc9efe00d38bf39e1bf9944f8b6b8eba041ddd4c171cd70c905174c704d705be2f23bc678fe1eaf37a2485"
+            CFN_BOOTSTRAP_VERSION="2.0"
+
+            # ---- Failure trap --------------------------------------------
+            fail() {
+              local exit_code=$?
+              local msg="step=$STEP exit=$exit_code — see /var/log/logweave-init.log on the instance"
+              echo "FAILURE: $msg"
+              # Try cfn-signal if available, otherwise fall back to curl.
+              if command -v cfn-signal >/dev/null 2>&1; then
+                cfn-signal -e 1 --reason "$msg" "$CFN_SIGNAL_URL" || true
+              else
+                curl -s -X PUT -H 'Content-Type:' \
+                  -d "{\"Status\":\"FAILURE\",\"Reason\":\"$msg\",\"UniqueId\":\"logweave-init\",\"Data\":\"\"}" \
+                  "$CFN_SIGNAL_URL" || true
+              fi
+              exit "$exit_code"
+            }
+            trap fail ERR
+
+            # ---- 1. Packages ---------------------------------------------
+            STEP="install-packages"
+            echo "[$STEP] dnf install"
+            dnf install -y docker python3-pip jq bind-utils tar gzip ca-certificates
+            python3 -m pip install --quiet "aws-cfn-bootstrap==${!CFN_BOOTSTRAP_VERSION}"
+
+            # Docker compose plugin (AL2023 ships docker but not the plugin)
+            STEP="install-compose-plugin"
+            mkdir -p /usr/local/lib/docker/cli-plugins
+            COMPOSE_VERSION="v2.29.7"
+            curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+              "https://github.com/docker/compose/releases/download/$COMPOSE_VERSION/docker-compose-linux-x86_64"
+            chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+            # ---- 2. Caddy (static binary, pinned + verified) -------------
+            STEP="install-caddy"
+            echo "[$STEP] downloading Caddy $CADDY_VERSION"
+            cd /tmp
+            curl -fsSL -o caddy.tgz \
+              "https://github.com/caddyserver/caddy/releases/download/v$CADDY_VERSION/caddy_${!CADDY_VERSION}_linux_amd64.tar.gz"
+            ACTUAL_SHA="$(sha512sum caddy.tgz | awk '{print $1}')"
+            if [ "$ACTUAL_SHA" != "$CADDY_SHA512" ]; then
+              echo "Caddy SHA512 mismatch: expected $CADDY_SHA512 got $ACTUAL_SHA"
+              exit 1
+            fi
+            tar -xzf caddy.tgz caddy
+            install -m 0755 caddy /usr/local/bin/caddy
+            rm -f caddy.tgz caddy
+
+            cat >/etc/systemd/system/caddy.service <<'UNIT'
+            [Unit]
+            Description=Caddy
+            Documentation=https://caddyserver.com/docs/
+            After=network-online.target
+            Wants=network-online.target
+
+            [Service]
+            Type=notify
+            User=root
+            Group=root
+            ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
+            ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
+            TimeoutStopSec=5s
+            LimitNOFILE=1048576
+            PrivateTmp=true
+            ProtectSystem=full
+            AmbientCapabilities=CAP_NET_BIND_SERVICE
+            Restart=on-failure
+            RestartSec=5s
+
+            [Install]
+            WantedBy=multi-user.target
+            UNIT
+
+            # ---- 3. Enable services --------------------------------------
+            STEP="enable-services"
+            systemctl daemon-reload
+            systemctl enable --now docker amazon-ssm-agent
+
+            # ---- 4. Mount EBS data volume --------------------------------
+            STEP="mount-ebs"
+            echo "[$STEP] locating EBS data volume"
+            DATA_VOLUME_ID='${DataVolumeIdImport}'
+            # AWS NVMe serial = "vol" + volume-id-without-dash, e.g. vol0123abc...
+            EXPECTED_SERIAL="$(echo "$DATA_VOLUME_ID" | tr -d '-')"
+            DEV=""
+            for _ in $(seq 1 30); do
+              DEV="$(lsblk -dn -o NAME,SERIAL | awk -v s="$EXPECTED_SERIAL" '$2 == s {print "/dev/"$1; exit}')"
+              [ -n "$DEV" ] && break
+              sleep 2
+            done
+            if [ -z "$DEV" ]; then
+              echo "Could not find EBS volume with serial $EXPECTED_SERIAL"
+              lsblk -o NAME,SERIAL,SIZE,TYPE
+              exit 1
+            fi
+            echo "[$STEP] data volume at $DEV"
+
+            mkdir -p /data/clickhouse
+            if [ ! -f /data/clickhouse/.initialized ]; then
+              if ! blkid "$DEV" >/dev/null 2>&1; then
+                echo "[$STEP] formatting $DEV ext4 (first boot)"
+                mkfs.ext4 -L logweave-data "$DEV"
+              else
+                echo "[$STEP] $DEV already has a filesystem — keeping existing data"
+              fi
+            fi
+
+            UUID="$(blkid -s UUID -o value "$DEV")"
+            if ! grep -q "$UUID" /etc/fstab; then
+              echo "UUID=$UUID /data/clickhouse ext4 defaults,nofail,x-systemd.device-timeout=5s 0 2" >> /etc/fstab
+            fi
+            mount -a
+            mkdir -p /data/clickhouse
+            chown -R 101:101 /data/clickhouse || true
+            touch /data/clickhouse/.initialized
+
+            # ---- 5. Fetch secrets from Secrets Manager -------------------
+            STEP="fetch-secrets"
+            mkdir -p /opt/logweave /opt/logweave/docker/clickhouse
+            chmod 700 /opt/logweave
+            SECRET_JSON="$(aws --region "$REGION" secretsmanager get-secret-value \
+                --secret-id "$SECRET_ARN" --query SecretString --output text)"
+            CH_PASSWORD="$(echo "$SECRET_JSON" | jq -r '.clickhousePassword')"
+            ENC_KEY="$(echo "$SECRET_JSON" | jq -r '.encryptionKey')"
+            API_KEY="$(echo "$SECRET_JSON" | jq -r '.apiKey')"
+            CH_PASSWORD_SHA256="$(printf '%s' "$CH_PASSWORD" | sha256sum | cut -d' ' -f1)"
+
+            umask 077
+            cat >/opt/logweave/.env <<ENV
+            LOGWEAVE_API_KEYS={"$API_KEY":"default"}
+            LOGWEAVE_ENCRYPTION_KEY=$ENC_KEY
+            LOGWEAVE_CLICKHOUSE_USER=logweave
+            LOGWEAVE_CLICKHOUSE_PASSWORD=$CH_PASSWORD
+            CLICKHOUSE_PASSWORD_SHA256=$CH_PASSWORD_SHA256
+            CLICKHOUSE_DB=logweave
+            LOGWEAVE_LOG_LEVEL=info
+            LOGWEAVE_CLUSTERER_TIMEOUT_MS=2000
+            ENV
+            chmod 600 /opt/logweave/.env
+            umask 022
+
+            # ---- 6. Write config files via heredocs ----------------------
+            STEP="write-config"
+
+            cat >/opt/logweave/docker/clickhouse/listen.xml <<'CHLISTEN'
+            <clickhouse>
+                <listen_host>0.0.0.0</listen_host>
+            </clickhouse>
+            CHLISTEN
+
+            cat >/opt/logweave/docker/clickhouse/users.xml <<'CHUSERS'
+            <clickhouse>
+                <users>
+                    <default>
+                        <networks>
+                            <ip>127.0.0.1</ip>
+                            <ip>::1</ip>
+                        </networks>
+                    </default>
+                    <logweave>
+                        <password_sha256_hex from_env="CLICKHOUSE_PASSWORD_SHA256"/>
+                        <networks>
+                            <ip>::/0</ip>
+                        </networks>
+                        <profile>default</profile>
+                        <quota>default</quota>
+                        <access_management>0</access_management>
+                    </logweave>
+                </users>
+            </clickhouse>
+            CHUSERS
+
+            cat >/opt/logweave/docker-compose.prod.yml <<'COMPOSE'
+            services:
+              clickhouse:
+                image: clickhouse/clickhouse-server:24-alpine
+                restart: unless-stopped
+                stop_grace_period: 60s
+                volumes:
+                  - /data/clickhouse:/var/lib/clickhouse
+                  - ./docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
+                  - ./docker/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+                environment:
+                  CLICKHOUSE_DB: ${!CLICKHOUSE_DB}
+                  CLICKHOUSE_PASSWORD_SHA256: ${!CLICKHOUSE_PASSWORD_SHA256}
+                expose:
+                  - "8123"
+                  - "9000"
+                ulimits:
+                  nofile:
+                    soft: 262144
+                    hard: 262144
+                healthcheck:
+                  test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+                deploy:
+                  resources:
+                    limits:
+                      memory: 4G
+                      cpus: "2.0"
+
+              clusterer:
+                image: ghcr.io/robertdicker/logweave-clusterer:latest
+                restart: unless-stopped
+                expose:
+                  - "8000"
+                volumes:
+                  - drain3_checkpoints:/data/drain3
+                environment:
+                  LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123/logweave
+                  LOGWEAVE_CLICKHOUSE_USER: ${!LOGWEAVE_CLICKHOUSE_USER}
+                  LOGWEAVE_CLICKHOUSE_PASSWORD: ${!LOGWEAVE_CLICKHOUSE_PASSWORD}
+                  LOGWEAVE_DRAIN3_CHECKPOINT_DIR: /data/drain3
+                depends_on:
+                  clickhouse:
+                    condition: service_healthy
+                healthcheck:
+                  test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+                  interval: 15s
+                  timeout: 5s
+                  retries: 3
+                deploy:
+                  resources:
+                    limits:
+                      memory: 512M
+                      cpus: "1.0"
+
+              api:
+                image: ghcr.io/robertdicker/logweave-api:latest
+                restart: unless-stopped
+                ports:
+                  - "127.0.0.1:3000:3000"
+                environment:
+                  NODE_ENV: production
+                  LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123
+                  LOGWEAVE_CLICKHOUSE_USER: ${!LOGWEAVE_CLICKHOUSE_USER}
+                  LOGWEAVE_CLICKHOUSE_PASSWORD: ${!LOGWEAVE_CLICKHOUSE_PASSWORD}
+                  LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
+                  LOGWEAVE_API_KEYS: ${!LOGWEAVE_API_KEYS}
+                  LOGWEAVE_ENCRYPTION_KEY: ${!LOGWEAVE_ENCRYPTION_KEY}
+                  LOGWEAVE_LOG_LEVEL: ${!LOGWEAVE_LOG_LEVEL}
+                  LOGWEAVE_CLUSTERER_TIMEOUT_MS: ${!LOGWEAVE_CLUSTERER_TIMEOUT_MS}
+                depends_on:
+                  clickhouse:
+                    condition: service_healthy
+                  clusterer:
+                    condition: service_started
+                healthcheck:
+                  test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/healthz"]
+                  interval: 15s
+                  timeout: 5s
+                  retries: 3
+                deploy:
+                  resources:
+                    limits:
+                      memory: 512M
+                      cpus: "1.0"
+
+            volumes:
+              drain3_checkpoints:
+            COMPOSE
+
+            mkdir -p /etc/caddy
+            cat >/etc/caddy/Caddyfile <<CADDYFILE
+            {
+                email $ADMIN_EMAIL
+            }
+
+            $DOMAIN_NAME {
+                encode gzip
+                reverse_proxy 127.0.0.1:3000
+            }
+            CADDYFILE
+
+            # ---- 7. DNS pre-check (BOTH resolvers) -----------------------
+            STEP="dns-precheck"
+            echo "[$STEP] resolving $DOMAIN_NAME via 1.1.1.1 and 8.8.8.8"
+            CF_IP="$(dig +short +time=3 +tries=2 @1.1.1.1 "$DOMAIN_NAME" A | tail -n1)"
+            GOOGLE_IP="$(dig +short +time=3 +tries=2 @8.8.8.8 "$DOMAIN_NAME" A | tail -n1)"
+            echo "[$STEP] cloudflare=$CF_IP google=$GOOGLE_IP expected=$EXPECTED_IP"
+
+            if [ "$CF_IP" != "$EXPECTED_IP" ] || [ "$GOOGLE_IP" != "$EXPECTED_IP" ]; then
+              cat <<DNSERR
+            DNS PRE-CHECK FAILED
+              Domain:           $DOMAIN_NAME
+              Expected (EIP):   $EXPECTED_IP
+              Cloudflare 1.1.1.1 returned: ${!CF_IP:-<empty>}
+              Google     8.8.8.8 returned: ${!GOOGLE_IP:-<empty>}
+
+            Action: at your DNS registrar, set an A record:
+              $DOMAIN_NAME -> $EXPECTED_IP
+
+            Wait for propagation (verify with 'dig $DOMAIN_NAME'),
+            then delete this app stack and re-create it. The network
+            stack and your data are untouched.
+            DNSERR
+              exit 1
+            fi
+
+            # ---- 8. Pull images ------------------------------------------
+            STEP="pull-images"
+            cd /opt/logweave
+            docker compose --env-file /opt/logweave/.env -f docker-compose.prod.yml pull
+
+            # ---- 9. Start stack ------------------------------------------
+            STEP="compose-up"
+            docker compose --env-file /opt/logweave/.env -f docker-compose.prod.yml up -d
+
+            # ---- 10. Wait for /healthz -----------------------------------
+            STEP="wait-healthz"
+            echo "[$STEP] polling http://127.0.0.1:3000/healthz"
+            HEALTHY=0
+            for i in $(seq 1 60); do
+              if curl -fsS http://127.0.0.1:3000/healthz >/dev/null 2>&1; then
+                HEALTHY=1
+                echo "[$STEP] healthy after ${!i} attempts"
+                break
+              fi
+              sleep 5
+            done
+            if [ "$HEALTHY" != "1" ]; then
+              echo "API never returned 200 from /healthz"
+              docker compose -f /opt/logweave/docker-compose.prod.yml ps || true
+              docker compose -f /opt/logweave/docker-compose.prod.yml logs --tail=200 api || true
+              exit 1
+            fi
+
+            # ---- 11. Start Caddy (ACME runs in background) ---------------
+            STEP="start-caddy"
+            systemctl enable --now caddy
+
+            # ---- 12. Signal SUCCESS --------------------------------------
+            # NOTE: cert acquisition is intentionally NOT gated on signal.
+            # The first ACME attempt may take 30-60s after CREATE_COMPLETE.
+            STEP="cfn-signal-success"
+            cfn-signal -e 0 --reason "logweave-init complete" "$CFN_SIGNAL_URL"
+            echo "===== logweave-init done ====="
+            BOOTSTRAP
+          - WaitURL: !Ref WaitHandle
+            ExpectedIp:
+              Fn::ImportValue: !Sub "${NetworkStackName}-ElasticIp"
+            SecretArn:
+              Fn::ImportValue: !Sub "${NetworkStackName}-SecretArn"
+            DataVolumeIdImport:
+              Fn::ImportValue: !Sub "${NetworkStackName}-DataVolumeId"
+
+  # ---------------------------------------------------------------------------
+  # Volume + EIP attachments — defer to after the instance exists.
+  # ---------------------------------------------------------------------------
+  VolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      Device: /dev/sdf
+      InstanceId: !Ref Instance
+      VolumeId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-DataVolumeId"
+
+  EipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-EipAllocationId"
+      InstanceId: !Ref Instance
+
+Outputs:
+  DashboardUrl:
+    Description: Public dashboard URL.
+    Value: !Sub "https://${DomainName}"
+
+  InstanceId:
+    Description: EC2 instance — connect with `aws ssm start-session --target <id>`.
+    Value: !Ref Instance
+
+  FirstLogin:
+    Description: >
+      Bootstrap admin password is generated randomly on first boot and
+      printed once to the API container log. Retrieve it via:
+      `aws ssm start-session --target <InstanceId>` then on the box
+      `sudo docker logs $(sudo docker ps -qf name=api) 2>&1 | grep -i 'default admin'`.
+      You will be forced to change it on first login.
+    Value: !Sub "https://${DomainName} (username: admin)"
