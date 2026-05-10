@@ -47,7 +47,7 @@ function createTestApp() {
     anomalyScorer,
     watchStore: new WatchStore(),
     settingsStore: new TenantSettingsStore(),
-  })
+  }).app
 }
 
 describe('security headers', () => {

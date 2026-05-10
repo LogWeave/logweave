@@ -65,7 +65,13 @@ export interface AppDependencies {
   csrfTokenKey?: Buffer
 }
 
-export function createApp(deps: AppDependencies): express.Express {
+export interface CreatedApp {
+  app: express.Express
+  /** Resources created inside createApp that need stop() at shutdown. */
+  tailTokenStore: TailTokenStore
+}
+
+export function createApp(deps: AppDependencies): CreatedApp {
   const app = express()
   app.disable('x-powered-by')
 
@@ -157,7 +163,7 @@ export function createApp(deps: AppDependencies): express.Express {
   // Routes — API (authenticated, rate-limited)
   const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys)
   const sessionCache = new SessionValidationCache()
-  const auth = createAuthMiddleware(keyStore, deps.sessionProvider, sessionCache, deps.userStore)
+  const auth = createAuthMiddleware(keyStore, deps.sessionProvider, sessionCache, deps.userStore, deps.logger)
 
   const rateLimiter = createRateLimiter({
     keyRpm: deps.config.rateLimitRpm,
@@ -316,5 +322,5 @@ export function createApp(deps: AppDependencies): express.Express {
   // Centralized error handler (must be last)
   app.use(createErrorHandler(deps.logger))
 
-  return app
+  return { app, tailTokenStore }
 }

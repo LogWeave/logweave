@@ -156,7 +156,7 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
       anomalyScorer,
       watchStore,
       settingsStore,
-    })
+    }).app
   })
 
   after(async () => {
