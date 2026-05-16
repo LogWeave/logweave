@@ -6,6 +6,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { createGunzip } from 'node:zlib'
 import { Readable } from 'node:stream'
+import { getInternalEvents } from '../internal-events/emitter.js'
 import { scanStream } from './line-scanner.js'
 import { templateToRegex } from './template-regex.js'
 import {
@@ -128,6 +129,18 @@ export class S3Adapter implements LogSourceAdapter {
     } catch (err) {
       client.destroy()
       const msg = err instanceof Error ? err.message : String(err)
+      const code = msg.includes('AccessDenied') || msg.includes('Forbidden')
+        ? 'S3_ACCESS_DENIED'
+        : msg.includes('NoSuchBucket')
+          ? 'S3_NO_SUCH_BUCKET'
+          : 'S3_UNKNOWN'
+      getInternalEvents().emit({
+        event: 's3.connector_failed',
+        severity: 'error',
+        code,
+        summary: 's3 connector test failed',
+        fields: { region: s3Config.region, error_name: (err as { name?: string } | undefined)?.name ?? 'unknown' },
+      })
 
       if (msg.includes('AccessDenied') || msg.includes('Forbidden')) {
         return {

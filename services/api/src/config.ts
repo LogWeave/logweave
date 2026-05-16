@@ -40,6 +40,13 @@ const apiKeysSchema = z
         })
         return z.NEVER
       }
+      if (value === '_internal') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'tenant_id "_internal" is reserved for internal operator events and cannot be assigned to an API key',
+        })
+        return z.NEVER
+      }
     }
     return new Map(entries as [string, string][])
   })

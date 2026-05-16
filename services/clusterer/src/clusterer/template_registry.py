@@ -17,6 +17,8 @@ import clickhouse_connect.driver
 from cachetools import LRUCache
 from uuid_utils import uuid7
 
+from clusterer.internal_events import emit_clickhouse_failure
+
 if TYPE_CHECKING:
     from clusterer.embedding import EmbeddingService
 
@@ -201,20 +203,28 @@ class TemplateRegistry:
 
     def _query_registry(self, tenant_id: str, template_text: str) -> str | None:
         """Sync ClickHouse query. Returns template_id or None."""
-        result = self._client.query(
-            _SELECT_SQL,
-            parameters={"tid": tenant_id, "text": template_text},
-        )
+        try:
+            result = self._client.query(
+                _SELECT_SQL,
+                parameters={"tid": tenant_id, "text": template_text},
+            )
+        except Exception as exc:
+            emit_clickhouse_failure("query", exc)
+            raise
         if result.result_rows:
             return result.result_rows[0][0]
         return None
 
     def _batch_query_registry(self, tenant_id: str, template_texts: list[str]) -> dict[str, str]:
         """Sync batch ClickHouse query. Returns {template_text: template_id}."""
-        result = self._client.query(
-            _BATCH_SELECT_SQL,
-            parameters={"tid": tenant_id, "texts": template_texts},
-        )
+        try:
+            result = self._client.query(
+                _BATCH_SELECT_SQL,
+                parameters={"tid": tenant_id, "texts": template_texts},
+            )
+        except Exception as exc:
+            emit_clickhouse_failure("query", exc)
+            raise
         return {row[0]: row[1] for row in result.result_rows}
 
     def _embed_texts(self, texts: list[str]) -> list[list[float]]:
@@ -235,16 +245,20 @@ class TemplateRegistry:
     def _insert_template(self, tenant_id: str, template_text: str, template_id: str) -> None:
         """Sync ClickHouse insert."""
         embeddings = self._embed_texts([template_text])
-        self._client.command(
-            _INSERT_SQL,
-            parameters={
-                "tid": tenant_id,
-                "text": template_text,
-                "template_id": template_id,
-                "embedding": embeddings[0],
-                "embedding_model": self._get_model_name(),
-            },
-        )
+        try:
+            self._client.command(
+                _INSERT_SQL,
+                parameters={
+                    "tid": tenant_id,
+                    "text": template_text,
+                    "template_id": template_id,
+                    "embedding": embeddings[0],
+                    "embedding_model": self._get_model_name(),
+                },
+            )
+        except Exception as exc:
+            emit_clickhouse_failure("command", exc)
+            raise
 
     def _batch_insert_templates(self, tenant_id: str, entries: list[tuple[str, str]]) -> None:
         """Batch INSERT via client.insert(). cityHash64 and first_seen computed by DEFAULT."""
@@ -255,12 +269,20 @@ class TemplateRegistry:
             [tenant_id, text, template_id, emb, model_name]
             for (text, template_id), emb in zip(entries, embeddings)
         ]
-        self._client.insert(
-            "template_registry",
-            rows,
-            column_names=["tenant_id", "template_text", "template_id", "embedding", "embedding_model"],
-        )
+        try:
+            self._client.insert(
+                "template_registry",
+                rows,
+                column_names=["tenant_id", "template_text", "template_id", "embedding", "embedding_model"],
+            )
+        except Exception as exc:
+            emit_clickhouse_failure("insert", exc)
+            raise
 
     def ensure_schema(self) -> None:
         """Create template_registry table if not exists. Idempotent."""
-        self._client.command(_CREATE_TABLE_SQL)
+        try:
+            self._client.command(_CREATE_TABLE_SQL)
+        except Exception as exc:
+            emit_clickhouse_failure("command", exc)
+            raise

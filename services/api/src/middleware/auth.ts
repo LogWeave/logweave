@@ -7,6 +7,7 @@ import { SESSION_COOKIE_NAME } from '../auth/session.js'
 import type { UserStore } from '../auth/user-store.js'
 import { SESSION_COOKIE_OPTIONS } from '../auth/session.js'
 import { forbidden, unauthorized } from '../errors.js'
+import { getInternalEvents } from '../internal-events/emitter.js'
 
 const TENANT_ID_KEY = 'tenantId'
 const KEY_ID_KEY = 'keyId'
@@ -99,6 +100,19 @@ export function createAuthMiddleware(
           next()
           return
         }
+        getInternalEvents().emit({
+          event: 'auth.key_invalid',
+          severity: 'warn',
+          code: 'KEY_INVALID',
+          summary: 'invalid bearer token',
+          fields: {
+            // sampled emitter coalesces by tenant_id; we don't know the tenant
+            // for an unknown key, so bucket by route instead
+            tenant_id: '_unknown',
+            route: req.path,
+            key_prefix: token.slice(0, 6),
+          },
+        })
         next(unauthorized('Invalid API key'))
         return
       }
