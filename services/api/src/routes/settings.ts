@@ -2,6 +2,7 @@ import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
 import type { DbClient } from '../db/client.js'
+import { AppError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
@@ -371,13 +372,11 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const webhookUrl = deps.settingsStore.getSlackUrl(tenantId)
 
       if (!webhookUrl) {
-        res.status(HttpStatus.BAD_REQUEST).json({
-          error: {
-            code: 'SLACK_NOT_CONFIGURED',
-            message: 'No Slack webhook URL configured. Use POST /v1/settings/slack first.',
-          },
-        })
-        return
+        throw new AppError(
+          HttpStatus.BAD_REQUEST,
+          'SLACK_NOT_CONFIGURED',
+          'No Slack webhook URL configured. Use POST /v1/settings/slack first.',
+        )
       }
 
       const result = await sendSlackTestMessage(webhookUrl)

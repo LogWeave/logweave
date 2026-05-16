@@ -3,8 +3,8 @@ import type pino from 'pino'
 import { z } from 'zod'
 import { insertAuditEvent } from '../db/audit-queries.js'
 import type { DbClient } from '../db/client.js'
+import { AppError, unauthorized } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
-import { unauthorized } from '../errors.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import type { TailBuffer } from '../tail/buffer.js'
@@ -210,17 +210,13 @@ export function tailSseRoute(deps: TailDeps): Router {
 
     // Check if tail is explicitly disabled
     if (tailMode === 'disabled') {
-      res.status(HttpStatus.FORBIDDEN).json({
-        error: { code: 'TAIL_DISABLED', message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.' },
-      })
+      next(new AppError(HttpStatus.FORBIDDEN, 'TAIL_DISABLED', 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.'))
       return
     }
 
     // Check connection limit
     if (getConnectionCount(resolvedTenantId) >= maxConn) {
-      res.status(HttpStatus.TOO_MANY_REQUESTS).json({
-        error: { code: 'CONNECTION_LIMIT', message: `Maximum tail connections reached (${maxConn}). Close an existing connection first.` },
-      })
+      next(new AppError(HttpStatus.TOO_MANY_REQUESTS, 'CONNECTION_LIMIT', `Maximum tail connections reached (${maxConn}). Close an existing connection first.`))
       return
     }
 

@@ -11,6 +11,7 @@ import {
 } from '../db/connector-queries.js'
 import { getAdapter } from '../connectors/shared.js'
 import type { ConnectorConfig } from '../connectors/types.js'
+import { notFound } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { getTenantId, requireAdmin } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
@@ -245,10 +246,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
       const row = await getConnector(deps.db, tenantId, connectorId)
 
       if (!row) {
-        res.status(HttpStatus.NOT_FOUND).json({
-          error: { code: 'NOT_FOUND', message: 'Connector not found' },
-        })
-        return
+        throw notFound('Connector not found')
       }
 
       const config = JSON.parse(await decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
@@ -272,10 +270,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
 
       const row = await getConnector(deps.db, tenantId, connectorId)
       if (!row) {
-        res.status(HttpStatus.NOT_FOUND).json({
-          error: { code: 'NOT_FOUND', message: 'Connector not found' },
-        })
-        return
+        throw notFound('Connector not found')
       }
 
       await deleteConnector(deps.db, tenantId, connectorId)

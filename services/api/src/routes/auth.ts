@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { encrypt, decrypt } from '../crypto.js'
 import type { DbClient } from '../db/client.js'
 import { insertAuditEvent } from '../db/audit-queries.js'
+import { AppError, notFound } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { validateBody } from '../middleware/validate.js'
 import { createIpRateLimiter } from '../middleware/ip-rate-limit.js'
@@ -246,10 +247,7 @@ export function authRoutes(deps: AuthDeps): Router {
 
     const policyError = validatePasswordPolicy(newPassword)
     if (policyError) {
-      res.status(HttpStatus.BAD_REQUEST).json({
-        error: { code: 'WEAK_PASSWORD', message: policyError },
-      })
-      return
+      throw new AppError(HttpStatus.BAD_REQUEST, 'WEAK_PASSWORD', policyError)
     }
 
     const user = await deps.userStore.findById(session.userId)
@@ -345,18 +343,12 @@ export function authRoutes(deps: AuthDeps): Router {
     const { code } = req.body as z.infer<typeof confirmTotpSchema>
     const user = await deps.userStore.findById(session.userId)
     if (!user || !user.totpSecret) {
-      res.status(HttpStatus.BAD_REQUEST).json({
-        error: { code: 'NO_TOTP_PENDING', message: 'Call POST /v1/auth/totp/setup first' },
-      })
-      return
+      throw new AppError(HttpStatus.BAD_REQUEST, 'NO_TOTP_PENDING', 'Call POST /v1/auth/totp/setup first')
     }
 
     const valid = await verifyTotp(user.totpSecret, code, deps.totpEncryptionKey)
     if (!valid) {
-      res.status(HttpStatus.BAD_REQUEST).json({
-        error: { code: 'INVALID_CODE', message: 'Invalid TOTP code — check your authenticator app' },
-      })
-      return
+      throw new AppError(HttpStatus.BAD_REQUEST, 'INVALID_CODE', 'Invalid TOTP code — check your authenticator app')
     }
 
     // Generate recovery codes
@@ -481,18 +473,12 @@ export function authRoutes(deps: AuthDeps): Router {
 
     const targetId = req.params.id as string
     if (targetId === session.userId) {
-      res.status(HttpStatus.BAD_REQUEST).json({
-        error: { code: 'CANNOT_DELETE_SELF', message: 'Cannot delete your own account' },
-      })
-      return
+      throw new AppError(HttpStatus.BAD_REQUEST, 'CANNOT_DELETE_SELF', 'Cannot delete your own account')
     }
 
     const target = await deps.userStore.findById(targetId)
     if (!target || target.tenantId !== session.tenantId) {
-      res.status(HttpStatus.NOT_FOUND).json({
-        error: { code: 'NOT_FOUND', message: 'User not found' },
-      })
-      return
+      throw notFound('User not found')
     }
 
     await deps.userStore.deleteUser(targetId)
@@ -516,10 +502,7 @@ export function authRoutes(deps: AuthDeps): Router {
 
     const target = await deps.userStore.findById(targetId)
     if (!target || target.tenantId !== session.tenantId) {
-      res.status(HttpStatus.NOT_FOUND).json({
-        error: { code: 'NOT_FOUND', message: 'User not found' },
-      })
-      return
+      throw notFound('User not found')
     }
 
     const newHash = await hashPassword(newPassword)

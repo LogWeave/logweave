@@ -7,7 +7,7 @@ import { decrypt } from '../crypto.js'
 import { SCAN_DEFAULTS } from '../connectors/types.js'
 import type { DbClient } from '../db/client.js'
 import { getConnector, listConnectors } from '../db/connector-queries.js'
-import { HttpStatus } from '../http-status.js'
+import { notFound } from '../errors.js'
 import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
@@ -96,10 +96,7 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
       if (params.connector_id) {
         const row = await getConnector(deps.db, tenantId, params.connector_id)
         if (!row) {
-          res.status(HttpStatus.NOT_FOUND).json({
-            error: { code: 'NOT_FOUND', message: 'Connector not found' },
-          })
-          return
+          throw notFound('Connector not found')
         }
         connectorConfig = JSON.parse(await decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
       } else {
@@ -129,10 +126,7 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
       // Look up template text
       const templateText = await getTemplateText(deps.db, tenantId, templateId)
       if (!templateText) {
-        res.status(HttpStatus.NOT_FOUND).json({
-          error: { code: 'NOT_FOUND', message: `Template ${templateId} not found` },
-        })
-        return
+        throw notFound(`Template ${templateId} not found`)
       }
 
       // Fetch raw logs

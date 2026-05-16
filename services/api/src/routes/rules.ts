@@ -3,7 +3,9 @@ import type pino from 'pino'
 import { z } from 'zod'
 import { queryAlertHistory } from '../db/alert-queries.js'
 import type { DbClient } from '../db/client.js'
+import { AppError, notFound } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
@@ -177,10 +179,7 @@ export function ruleRoutes(deps: RuleDeps): Router {
       })
 
       if (result === 'limit_exceeded') {
-        res.status(HttpStatus.BAD_REQUEST).json({
-          error: { code: 'RULE_LIMIT_EXCEEDED', message: 'Maximum rules per tenant exceeded' },
-        })
-        return
+        throw new AppError(HttpStatus.BAD_REQUEST, 'RULE_LIMIT_EXCEEDED', 'Maximum rules per tenant exceeded')
       }
 
       res.status(HttpStatus.CREATED).json({
@@ -199,10 +198,7 @@ export function ruleRoutes(deps: RuleDeps): Router {
       const rules = deps.ruleStore.list(tenantId)
       const data = rules.map(serializeRule)
 
-      res.status(HttpStatus.OK).json({
-        data,
-        meta: { count: data.length, fetchedAt: new Date().toISOString() },
-      })
+      respond(res, data, { count: data.length })
     } catch (err) {
       next(err)
     }
@@ -219,44 +215,23 @@ export function ruleRoutes(deps: RuleDeps): Router {
       if (body.config) {
         const existing = deps.ruleStore.get(tenantId, ruleId)
         if (!existing) {
-          res.status(HttpStatus.NOT_FOUND).json({
-            error: { code: 'NOT_FOUND', message: 'Rule not found' },
-          })
-          return
+          throw notFound('Rule not found')
         }
 
         if (existing.ruleType === 'threshold' && !isThresholdConfig(body.config)) {
-          res.status(HttpStatus.BAD_REQUEST).json({
-            error: {
-              code: 'CONFIG_TYPE_MISMATCH',
-              message: 'Config does not match rule type threshold',
-            },
-          })
-          return
+          throw new AppError(HttpStatus.BAD_REQUEST, 'CONFIG_TYPE_MISMATCH', 'Config does not match rule type threshold')
         }
         if (existing.ruleType === 'template_watch' && !isTemplateWatchConfig(body.config)) {
-          res.status(HttpStatus.BAD_REQUEST).json({
-            error: {
-              code: 'CONFIG_TYPE_MISMATCH',
-              message: 'Config does not match rule type template_watch',
-            },
-          })
-          return
+          throw new AppError(HttpStatus.BAD_REQUEST, 'CONFIG_TYPE_MISMATCH', 'Config does not match rule type template_watch')
         }
       }
 
       const updated = await deps.ruleStore.update(tenantId, ruleId, body)
       if (!updated) {
-        res.status(HttpStatus.NOT_FOUND).json({
-          error: { code: 'NOT_FOUND', message: 'Rule not found' },
-        })
-        return
+        throw notFound('Rule not found')
       }
 
-      res.status(HttpStatus.OK).json({
-        data: serializeRule(updated),
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, serializeRule(updated), {})
     } catch (err) {
       next(err)
     }
@@ -299,10 +274,7 @@ export function ruleRoutes(deps: RuleDeps): Router {
         channelsNotified: parseJsonArray(r.channels_notified, { logger: deps.logger, alertId: r.alert_id, field: 'channels_notified' }),
       }))
 
-      res.status(HttpStatus.OK).json({
-        data,
-        meta: { count: data.length, hours: params.hours, fetchedAt: new Date().toISOString() },
-      })
+      respond(res, data, { count: data.length, hours: params.hours })
     } catch (err) {
       next(err)
     }

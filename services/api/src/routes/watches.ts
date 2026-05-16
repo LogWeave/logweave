@@ -1,7 +1,9 @@
 import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
+import { AppError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import type { WatchStore } from '../watches/watch-store.js'
@@ -27,10 +29,7 @@ export function watchRoutes(deps: WatchDeps): Router {
 
       const result = await deps.watchStore.add(tenantId, body.templateId, body.templateText)
       if (result === 'limit_exceeded') {
-        res.status(HttpStatus.BAD_REQUEST).json({
-          error: { code: 'WATCH_LIMIT_EXCEEDED', message: 'Maximum 100 watches per tenant' },
-        })
-        return
+        throw new AppError(HttpStatus.BAD_REQUEST, 'WATCH_LIMIT_EXCEEDED', 'Maximum 100 watches per tenant')
       }
 
       res.status(HttpStatus.CREATED).json({
@@ -63,10 +62,7 @@ export function watchRoutes(deps: WatchDeps): Router {
       const watchedIds = deps.watchStore.list(tenantId)
       const data = watchedIds.map((templateId) => ({ templateId }))
 
-      res.status(HttpStatus.OK).json({
-        data,
-        meta: { count: data.length, fetchedAt: new Date().toISOString() },
-      })
+      respond(res, data, { count: data.length })
     } catch (err) {
       next(err)
     }

@@ -2,6 +2,7 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createGunzip } from 'node:zlib'
 import express, { Router } from 'express'
+import { AppError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import type { IngestDeps } from '../lib/ingest-deps.js'
 import { getTenantId } from '../middleware/auth.js'
@@ -18,7 +19,7 @@ const MAX_BODY_BYTES = 5 * 1024 * 1024 // 5MB
  */
 async function decompressGzip(
   req: express.Request,
-  res: express.Response,
+  _res: express.Response,
   next: express.NextFunction,
 ): Promise<void> {
   if (req.body) {
@@ -53,9 +54,7 @@ async function decompressGzip(
     delete req.headers['content-encoding']
     next()
   } catch {
-    res.status(HttpStatus.BAD_REQUEST).json({
-      error: { code: 'DECOMPRESSION_ERROR', message: 'Failed to decompress gzip body' },
-    })
+    next(new AppError(HttpStatus.BAD_REQUEST, 'DECOMPRESSION_ERROR', 'Failed to decompress gzip body'))
   }
 }
 
@@ -97,6 +96,8 @@ export function otlpIngestRoutes(deps: IngestDeps): Router {
         const flatEvents = otlpToEvents(req.body)
 
         if (flatEvents.length > MAX_BATCH_SIZE) {
+          // OTLP spec mandates `partialSuccess` envelope (not our `{ error }` shape) for log batch errors.
+          // See https://opentelemetry.io/docs/specs/otlp/#partial-success
           res.status(HttpStatus.BAD_REQUEST).json({
             partialSuccess: {
               rejectedLogRecords: flatEvents.length,

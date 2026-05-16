@@ -16,8 +16,8 @@ import {
   queryTemplateStatusCodes,
   queryTemplatesAcrossServices,
 } from '../db/dashboard-queries.js'
+import { notFound } from '../errors.js'
 import { truncateTemplateText } from '../format.js'
-import { HttpStatus } from '../http-status.js'
 import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
@@ -68,13 +68,7 @@ export function compositeRoutes(deps: CompositeDeps): Router {
       const match = rawTemplates.find((r) => r.template_id === templateId)
 
       if (!match) {
-        res.status(HttpStatus.NOT_FOUND).json({
-          error: {
-            code: 'NOT_FOUND',
-            message: `Template ${templateId} not found in the last ${params.hours} hours`,
-          },
-        })
-        return
+        throw notFound(`Template ${templateId} not found in the last ${params.hours} hours`)
       }
 
       const { text: truncatedText, truncated } = truncateTemplateText(match.template_text as string)
@@ -136,13 +130,7 @@ export function compositeRoutes(deps: CompositeDeps): Router {
       const match = rawServices.find((r) => r.service === serviceName)
 
       if (!match) {
-        res.status(HttpStatus.NOT_FOUND).json({
-          error: {
-            code: 'NOT_FOUND',
-            message: `Service ${serviceName} not found in the last ${params.hours} hours`,
-          },
-        })
-        return
+        throw notFound(`Service ${serviceName} not found in the last ${params.hours} hours`)
       }
 
       const logCount = Number(match.log_count)

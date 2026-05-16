@@ -7,8 +7,9 @@ import {
   queryTemplateSpikes,
 } from '../db/dashboard-changes-queries.js'
 import { queryDeployById } from '../db/deploy-queries.js'
+import { notFound } from '../errors.js'
 import { truncateTemplateText } from '../format.js'
-import { respond } from '../lib/respond.js'
+import { isoTimestamp, respond } from '../lib/respond.js'
 import {
   type ClusteringHealthSnapshotRow,
   type OverviewAggregatesRow,
@@ -29,7 +30,6 @@ import {
   queryTemplateSparklines,
   queryTemplateStatusCodes,
 } from '../db/dashboard-queries.js'
-import { HttpStatus } from '../http-status.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import {
@@ -439,10 +439,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       if (params.deploy_id) {
         const deploy = await queryDeployById(deps.db, tenantId, params.deploy_id)
         if (!deploy) {
-          res.status(HttpStatus.NOT_FOUND).json({
-            error: { code: 'NOT_FOUND', message: `Deploy ${params.deploy_id} not found` },
-          })
-          return
+          throw notFound(`Deploy ${params.deploy_id} not found`)
         }
         since = deploy.timestamp
       }
@@ -617,7 +614,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       })
 
       const data = rows.map((r) => ({
-        timestamp: r.timestamp,
+        timestamp: isoTimestamp(r.timestamp) ?? r.timestamp,
         traceId: r.trace_id,
         route: r.route,
         durationMs: Number(r.duration_ms),
