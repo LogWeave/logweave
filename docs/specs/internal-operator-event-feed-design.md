@@ -107,6 +107,11 @@ queries by `service` + `event`.
 
 No retry, no in-memory buffer, no disk spool. Per the user's "not overthinking it" cue.
 
+If `getInternalEvents()` is called before `initInternalEvents()` (programming
+bug, or a test that imports a module too early), a fallback emitter is
+returned that writes to real stdout — events are never silently dropped — and
+a one-time warning is written to stderr so the operator can spot the misuse.
+
 ### Per-request event coalescing
 
 `auth.key_invalid` and `ratelimit.exceeded` are per-request events. Under an
@@ -120,13 +125,15 @@ events.
 Enforced inside the emitter. There is no way to bypass.
 
 **Config events** (`config.loaded`, `config.invalid`):
-- Allowlist of field names whose values may appear verbatim: `port`, `log_level`, `clickhouse_host`, `clusterer_url`, `node_env`, `service_version`
+- Allowlist of field names whose values may appear verbatim: `port`, `log_level`, `node_env`, `service_version`
+- URL-shaped keys (`clickhouse_url`, `clusterer_url`, plus camelCase variants) are reduced to `{key}_host` containing only `hostname:port`. The full URL — and any embedded `user:password@` userinfo — never appears in either sink.
 - Every other config key is logged as `{ key: "<redacted:len=N>" }`
 
 **Error events** (`*.failed`, `*.invalid`, `*.unreachable`):
 - Allowed: error class name, error code, `file:line`, sanitized message
 - Forbidden in CH payload: full stack traces, request bodies, query text, customer log content, webhook URLs, API keys, query parameters with values
 - Stack traces may appear on stdout only (operator-only via `docker logs`)
+- Stack stripping recurses one level into nested objects so payloads like `fields: { error: { stack: "..." } }` are scrubbed too. Deeper nesting is not supported by the field shape.
 
 **Tenant/auth events** (`auth.*`, `ratelimit.*`, `quota.*`):
 - Allowed: `tenant_id`, API key prefix (first 6 chars, e.g. `lw_abc1`), route, status code

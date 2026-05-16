@@ -31,7 +31,6 @@ export interface EmitterDeps {
 const SAMPLE_INTERVAL_MS = 10_000
 const SAMPLED_EVENTS: ReadonlySet<EventName> = new Set([
   'auth.key_invalid',
-  'auth.tenant_unknown',
   'ratelimit.exceeded',
 ])
 
@@ -164,13 +163,18 @@ export function initInternalEvents(deps: EmitterDeps): InternalEventEmitter {
 }
 
 /**
- * Process-wide accessor. Returns a no-op emitter if init was never called
- * (e.g. in tests that don't exercise the emitter path), so production code
- * can call `getInternalEvents().emit(...)` without nil checks.
+ * Process-wide accessor. Returns a fallback emitter if init was never called
+ * (e.g. in tests that don't exercise the emitter path, or a programming bug
+ * where a module emits before bootstrap finishes). The fallback writes to
+ * real stdout so events are not silently dropped, and warns once to stderr
+ * so the operator can spot the misuse.
  */
 export function getInternalEvents(): InternalEventEmitter {
   if (singleton) return singleton
-  singleton = new InternalEventEmitter({ service: 'api', stdout: () => {} })
+  process.stderr.write(
+    'internal-events: getInternalEvents() called before initInternalEvents(); falling back to stdout-only emitter\n',
+  )
+  singleton = new InternalEventEmitter({ service: 'api' })
   return singleton
 }
 

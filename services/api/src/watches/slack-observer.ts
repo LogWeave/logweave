@@ -155,7 +155,14 @@ export class SlackObserver implements AlertObserver {
           severity: 'warn',
           code: 'SLACK_PERMANENT_ERROR',
           summary: 'slack webhook returned permanent error',
-          fields: { status_code: resp.status, tenant_id: alert?.tenantId ?? '_unknown', slack_error: body },
+          fields: {
+            status_code: resp.status,
+            tenant_id: alert?.tenantId ?? '_unknown',
+            // body is from the permanentErrors allowlist at this point, so it's
+            // already a short error code. Truncate defensively in case Slack
+            // ever expands the response.
+            slack_error: body.slice(0, 120),
+          },
         })
         return
       }

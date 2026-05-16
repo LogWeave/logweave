@@ -2,18 +2,27 @@
 // sanctioned path into the sinks, and direct emission of unsafe data is impossible
 // to express through the emitter API.
 
+// Values for these config keys may appear verbatim in events. Anything that
+// might carry credentials (DSNs, full URLs with userinfo, API keys, tokens)
+// must NOT be on this list — see summarizeConfig for the host-only treatment
+// of URL-shaped fields.
 const CONFIG_VALUE_ALLOWLIST: ReadonlySet<string> = new Set([
   'port',
   'log_level',
   'logLevel',
-  'clickhouse_host',
-  'clickhouseHost',
-  'clusterer_url',
-  'clustererUrl',
   'node_env',
   'nodeEnv',
   'service_version',
   'serviceVersion',
+])
+
+// Config keys whose values are URLs that may embed credentials. We emit only
+// the hostname for these.
+const URL_HOST_ONLY_KEYS: ReadonlySet<string> = new Set([
+  'clickhouse_url',
+  'clickhouseUrl',
+  'clusterer_url',
+  'clustererUrl',
 ])
 
 // Field names that, regardless of event, must never appear with their value.
@@ -89,6 +98,8 @@ export function summarizeConfig(
   for (const [key, value] of Object.entries(config)) {
     if (CONFIG_VALUE_ALLOWLIST.has(key)) {
       out[key] = value
+    } else if (URL_HOST_ONLY_KEYS.has(key) && typeof value === 'string') {
+      out[`${key}_host`] = safeUrlHost(value)
     } else {
       out[key] = redactedPlaceholder(value)
     }
@@ -96,25 +107,49 @@ export function summarizeConfig(
   return out
 }
 
+function safeUrlHost(value: string): string {
+  try {
+    return new URL(value).host || '<unparseable>'
+  } catch {
+    return '<unparseable>'
+  }
+}
+
 /**
  * Strip stack traces and any property whose value contains a multi-line
  * indented stack-frame pattern. Use on error fields before they go to ClickHouse.
  * Stack traces are still allowed on stdout for operator debugging via docker logs.
  */
+const STACK_KEY_NAMES = new Set(['stack', 'stackTrace', 'stack_trace'])
+const STACK_LIKE = /\n\s+at\s/
+
+function stripOneLevel(value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return value
+  }
+  const inner: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (STACK_KEY_NAMES.has(k)) continue
+    if (typeof v === 'string' && STACK_LIKE.test(v)) {
+      inner[k] = v.split('\n')[0] ?? ''
+      continue
+    }
+    inner[k] = v
+  }
+  return inner
+}
+
 export function stripStackTraces(
   fields: Record<string, unknown>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  const stackLike = /\n\s+at\s/
   for (const [key, value] of Object.entries(fields)) {
-    if (key === 'stack' || key === 'stackTrace' || key === 'stack_trace') {
-      continue
-    }
-    if (typeof value === 'string' && stackLike.test(value)) {
+    if (STACK_KEY_NAMES.has(key)) continue
+    if (typeof value === 'string' && STACK_LIKE.test(value)) {
       out[key] = value.split('\n')[0] ?? ''
       continue
     }
-    out[key] = value
+    out[key] = stripOneLevel(value)
   }
   return out
 }

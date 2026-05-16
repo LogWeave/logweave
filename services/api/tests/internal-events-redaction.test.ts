@@ -47,10 +47,9 @@ describe('redactFields', () => {
 
 describe('summarizeConfig', () => {
   it('passes through allowlisted keys verbatim', () => {
-    const out = summarizeConfig({ port: 3000, logLevel: 'info', clustererUrl: 'http://x' })
+    const out = summarizeConfig({ port: 3000, logLevel: 'info' })
     assert.equal(out.port, 3000)
     assert.equal(out.logLevel, 'info')
-    assert.equal(out.clustererUrl, 'http://x')
   })
 
   it('redacts non-allowlisted keys even if they look safe', () => {
@@ -64,6 +63,21 @@ describe('summarizeConfig', () => {
     assert.match(String(out.clickhousePassword), /^<redacted:len=\d+>$/)
     assert.match(String(out.encryptionKey), /^<redacted:len=\d+>$/)
     assert.match(String(out.apiKeys), /^<redacted:len=\d+>$/)
+  })
+
+  it('emits only the hostname for URL-shaped config keys, never embedded credentials', () => {
+    const dsn = 'http://default:hunter2@db.internal:8123/logweave'
+    const out = summarizeConfig({ clickhouseUrl: dsn, clustererUrl: 'http://clusterer:8000' })
+    const serialized = JSON.stringify(out)
+    assert.equal(out.clickhouseUrl_host, 'db.internal:8123')
+    assert.equal(out.clustererUrl_host, 'clusterer:8000')
+    assert.ok(!serialized.includes('hunter2'), 'password must not appear in summarized config')
+    assert.ok(!serialized.includes('default:hunter2'), 'userinfo must not appear')
+  })
+
+  it('safe-handles unparseable URL values without crashing', () => {
+    const out = summarizeConfig({ clickhouseUrl: 'not a url' })
+    assert.equal(out.clickhouseUrl_host, '<unparseable>')
   })
 })
 
@@ -91,6 +105,20 @@ describe('stripStackTraces', () => {
   it('preserves single-line strings', () => {
     const out = stripStackTraces({ message: 'something failed' })
     assert.equal(out.message, 'something failed')
+  })
+
+  it('recurses one level into nested objects to strip nested stacks', () => {
+    const out = stripStackTraces({
+      error: {
+        stack: 'Error\n    at foo (a.js:1:1)',
+        code: 'X',
+        message: 'TypeError: boom\n    at f (x.js:1:1)',
+      },
+    })
+    const nested = out.error as Record<string, unknown>
+    assert.equal(nested.stack, undefined)
+    assert.equal(nested.code, 'X')
+    assert.equal(nested.message, 'TypeError: boom')
   })
 })
 
