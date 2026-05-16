@@ -350,6 +350,23 @@ GROUP BY tenant_id, service, environment, level, interval_start`,
 
   // Cooldown minutes on alert_rules (depends on alert_rules table)
   `ALTER TABLE logweave.alert_rules ADD COLUMN IF NOT EXISTS cooldown_minutes UInt32 DEFAULT 0`,
+
+  // 21. Internal operator event feed — structured events about LogWeave's own
+  // health (config, downstream failures, auth anomalies). 7-day TTL. Separate
+  // from customer log_metadata; never goes through Drain3. See #202.
+  `CREATE TABLE IF NOT EXISTS logweave.internal_events (
+    ts          DateTime64(3),
+    service     LowCardinality(String),
+    event       LowCardinality(String),
+    severity    LowCardinality(String),
+    code        LowCardinality(String),
+    summary     String,
+    fields      String DEFAULT '{}'
+  ) ENGINE = MergeTree()
+  PARTITION BY toYYYYMMDD(ts)
+  ORDER BY (service, event, ts)
+  TTL toDateTime(ts) + toIntervalDay(7) DELETE
+  SETTINGS ttl_only_drop_parts = 1`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS
