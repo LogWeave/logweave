@@ -11,9 +11,11 @@ from clusterer.internal_events import (
     EVENT_CATALOG,
     InternalEventEmitter,
     _reset_for_tests,
+    emit_clickhouse_failure,
     get_internal_events,
     init_internal_events,
     redact_fields,
+    strip_stack_traces,
     summarize_config,
 )
 
@@ -87,18 +89,37 @@ def test_summarize_config_allowlist_passthrough() -> None:
         {
             "port": 8000,
             "log_level": "INFO",
-            "clickhouse_host": "localhost",
-            "clusterer_url": "http://x",
             "service_version": "0.1.0",
         }
     )
     assert out == {
         "port": 8000,
         "log_level": "INFO",
-        "clickhouse_host": "localhost",
-        "clusterer_url": "http://x",
         "service_version": "0.1.0",
     }
+
+
+def test_summarize_config_url_keys_become_host_only() -> None:
+    out = summarize_config(
+        {
+            "clickhouse_url": "clickhouse://user:hunter2@db.internal:9000/logweave",
+            "port": 8000,
+        }
+    )
+    assert out["port"] == 8000
+    assert out["clickhouse_url_host"] == "db.internal:9000"
+    # No userinfo, no full URL anywhere in the JSON.
+    serialized = json.dumps(out)
+    assert "hunter2" not in serialized
+    assert "user:hunter2" not in serialized
+    assert "clickhouse://user:hunter2@db.internal:9000/logweave" not in serialized
+    assert "clickhouse_url" not in out  # original key removed in favor of _host
+
+
+def test_summarize_config_unparseable_url_does_not_crash() -> None:
+    out = summarize_config({"clickhouse_url": "not a url"})
+    # urlparse returns no hostname for "not a url"; we emit the unparseable marker.
+    assert out["clickhouse_url_host"] == "<unparseable>"
 
 
 def test_summarize_config_redacts_non_allowlisted() -> None:
@@ -252,6 +273,139 @@ def test_init_internal_events_returns_real_emitter() -> None:
     emitter = init_internal_events(fake)
     assert isinstance(emitter, InternalEventEmitter)
     assert get_internal_events() is emitter
+
+
+def test_strip_stack_traces_drops_top_level_stack_keys() -> None:
+    out = strip_stack_traces({"stack": "Error\n  at foo", "msg": "hi"})
+    assert "stack" not in out
+    assert out["msg"] == "hi"
+
+
+def test_strip_stack_traces_recurses_one_level_into_nested_dicts() -> None:
+    out = strip_stack_traces(
+        {
+            "error": {"stack": "Error\n  at foo", "code": "X"},
+            "msg": "hi",
+        }
+    )
+    assert out["msg"] == "hi"
+    assert "stack" not in out["error"]
+    assert out["error"]["code"] == "X"
+
+
+def test_strip_stack_traces_collapses_multiline_stack_strings_nested() -> None:
+    out = strip_stack_traces(
+        {
+            "error": {"detail": "Error: bad\n    at foo\n    at bar"},
+        }
+    )
+    assert out["error"]["detail"] == "Error: bad"
+
+
+# --------------------- ch failure emission helper -------------------- #
+
+
+def test_emit_clickhouse_failure_emits_query_failed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import sys
+
+    fake = _FakeCh()
+    emitter = InternalEventEmitter(ch_client=fake, is_prod=False)
+    emitter._stdout = sys.stdout  # type: ignore[attr-defined]
+    # Install as singleton so emit_clickhouse_failure picks it up.
+    import clusterer.internal_events as ie
+
+    ie._singleton = emitter  # type: ignore[attr-defined]
+
+    class BoomError(RuntimeError):
+        pass
+
+    with pytest.raises(BoomError):
+        try:
+            raise BoomError("boom")
+        except BoomError as exc:
+            emit_clickhouse_failure("query", exc)
+            raise
+
+    captured = capsys.readouterr()
+    lines = [line for line in captured.out.strip().splitlines() if line]
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["event"] == "clickhouse.query_failed"
+    assert payload["code"] == "CH_QUERY_FAILED"
+    assert payload["severity"] == "error"
+    assert payload["fields"]["query_kind"] == "query"
+    assert payload["fields"]["error_name"] == "BoomError"
+
+
+def test_emit_clickhouse_failure_detects_connection_errors(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import sys
+
+    fake = _FakeCh()
+    emitter = InternalEventEmitter(ch_client=fake, is_prod=False)
+    emitter._stdout = sys.stdout  # type: ignore[attr-defined]
+    import clusterer.internal_events as ie
+
+    ie._singleton = emitter  # type: ignore[attr-defined]
+
+    class FakeConnectionError(OSError):
+        pass
+
+    try:
+        raise FakeConnectionError("refused")
+    except FakeConnectionError as exc:
+        emit_clickhouse_failure("insert", exc)
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out.strip().splitlines()[-1])
+    assert payload["event"] == "clickhouse.unreachable"
+    assert payload["code"] == "CH_UNREACHABLE"
+    assert payload["fields"]["query_kind"] == "insert"
+
+
+def test_template_registry_query_failure_emits_and_reraises(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """End-to-end: TemplateRegistry._query_registry wraps client.query with the
+    helper, so a stubbed client that raises produces one emission and propagates."""
+    import sys
+
+    from clusterer.template_registry import TemplateRegistry
+
+    fake = _FakeCh()
+    emitter = InternalEventEmitter(ch_client=fake, is_prod=False)
+    emitter._stdout = sys.stdout  # type: ignore[attr-defined]
+    import clusterer.internal_events as ie
+
+    ie._singleton = emitter  # type: ignore[attr-defined]
+
+    class StubClient:
+        def query(self, *_args: Any, **_kwargs: Any) -> Any:
+            raise RuntimeError("ch went away")
+
+        def command(self, *_args: Any, **_kwargs: Any) -> None:
+            raise AssertionError("should not be called")
+
+        def insert(self, *_args: Any, **_kwargs: Any) -> None:
+            raise AssertionError("should not be called")
+
+    registry = TemplateRegistry(StubClient())  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="ch went away"):
+        registry._query_registry("t1", "some template")
+
+    captured = capsys.readouterr()
+    lines = [line for line in captured.out.strip().splitlines() if line]
+    # Exactly one ch.query_failed event emitted (no double-emission on the
+    # internal-events insert path, which silently swallows).
+    events = [json.loads(line) for line in lines]
+    failure_events = [e for e in events if e["event"] == "clickhouse.query_failed"]
+    assert len(failure_events) == 1
+    assert failure_events[0]["fields"]["query_kind"] == "query"
+    assert failure_events[0]["fields"]["error_name"] == "RuntimeError"
 
 
 def test_event_catalog_matches_spec() -> None:

@@ -57,22 +57,29 @@ _UNIVERSAL_FORBIDDEN_SUBSTRINGS: tuple[str, ...] = (
     "credential",
 )
 
-# Allowlist for config.loaded values. Includes both snake_case (Python) and
-# camelCase (TypeScript) variants so the contract matches across services.
+# Allowlist for config.loaded values. Anything that may carry credentials
+# (DSNs, URLs with userinfo, API keys) is intentionally NOT here — URL-shaped
+# keys are handled separately via summarize_config below.
 _CONFIG_VALUE_ALLOWLIST: frozenset[str] = frozenset(
     {
         "port",
         "log_level",
         "logLevel",
-        "clickhouse_host",
-        "clickhouseHost",
-        "clickhouse_url",  # clusterer config uses *_url
-        "clusterer_url",
-        "clustererUrl",
         "node_env",
         "nodeEnv",
         "service_version",
         "serviceVersion",
+    }
+)
+
+# Config keys whose values are URLs that may embed credentials. We emit only
+# the hostname.
+_URL_HOST_ONLY_KEYS: frozenset[str] = frozenset(
+    {
+        "clickhouse_url",
+        "clickhouseUrl",
+        "clusterer_url",
+        "clustererUrl",
     }
 )
 
@@ -110,27 +117,62 @@ def redact_fields(fields: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _safe_url_host(value: str) -> str:
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(value)
+        host = parsed.hostname or ""
+        if parsed.port:
+            host = f"{host}:{parsed.port}"
+        return host or "<unparseable>"
+    except Exception:
+        return "<unparseable>"
+
+
 def summarize_config(config: dict[str, Any]) -> dict[str, Any]:
-    """Allowlist-only passthrough for config.loaded. Non-allowlisted -> placeholder."""
+    """Allowlist-only passthrough for config.loaded. URL-shaped keys are reduced
+    to hostnames so embedded credentials cannot leak. Everything else is
+    replaced with a length placeholder."""
     out: dict[str, Any] = {}
     for key, value in config.items():
         if key in _CONFIG_VALUE_ALLOWLIST:
             out[key] = value
+        elif key in _URL_HOST_ONLY_KEYS and isinstance(value, str):
+            out[f"{key}_host"] = _safe_url_host(value)
         else:
             out[key] = _redacted_placeholder(value)
     return out
 
 
+_STACK_KEYS: frozenset[str] = frozenset({"stack", "stackTrace", "stack_trace", "traceback"})
+
+
+def _collapse_stack_value(value: Any) -> Any:
+    if isinstance(value, str) and _STACK_LIKE.search(value):
+        return value.split("\n", 1)[0]
+    return value
+
+
 def strip_stack_traces(fields: dict[str, Any]) -> dict[str, Any]:
-    """Drop stack keys and collapse multi-line stack-looking strings to their first line."""
+    """Drop stack keys and collapse multi-line stack-looking strings to first line.
+
+    Recurses one level into nested dicts so payloads like
+    ``{"error": {"stack": "..."}}`` are scrubbed too. Does not recurse deeper.
+    """
     out: dict[str, Any] = {}
     for key, value in fields.items():
-        if key in ("stack", "stackTrace", "stack_trace", "traceback"):
+        if key in _STACK_KEYS:
             continue
-        if isinstance(value, str) and _STACK_LIKE.search(value):
-            out[key] = value.split("\n", 1)[0]
+        if isinstance(value, dict):
+            nested: dict[str, Any] = {}
+            for k2, v2 in value.items():
+                if k2 in _STACK_KEYS:
+                    continue
+                nested[k2] = _collapse_stack_value(v2)
+            out[key] = nested
             continue
-        out[key] = value
+        out[key] = _collapse_stack_value(value)
     return out
 
 
@@ -289,3 +331,47 @@ def _reset_for_tests() -> None:
     """Test-only: reset the singleton between test cases."""
     global _singleton
     _singleton = None
+
+
+def _looks_like_connection_error(exc: BaseException) -> bool:
+    name = type(exc).__name__.lower()
+    return (
+        "connection" in name
+        or "timeout" in name
+        or "unreachable" in name
+        or "network" in name
+        or "socket" in name
+    )
+
+
+def emit_clickhouse_failure(
+    query_kind: str,
+    exc: BaseException,
+    *,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Emit clickhouse.query_failed (or clickhouse.unreachable for connection-class
+    errors) and return. Does not raise. Callers re-raise the underlying exception
+    themselves — this mirrors the TS DbClient: emit then propagate.
+
+    No query/command bodies are included. Only the kind, exception class name,
+    and a short message.
+    """
+    is_conn = _looks_like_connection_error(exc)
+    event = "clickhouse.unreachable" if is_conn else "clickhouse.query_failed"
+    code = "CH_UNREACHABLE" if is_conn else "CH_QUERY_FAILED"
+    fields: dict[str, Any] = {
+        "query_kind": query_kind,
+        "error_name": type(exc).__name__,
+    }
+    if extra:
+        fields.update(extra)
+    # Emission must never raise — surface from a CH failure path.
+    with contextlib.suppress(Exception):
+        get_internal_events().emit(
+            event=event,
+            severity="error",
+            code=code,
+            summary=f"clickhouse {query_kind} failed: {type(exc).__name__}",
+            fields=fields,
+        )

@@ -15,6 +15,8 @@ from clusterer.config import get_settings
 from clusterer.drain_service import DrainService, TenantLimitError
 from clusterer.embedding import EmbeddingService
 from clusterer.internal_events import (
+    _safe_url_host,
+    emit_clickhouse_failure,
     emit_config_loaded,
     get_internal_events,
     init_internal_events,
@@ -64,7 +66,7 @@ async def lifespan(app: FastAPI):
                     severity="error",
                     code="CH_UNREACHABLE",
                     summary="clickhouse unreachable after 5 attempts",
-                    fields={"host": settings.clickhouse_url},
+                    fields={"host": _safe_url_host(settings.clickhouse_url)},
                 )
                 raise
             logger.warning(
@@ -219,8 +221,9 @@ async def ready() -> Response:
             cache["ok"] = True
             cache["ts"] = now
             return JSONResponse({"status": "ready"})
-    except Exception:
+    except Exception as exc:
         logger.warning("Readiness check failed", exc_info=True)
+        emit_clickhouse_failure("query", exc)
 
     cache["ok"] = False
     return JSONResponse({"status": "not_ready"}, status_code=503)
@@ -382,11 +385,15 @@ async def _run_backfill() -> None:
         total = 0
 
         while True:
-            rows = await asyncio.to_thread(
-                ch_client.query,
-                _BACKFILL_SELECT,
-                parameters={"batch_size": batch_size},
-            )
+            try:
+                rows = await asyncio.to_thread(
+                    ch_client.query,
+                    _BACKFILL_SELECT,
+                    parameters={"batch_size": batch_size},
+                )
+            except Exception as exc:
+                emit_clickhouse_failure("query", exc)
+                raise
             if not rows.result_rows:
                 break
 
@@ -399,19 +406,23 @@ async def _run_backfill() -> None:
                 [row[0], row[1], row[2], row[3], emb, model_name]
                 for row, emb in zip(rows.result_rows, embeddings)
             ]
-            await asyncio.to_thread(
-                ch_client.insert,
-                "template_registry",
-                insert_rows,
-                column_names=[
-                    "tenant_id",
-                    "template_text",
-                    "template_id",
-                    "first_seen",
-                    "embedding",
-                    "embedding_model",
-                ],
-            )
+            try:
+                await asyncio.to_thread(
+                    ch_client.insert,
+                    "template_registry",
+                    insert_rows,
+                    column_names=[
+                        "tenant_id",
+                        "template_text",
+                        "template_id",
+                        "first_seen",
+                        "embedding",
+                        "embedding_model",
+                    ],
+                )
+            except Exception as exc:
+                emit_clickhouse_failure("insert", exc)
+                raise
             total += len(insert_rows)
             logger.info("Backfilled %d template embeddings (%d total)", len(insert_rows), total)
 
