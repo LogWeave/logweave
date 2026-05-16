@@ -1,7 +1,7 @@
 # Internal Operator Event Feed — Design Spec
 
 **Date:** 2026-05-16
-**Status:** Approved
+**Status:** Implemented (amended)
 **Issue:** #202
 
 ## Goal
@@ -87,12 +87,13 @@ Rationale for a dedicated table (per the user's call):
 
 ### Reserved `_internal` tenant
 
-We still reserve `_internal` as a tenant identifier so that:
-- Anything cross-cutting that *does* eventually want tenant-scoped query plumbing has a slot
-- API key creation refuses `_internal` with a 4xx — prevents customer collision
-- Existing tenant-scoped middleware can short-circuit for this tenant if needed
+`_internal` is reserved as a tenant identifier. Because LogWeave has no API-key
+creation endpoint today (keys come from the `LOGWEAVE_API_KEYS` env var),
+reservation is enforced at config-load: any key mapped to `_internal` causes
+zod validation to fail with a clear error.
 
-For the `internal_events` table itself, tenant scoping is irrelevant; the operator queries by `service` + `event`.
+For the `internal_events` table itself, tenant scoping is irrelevant; the operator
+queries by `service` + `event`.
 
 ### Emission path
 
@@ -105,6 +106,14 @@ For the `internal_events` table itself, tenant scoping is irrelevant; the operat
   4. Catches and swallows any CH error (stdout already has it)
 
 No retry, no in-memory buffer, no disk spool. Per the user's "not overthinking it" cue.
+
+### Per-request event coalescing
+
+`auth.key_invalid` and `ratelimit.exceeded` are per-request events. Under an
+auth-attack or runaway client they could flood `internal_events`. The emitter
+coalesces them to at most one emission per `(event, tenant_id, code)` per
+10 seconds. The clusterer side has no equivalent because it never emits per-request
+events.
 
 ### Redaction rules (non-negotiable)
 
@@ -144,10 +153,12 @@ Enforced inside the emitter. There is no way to bypass.
 - `s3.connector_failed` — error; fields: `connector_id`, `code`
 
 **Tenant + auth anomalies:**
-- `auth.key_invalid` — warn; fields: `key_prefix`, `route`
-- `auth.tenant_unknown` — warn; fields: `tenant_id`
-- `ratelimit.exceeded` — warn; fields: `tenant_id`, `route`, `limit_kind`
-- `quota.exceeded` — warn; fields: `tenant_id`, `quota_kind`
+- `auth.key_invalid` — warn; fields: `key_prefix`, `route`, `tenant_id` (set to `_unknown` since the key didn't resolve)
+- `ratelimit.exceeded` — warn; fields: `tenant_id`, `route`, `limit_kind`, `source`, `retry_after_seconds`
+
+**Dropped from MVP during implementation:**
+- `auth.tenant_unknown` — the current `KeyStore.validate()` cannot distinguish a malformed key from a key resolving to an unknown tenant; both fall through to `auth.key_invalid`. Re-introduce if/when a separate tenant directory exists.
+- `quota.exceeded` — no quota enforcement code exists. Add the event when the feature lands.
 
 Every event in this list must be added with both an emission site and a test.
 
