@@ -14,6 +14,11 @@ from clusterer.checkpoint import CheckpointManager
 from clusterer.config import get_settings
 from clusterer.drain_service import DrainService, TenantLimitError
 from clusterer.embedding import EmbeddingService
+from clusterer.internal_events import (
+    emit_config_loaded,
+    get_internal_events,
+    init_internal_events,
+)
 from clusterer.models import (
     ClusterRequest,
     ClusterResponse,
@@ -38,6 +43,10 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
 
+    # Initialize the internal-events emitter without a CH client first so we can
+    # emit clickhouse.unreachable from the connection-failure path itself.
+    init_internal_events(None)
+
     # Connect to ClickHouse with retry (Docker Compose startup race)
     ch_client = None
     for attempt in range(5):
@@ -50,6 +59,13 @@ async def lifespan(app: FastAPI):
         except Exception:
             if attempt == 4:
                 logger.exception("Failed to connect to ClickHouse after 5 attempts")
+                get_internal_events().emit(
+                    event="clickhouse.unreachable",
+                    severity="error",
+                    code="CH_UNREACHABLE",
+                    summary="clickhouse unreachable after 5 attempts",
+                    fields={"host": settings.clickhouse_url},
+                )
                 raise
             logger.warning(
                 "ClickHouse not ready (attempt %d/5), retrying in %ds",
@@ -59,6 +75,10 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(2**attempt)
 
     app.state.ch_client = ch_client
+
+    # Re-init the emitter now that we have a CH client for the dual sink.
+    init_internal_events(ch_client)
+    emit_config_loaded(settings.model_dump())
 
     drain_service = DrainService(
         sim_th=settings.drain3_sim_th,
@@ -103,9 +123,22 @@ async def lifespan(app: FastAPI):
     )
 
     logger.info("Clusterer started")
+    get_internal_events().emit(
+        event="service.started",
+        severity="info",
+        code="SERVICE_STARTED",
+        summary="clusterer started",
+        fields={"service_version": app.version},
+    )
     yield
 
     # Shutdown: cancel loop, final flush
+    get_internal_events().emit(
+        event="service.stopping",
+        severity="info",
+        code="SERVICE_STOPPING",
+        summary="clusterer stopping",
+    )
     checkpoint_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await checkpoint_task
@@ -371,8 +404,12 @@ async def _run_backfill() -> None:
                 "template_registry",
                 insert_rows,
                 column_names=[
-                    "tenant_id", "template_text", "template_id",
-                    "first_seen", "embedding", "embedding_model",
+                    "tenant_id",
+                    "template_text",
+                    "template_id",
+                    "first_seen",
+                    "embedding",
+                    "embedding_model",
                 ],
             )
             total += len(insert_rows)

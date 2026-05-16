@@ -41,7 +41,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH", "S"]
 quote-style = "double"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S108"]
+"tests/**" = ["S101", "S105", "S106", "S108", "SIM300"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["clusterer"]
