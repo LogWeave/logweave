@@ -8,6 +8,7 @@ import { ClustererHealthChecker } from './clients/clusterer.js'
 import { loadConfig } from './config.js'
 import { DbClient } from './db/client.js'
 import { initSchema } from './db/schema.js'
+import { getInternalEvents, initInternalEvents } from './internal-events/emitter.js'
 import { createLogger } from './logger.js'
 import { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import { ClusterClient } from './pipeline/cluster-client.js'
@@ -25,7 +26,23 @@ import { ThresholdEvaluator } from './watches/threshold-evaluator.js'
 import { WebhookObserver } from './watches/webhook-observer.js'
 import { WatchStore } from './watches/watch-store.js'
 
-const config = loadConfig()
+let config: ReturnType<typeof loadConfig>
+try {
+  config = loadConfig()
+} catch (err) {
+  // Emit config.invalid before any structured logger exists. Use a minimal
+  // bootstrap emitter so the failure is captured in the operator event stream.
+  initInternalEvents({ service: 'api' })
+  const message = err instanceof Error ? err.message : String(err)
+  getInternalEvents().emit({
+    event: 'config.invalid',
+    severity: 'error',
+    code: 'CONFIG_INVALID',
+    summary: 'config validation failed at startup',
+    fields: { error_message: message },
+  })
+  throw err
+}
 const logger = createLogger(config.logLevel)
 
 if (!config.clickhouseUser) {
@@ -33,6 +50,8 @@ if (!config.clickhouseUser) {
 }
 const clickhouse = createClickHouseClient(config.clickhouseUrl, config.clickhouseUser, config.clickhousePassword)
 const db = new DbClient(clickhouse)
+const internalEvents = initInternalEvents({ service: 'api', db })
+internalEvents.emitConfigLoaded(config)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)
 const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTimeoutMs, logger)
 const anomalyScorer = new AnomalyScorer({ db, logger })
@@ -64,10 +83,23 @@ const thresholdEvaluator = new ThresholdEvaluator({
 
 try {
   await initSchema(clickhouse, logger)
+  internalEvents.emit({
+    event: 'migration.applied',
+    severity: 'info',
+    code: 'SCHEMA_INITIALIZED',
+    summary: 'ClickHouse schema initialized',
+  })
   await watchStore.loadFromDb()
   await settingsStore.loadFromDb()
   await ruleStore.loadFromDb()
 } catch (err) {
+  internalEvents.emit({
+    event: 'clickhouse.unreachable',
+    severity: 'error',
+    code: 'SCHEMA_INIT_FAILED',
+    summary: 'failed to initialize ClickHouse schema',
+    fields: { host: new URL(config.clickhouseUrl).host },
+  })
   logger.fatal({ err }, 'Failed to initialize ClickHouse schema after retries')
   process.exit(1)
 }
@@ -161,6 +193,13 @@ const retention = new RetentionSweep(
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'API server started')
+  internalEvents.emit({
+    event: 'service.started',
+    severity: 'info',
+    code: 'SERVICE_STARTED',
+    summary: 'api server listening',
+    fields: { port: config.port },
+  })
 
   if (config.retentionEnabled) {
     retention.start()
@@ -194,6 +233,13 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true
 
   logger.info({ signal }, 'Shutdown signal received')
+  internalEvents.emit({
+    event: 'service.stopping',
+    severity: 'info',
+    code: 'SERVICE_STOPPING',
+    summary: 'shutdown signal received',
+    fields: { signal },
+  })
 
   // Force exit after timeout
   const forceTimer = setTimeout(() => {

@@ -1,5 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import { rateLimited } from '../errors.js'
+import { getInternalEvents } from '../internal-events/emitter.js'
 import { getKeyId, getTenantId } from './auth.js'
 
 export interface RateLimitOptions {
@@ -89,6 +90,19 @@ export function createRateLimiter(options: RateLimitOptions): RequestHandler {
       res.setHeader('Retry-After', retryAfterSeconds)
 
       const source = keyOver ? 'per-key' : 'per-tenant'
+      getInternalEvents().emit({
+        event: 'ratelimit.exceeded',
+        severity: 'warn',
+        code: keyOver ? 'RATELIMIT_PER_KEY' : 'RATELIMIT_PER_TENANT',
+        summary: 'rate limit exceeded',
+        fields: {
+          tenant_id: tenantId,
+          route: req.path,
+          limit_kind: bucketLabel,
+          source,
+          retry_after_seconds: retryAfterSeconds,
+        },
+      })
       next(rateLimited(`Rate limit exceeded (${source}). Retry after ${retryAfterSeconds} seconds.`))
       return
     }

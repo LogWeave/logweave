@@ -1,4 +1,5 @@
 import type pino from 'pino'
+import { getInternalEvents } from '../internal-events/emitter.js'
 import {
   type AlertEvent,
   type AlertObserver,
@@ -149,6 +150,13 @@ export class SlackObserver implements AlertObserver {
           { ...ctx, status: resp.status, slackError: body },
           'Slack delivery failed (permanent — will not retry)',
         )
+        getInternalEvents().emit({
+          event: 'slack.webhook_failed',
+          severity: 'warn',
+          code: 'SLACK_PERMANENT_ERROR',
+          summary: 'slack webhook returned permanent error',
+          fields: { status_code: resp.status, tenant_id: alert?.tenantId ?? '_unknown', slack_error: body },
+        })
         return
       }
 
@@ -175,6 +183,13 @@ export class SlackObserver implements AlertObserver {
         { ...ctx, status: resp.status, slackError: body },
         'Slack delivery failed after all retries',
       )
+      getInternalEvents().emit({
+        event: 'slack.webhook_failed',
+        severity: 'warn',
+        code: 'SLACK_RETRIES_EXHAUSTED',
+        summary: 'slack webhook failed after retries',
+        fields: { status_code: resp.status, tenant_id: alert?.tenantId ?? '_unknown' },
+      })
     } catch (err) {
       if (attempt < MAX_RETRIES) {
         const backoffMs = BACKOFF_BASE_MS * 2 ** attempt
@@ -183,6 +198,13 @@ export class SlackObserver implements AlertObserver {
         return this.deliver(url, payload, attempt + 1, alert)
       }
       this.logger.error({ ...ctx, err }, 'Slack delivery failed (network) after all retries')
+      getInternalEvents().emit({
+        event: 'slack.webhook_failed',
+        severity: 'warn',
+        code: 'SLACK_NETWORK_ERROR',
+        summary: 'slack webhook network error after retries',
+        fields: { tenant_id: alert?.tenantId ?? '_unknown', error_name: (err as { name?: string } | undefined)?.name ?? 'unknown' },
+      })
     }
   }
 

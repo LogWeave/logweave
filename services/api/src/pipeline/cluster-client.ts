@@ -1,4 +1,5 @@
 import type pino from 'pino'
+import { getInternalEvents } from '../internal-events/emitter.js'
 
 export interface ClusterResult {
   templateId: string
@@ -21,6 +22,14 @@ const FALLBACK_RESULT: Readonly<ClusterResult> = {
   templateId: '0',
   templateText: '[unclustered]',
   isNewTemplate: false,
+}
+
+function safeUrlHost(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return 'unknown'
+  }
 }
 
 /**
@@ -158,6 +167,17 @@ export class ClusterClient {
         { tenantId, url: this.url, err, isTimeout },
         isTimeout ? 'Clusterer request timed out' : 'Clusterer request failed',
       )
+      getInternalEvents().emit({
+        event: isTimeout ? 'clusterer.timeout' : 'clusterer.unreachable',
+        severity: 'warn',
+        code: isTimeout ? 'CLUSTERER_TIMEOUT' : 'CLUSTERER_UNREACHABLE',
+        summary: isTimeout ? 'clusterer request timed out' : 'clusterer request failed',
+        fields: {
+          url_host: safeUrlHost(this.url),
+          duration_ms: this.timeoutMs,
+          error_name: errName ?? 'unknown',
+        },
+      })
       this.onFailure()
       return this.fallback(messages.length)
     }

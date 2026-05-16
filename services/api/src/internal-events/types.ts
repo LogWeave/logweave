@@ -24,7 +24,6 @@ export const EVENT_CATALOG = [
   'slack.webhook_failed',
   's3.connector_failed',
   'auth.key_invalid',
-  'auth.tenant_unknown',
   'ratelimit.exceeded',
 ] as const
 
