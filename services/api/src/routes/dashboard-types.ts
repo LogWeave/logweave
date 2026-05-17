@@ -70,7 +70,7 @@ export const overviewQuerySchema = timeRangeSchema.extend({
 })
 
 export const sparklineQuerySchema = timeRangeSchema.extend({
-  template_ids: z
+  templateIds: z
     .string()
     .min(1)
     .transform((s) => s.split(','))
@@ -98,7 +98,7 @@ export const changesQuerySchema = z
       .refine((s) => !s || Date.now() - new Date(s).getTime() >= 600_000, {
         message: 'since must be at least 10 minutes ago',
       }),
-    deploy_id: z.string().min(1).optional(),
+    deployId: z.string().min(1).optional(),
     service: z.string().optional(),
     threshold: z.coerce.number().min(1).max(100).default(3),
     minBaseline: z.coerce.number().int().min(0).max(10_000).default(10),
@@ -111,9 +111,9 @@ export const levelsQuerySchema = timeRangeSchema.extend({
 })
 
 export const templateStatusCodesQuerySchema = timeRangeSchema.extend({
-  template_id: z.string().min(1),
-  since: z.string().optional(),
-  until: z.string().optional(),
+  templateId: z.string().min(1),
+  since: z.string().datetime({ offset: true }).optional(),
+  until: z.string().datetime({ offset: true }).optional(),
 })
 
 export const templateTrendSchema = z.object({
@@ -124,7 +124,7 @@ export type TemplateTrendQuery = z.infer<typeof templateTrendSchema>
 
 export const templateEventsSchema = z.object({
   hours: z.coerce.number().int().min(1).max(720).default(24),
-  status_code: z.coerce.number().int().optional(),
+  statusCode: z.coerce.number().int().optional(),
   since: z.string().datetime({ offset: true }).optional(),
   until: z.string().datetime({ offset: true }).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),

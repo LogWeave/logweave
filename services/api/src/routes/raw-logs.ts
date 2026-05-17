@@ -30,7 +30,7 @@ const rawLogsQuerySchema = z.object({
   hours: z.coerce.number().int().min(1).max(SCAN_DEFAULTS.maxHours).default(SCAN_DEFAULTS.defaultHours),
   limit: z.coerce.number().int().min(1).max(SCAN_DEFAULTS.maxLimit).default(SCAN_DEFAULTS.defaultLimit),
   service: z.string().min(1),
-  connector_id: z.string().optional(),
+  connectorId: z.string().optional(),
 })
 
 // ---------------------------------------------------------------------------
@@ -93,8 +93,8 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
       // Resolve connector
       let connectorConfig: ConnectorConfig | undefined
 
-      if (params.connector_id) {
-        const row = await getConnector(deps.db, tenantId, params.connector_id)
+      if (params.connectorId) {
+        const row = await getConnector(deps.db, tenantId, params.connectorId)
         if (!row) {
           throw notFound('Connector not found')
         }

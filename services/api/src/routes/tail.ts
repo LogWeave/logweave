@@ -56,9 +56,9 @@ function decrementConnections(tenantId: string): void {
 const tailFilterSchema = z.object({
   service: z.string().optional(),
   level: z.string().optional(),
-  min_level: z.string().optional(),
-  template_id: z.string().optional(),
-  min_anomaly: z.coerce.number().min(0).max(1).optional(),
+  minLevel: z.string().optional(),
+  templateId: z.string().optional(),
+  minAnomaly: z.coerce.number().min(0).max(1).optional(),
 })
 
 const pollSchema = tailFilterSchema.extend({
@@ -121,9 +121,9 @@ export function tailRoutes(deps: TailDeps): Router {
     const filterOpts = {
       service: params.service,
       level: params.level,
-      minLevel: params.min_level,
-      templateId: params.template_id,
-      minAnomalyScore: params.min_anomaly,
+      minLevel: params.minLevel,
+      templateId: params.templateId,
+      minAnomalyScore: params.minAnomaly,
       limit: params.limit,
     }
 
@@ -224,9 +224,9 @@ export function tailSseRoute(deps: TailDeps): Router {
         const replay = deps.tailBuffer.since(resolvedTenantId, afterSeq, {
           service: filters.service,
           level: filters.level,
-          minLevel: filters.min_level,
-          templateId: filters.template_id,
-          minAnomalyScore: filters.min_anomaly,
+          minLevel: filters.minLevel,
+          templateId: filters.templateId,
+          minAnomalyScore: filters.minAnomaly,
           limit: 200,
         })
         if (replay.gap) {
@@ -344,12 +344,12 @@ export function tailSseRoute(deps: TailDeps): Router {
 
 function matchesFilter(
   event: TailEvent,
-  filters: { service?: string; level?: string; min_level?: string; template_id?: string; min_anomaly?: number },
+  filters: { service?: string; level?: string; minLevel?: string; templateId?: string; minAnomaly?: number },
 ): boolean {
   if (filters.service && event.service !== filters.service) return false
   if (filters.level && event.level !== filters.level) return false
-  if (filters.min_level && !levelMeetsSeverity(event.level, filters.min_level)) return false
-  if (filters.template_id && event.templateId !== filters.template_id) return false
-  if (filters.min_anomaly !== undefined && event.anomalyScore < filters.min_anomaly) return false
+  if (filters.minLevel && !levelMeetsSeverity(event.level, filters.minLevel)) return false
+  if (filters.templateId && event.templateId !== filters.templateId) return false
+  if (filters.minAnomaly !== undefined && event.anomalyScore < filters.minAnomaly) return false
   return true
 }

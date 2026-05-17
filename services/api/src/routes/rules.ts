@@ -81,7 +81,7 @@ const updateRuleSchema = z.object({
 
 const alertQuerySchema = z.object({
   hours: z.coerce.number().int().min(1).max(720).default(24),
-  rule_id: z.string().optional(),
+  ruleId: z.string().optional(),
   service: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 })
@@ -257,7 +257,7 @@ export function ruleRoutes(deps: RuleDeps): Router {
 
       const rows = await queryAlertHistory(deps.db, tenantId, {
         hours: params.hours,
-        ruleId: params.rule_id,
+        ruleId: params.ruleId,
         service: params.service,
         limit: params.limit,
       })

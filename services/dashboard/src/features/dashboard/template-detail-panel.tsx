@@ -418,7 +418,7 @@ function DetailContent({ template }: { template: TemplateRow }) {
         variant="secondary"
         className="w-full text-xs"
         onClick={() =>
-          navigate(`/tail?template_id=${template.templateId}&service=${template.service}`)
+          navigate(`/tail?templateId=${template.templateId}&service=${template.service}`)
         }
       >
         <Radio size={14} className="mr-1.5" />

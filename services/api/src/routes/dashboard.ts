@@ -373,7 +373,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
 
         const rows = await queryTemplateSparklines(deps.db, tenantId, {
           hours: params.hours,
-          templateIds: params.template_ids,
+          templateIds: params.templateIds,
           level: params.level,
         })
 
@@ -434,12 +434,12 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       const tenantId = getTenantId(res)
       const params = getQuery<ChangesQuery>(req)
 
-      // Resolve deploy_id to since timestamp if provided
+      // Resolve deployId to since timestamp if provided
       let since = params.since
-      if (params.deploy_id) {
-        const deploy = await queryDeployById(deps.db, tenantId, params.deploy_id)
+      if (params.deployId) {
+        const deploy = await queryDeployById(deps.db, tenantId, params.deployId)
         if (!deploy) {
-          throw notFound(`Deploy ${params.deploy_id} not found`)
+          throw notFound(`Deploy ${params.deployId} not found`)
         }
         since = deploy.timestamp
       }
@@ -509,7 +509,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         const params = getQuery<TemplateStatusCodesQuery>(req)
         const rows = await queryTemplateStatusCodes(deps.db, tenantId, {
           hours: params.hours,
-          templateId: params.template_id,
+          templateId: params.templateId,
           since: params.since,
           until: params.until,
         })
@@ -606,7 +606,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
 
       const rows = await queryTemplateEvents(deps.db, tenantId, {
         templateId,
-        statusCode: params.status_code,
+        statusCode: params.statusCode,
         since: params.since,
         until: params.until,
         hours: params.hours,

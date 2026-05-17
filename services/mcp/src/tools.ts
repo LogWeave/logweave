@@ -86,7 +86,7 @@ export async function logweaveChanges(
     hours: args.hours,
     service: args.service,
     since: args.since,
-    deploy_id: args.deploy_id,
+    deployId: args.deploy_id,
   })) as ApiResponse
 
   const data = res.data as {
@@ -491,9 +491,9 @@ export async function logweaveLiveTail(
   const res = (await client.get('/tail/poll', {
     service: args.service,
     level: args.level,
-    min_level: args.min_level,
-    template_id: args.template_id,
-    min_anomaly: args.min_anomaly,
+    minLevel: args.min_level,
+    templateId: args.template_id,
+    minAnomaly: args.min_anomaly,
     seconds: args.seconds,
     limit: args.limit,
     cursor: args.cursor,
@@ -717,7 +717,7 @@ export async function logweaveTemplateEvents(
 ): Promise<string> {
   const res = (await client.get(`/templates/${encodeURIComponent(args.template_id)}/events`, {
     hours: args.hours,
-    status_code: args.status_code,
+    statusCode: args.status_code,
     limit: args.limit,
   })) as ApiResponse
 
@@ -902,7 +902,7 @@ export async function logweaveListAlerts(
 ): Promise<string> {
   const res = (await client.get('/alerts', {
     hours: args.hours,
-    rule_id: args.rule_id,
+    ruleId: args.rule_id,
     service: args.service,
     limit: args.limit,
   })) as ApiResponse
