@@ -124,7 +124,7 @@ export function useSparklines(templateIds: string[]) {
     queryFn: () =>
       api.get<ApiResponse<SparklineData>>('/v1/dashboard/template-sparklines', {
         hours,
-        template_ids: idsKey,
+        templateIds: idsKey,
         level: levelApiParam(levelFilters),
       }),
     enabled: templateIds.length > 0,
@@ -221,7 +221,7 @@ export function useTemplateStatusCodes(
     queryFn: () =>
       api.get<ApiResponse<StatusCodeCount[]>>('/v1/dashboard/template-status-codes', {
         hours,
-        template_id: templateId ?? undefined,
+        templateId: templateId ?? undefined,
         since: timeWindow?.since,
         until: timeWindow?.until,
       }),
@@ -247,7 +247,7 @@ export function useTemplateEvents(templateId: string | null, statusCode?: number
     queryFn: () =>
       api.get<ApiResponse<TemplateEvent[]>>(`/v1/templates/${templateId}/events`, {
         hours,
-        status_code: statusCode,
+        statusCode,
         limit: 20,
       }),
     enabled: templateId !== null,

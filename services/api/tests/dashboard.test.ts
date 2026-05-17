@@ -620,7 +620,7 @@ describe('GET /v1/dashboard/template-sparklines', () => {
     const ids = Array.from({ length: 21 }, (_, i) => `tmpl-${i}`).join(',')
 
     const res = await request(app)
-      .get(`/v1/dashboard/template-sparklines?template_ids=${ids}`)
+      .get(`/v1/dashboard/template-sparklines?templateIds=${ids}`)
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 400)
@@ -631,7 +631,7 @@ describe('GET /v1/dashboard/template-sparklines', () => {
     const app = createTestApp(sparklineQueryMap())
 
     const res = await request(app)
-      .get('/v1/dashboard/template-sparklines?template_ids=tmpl-1,tmpl-2')
+      .get('/v1/dashboard/template-sparklines?templateIds=tmpl-1,tmpl-2')
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
@@ -650,7 +650,7 @@ describe('GET /v1/dashboard/template-sparklines', () => {
   it('returns 401 without auth header', async () => {
     const app = createTestApp(sparklineQueryMap())
 
-    const res = await request(app).get('/v1/dashboard/template-sparklines?template_ids=tmpl-1')
+    const res = await request(app).get('/v1/dashboard/template-sparklines?templateIds=tmpl-1')
 
     assert.equal(res.status, 401)
     assert.equal(res.body.error.code, 'UNAUTHORIZED')
@@ -660,7 +660,7 @@ describe('GET /v1/dashboard/template-sparklines', () => {
     const app = createTestApp(sparklineQueryMap())
 
     const res = await request(app)
-      .get('/v1/dashboard/template-sparklines?template_ids=')
+      .get('/v1/dashboard/template-sparklines?templateIds=')
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 400)
@@ -672,7 +672,7 @@ describe('GET /v1/dashboard/template-sparklines', () => {
     const ids = Array.from({ length: 20 }, (_, i) => `tmpl-${i}`).join(',')
 
     const res = await request(app)
-      .get(`/v1/dashboard/template-sparklines?template_ids=${ids}`)
+      .get(`/v1/dashboard/template-sparklines?templateIds=${ids}`)
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
@@ -682,7 +682,7 @@ describe('GET /v1/dashboard/template-sparklines', () => {
     const app = createTestApp(sparklineQueryMap())
 
     const res = await request(app)
-      .get('/v1/dashboard/template-sparklines?template_ids=tmpl-1,tmpl-2')
+      .get('/v1/dashboard/template-sparklines?templateIds=tmpl-1,tmpl-2')
       .set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
@@ -1031,7 +1031,7 @@ describe('cross-cutting: auth enforcement', () => {
     '/v1/dashboard/services',
     '/v1/dashboard/volume',
     '/v1/dashboard/overview',
-    '/v1/dashboard/template-sparklines?template_ids=tmpl-1',
+    '/v1/dashboard/template-sparklines?templateIds=tmpl-1',
     '/v1/dashboard/clustering-health',
     '/v1/dashboard/changes',
   ]

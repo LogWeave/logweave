@@ -572,7 +572,7 @@ describe('GET /v1/alerts', () => {
   it('accepts rule_id filter param', async () => {
     const { app } = createTestApp({ queryResults: mockAlertRows })
     const res = await request(app)
-      .get('/v1/alerts?rule_id=rule-1')
+      .get('/v1/alerts?ruleId=rule-1')
       .set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
@@ -590,7 +590,7 @@ describe('GET /v1/alerts', () => {
   it('accepts combined filter params', async () => {
     const { app } = createTestApp({ queryResults: [] })
     const res = await request(app)
-      .get('/v1/alerts?hours=48&rule_id=rule-1&service=payment-service&limit=50')
+      .get('/v1/alerts?hours=48&ruleId=rule-1&service=payment-service&limit=50')
       .set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)

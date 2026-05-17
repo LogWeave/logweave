@@ -8,9 +8,9 @@ import {
   queryServiceOutlier,
   queryTraceDetails,
 } from '../db/correlation-queries.js'
-import { HttpStatus } from '../http-status.js'
+import { notFound, validationError } from '../errors.js'
+import { isoTimestamp, respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
-import { respond } from '../lib/respond.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 
 // ---------------------------------------------------------------------------
@@ -148,23 +148,14 @@ export function correlationRoutes(deps: CorrelationDeps): Router {
       const tenantId = getTenantId(res)
       const traceId = (req.params.traceId as string)?.trim()
       if (!traceId) {
-        res.status(HttpStatus.BAD_REQUEST).json({
-          error: { code: 'BAD_REQUEST', message: 'traceId parameter is required' },
-        })
-        return
+        throw validationError('traceId parameter is required')
       }
 
       const { hours } = getQuery<z.infer<typeof traceQuerySchema>>(req)
       const rows = await queryTraceDetails(deps.db, tenantId, { traceId, hours })
 
       if (rows.length === 0) {
-        res.status(HttpStatus.NOT_FOUND).json({
-          error: {
-            code: 'NOT_FOUND',
-            message: `Trace ${traceId} not found in the last ${hours} hours`,
-          },
-        })
-        return
+        throw notFound(`Trace ${traceId} not found in the last ${hours} hours`)
       }
 
       const data: TraceEvent[] = rows.map((r) => ({
@@ -172,7 +163,7 @@ export function correlationRoutes(deps: CorrelationDeps): Router {
         templateId: r.template_id,
         templateText: r.template_text,
         level: r.level,
-        timestamp: r.timestamp,
+        timestamp: isoTimestamp(r.timestamp) ?? r.timestamp,
         statusCode: Number(r.status_code) || 0,
         durationMs: Number(r.duration_ms) || 0,
         route: r.route,

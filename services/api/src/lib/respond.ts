@@ -8,22 +8,35 @@ interface ApiResponse<T> {
 }
 
 /**
- * Standard API response helper with time range and retention metadata.
- * Shared across dashboard, correlation, and raw-logs routes.
+ * Standard API response helper. Always emits `fetchedAt`.
+ * Emits both `timeRange` and `dataRetention` only when `hours` is supplied —
+ * non-time-windowed routes (settings, watches, rules, connectors, tail token,
+ * etc.) shouldn't advertise retention because their payload isn't bounded by
+ * a time window.
  */
 export function respond<T>(
   res: Response,
   data: T,
-  meta: Record<string, unknown> & { hours: number },
+  meta: Record<string, unknown> & { hours?: number } = {},
 ): void {
   const body: ApiResponse<T> = {
     data,
     meta: {
       ...meta,
       fetchedAt: new Date().toISOString(),
-      timeRange: formatTimeRange(meta.hours),
-      dataRetention: DATA_RETENTION,
+      ...(meta.hours !== undefined
+        ? { timeRange: formatTimeRange(meta.hours), dataRetention: DATA_RETENTION }
+        : {}),
     },
   }
   res.status(HttpStatus.OK).json(body)
+}
+
+/**
+ * Normalize timestamps (ClickHouse 'YYYY-MM-DD HH:MM:SS.SSS' or Date) to ISO 8601 with Z.
+ */
+export function isoTimestamp(value: string | Date | null | undefined): string | undefined {
+  if (value === null || value === undefined) return undefined
+  const d = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString()
 }

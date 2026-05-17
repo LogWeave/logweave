@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { DbClient } from '../db/client.js'
 import { insertDeploy, queryDeploys } from '../db/deploy-queries.js'
 import { HttpStatus } from '../http-status.js'
+import { isoTimestamp, respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import { validateBody } from '../middleware/validate.js'
@@ -77,13 +78,10 @@ export function deployRoutes(deps: DeploysDeps): Router {
         service: r.service,
         version: r.version,
         commitSha: r.commit_sha,
-        timestamp: r.timestamp,
+        timestamp: isoTimestamp(r.timestamp) ?? r.timestamp,
       }))
 
-      res.status(HttpStatus.OK).json({
-        data,
-        meta: { count: data.length, limit: params.limit, fetchedAt: new Date().toISOString() },
-      })
+      respond(res, data, { count: data.length, limit: params.limit })
     } catch (err) {
       next(err)
     }

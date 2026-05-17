@@ -8,7 +8,8 @@
     "logweave-mcp": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -25,11 +26,20 @@
     "observability"
   ],
   "license": "MIT",
+  "homepage": "https://github.com/RobertDicker/logweave/tree/main/services/mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RobertDicker/logweave.git",
+    "directory": "services/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/RobertDicker/logweave/issues"
+  },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "~1.29.0",
     "zod": "^4.4.1"
   },
   "devDependencies": {

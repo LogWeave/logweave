@@ -128,6 +128,8 @@ function buildPatterns(
 export function costRoutes(deps: CostDeps): Router {
   const router = Router()
 
+  // Singular 'cost' (not plural like /deploys, /watches) — this URL names an
+  // operation/report on the namespace, not a collection of cost entities.
   router.get('/cost/analysis', validateQuery(costAnalysisSchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)

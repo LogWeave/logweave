@@ -97,8 +97,8 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
     const params = new URLSearchParams()
     if (filters.service) params.set('service', filters.service)
     if (filters.level) params.set('level', filters.level)
-    if (filters.templateId) params.set('template_id', filters.templateId)
-    if (filters.minAnomaly !== undefined) params.set('min_anomaly', String(filters.minAnomaly))
+    if (filters.templateId) params.set('templateId', filters.templateId)
+    if (filters.minAnomaly !== undefined) params.set('minAnomaly', String(filters.minAnomaly))
     params.set('token', sseToken)
 
     const base = config.apiUrl || window.location.origin

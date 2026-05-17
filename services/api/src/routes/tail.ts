@@ -3,8 +3,9 @@ import type pino from 'pino'
 import { z } from 'zod'
 import { insertAuditEvent } from '../db/audit-queries.js'
 import type { DbClient } from '../db/client.js'
+import { AppError, unauthorized } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
-import { unauthorized } from '../errors.js'
+import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import type { TailBuffer } from '../tail/buffer.js'
@@ -55,9 +56,9 @@ function decrementConnections(tenantId: string): void {
 const tailFilterSchema = z.object({
   service: z.string().optional(),
   level: z.string().optional(),
-  min_level: z.string().optional(),
-  template_id: z.string().optional(),
-  min_anomaly: z.coerce.number().min(0).max(1).optional(),
+  minLevel: z.string().optional(),
+  templateId: z.string().optional(),
+  minAnomaly: z.coerce.number().min(0).max(1).optional(),
 })
 
 const pollSchema = tailFilterSchema.extend({
@@ -100,10 +101,7 @@ export function tailRoutes(deps: TailDeps): Router {
     const tenantId = getTenantId(res)
     const token = deps.tailTokenStore.issue(tenantId)
 
-    res.status(HttpStatus.OK).json({
-      data: { token },
-      meta: { fetchedAt: new Date().toISOString() },
-    })
+    respond(res, { token })
   })
 
   // GET /tail/poll — cursor-based polling for MCP tool
@@ -112,13 +110,9 @@ export function tailRoutes(deps: TailDeps): Router {
     const tailMode = deps.settingsStore.get(tenantId).tailMode
 
     if (!tailMode || tailMode === 'disabled') {
-      res.status(HttpStatus.OK).json({
-        data: { events: [], cursor: 0 },
-        meta: {
-          count: 0,
-          fetchedAt: new Date().toISOString(),
-          message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.',
-        },
+      respond(res, { events: [], cursor: 0 }, {
+        count: 0,
+        message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.',
       })
       return
     }
@@ -127,9 +121,9 @@ export function tailRoutes(deps: TailDeps): Router {
     const filterOpts = {
       service: params.service,
       level: params.level,
-      minLevel: params.min_level,
-      templateId: params.template_id,
-      minAnomalyScore: params.min_anomaly,
+      minLevel: params.minLevel,
+      templateId: params.templateId,
+      minAnomalyScore: params.minAnomaly,
       limit: params.limit,
     }
 
@@ -137,18 +131,12 @@ export function tailRoutes(deps: TailDeps): Router {
       ? deps.tailBuffer.since(tenantId, params.cursor, filterOpts)
       : deps.tailBuffer.recent(tenantId, { ...filterOpts, seconds: params.seconds })
 
-    res.status(HttpStatus.OK).json({
-      data: {
-        events: result.events,
-        cursor: result.cursor,
-        gap: result.gap,
-        missedEstimate: result.missedEstimate,
-      },
-      meta: {
-        count: result.events.length,
-        fetchedAt: new Date().toISOString(),
-      },
-    })
+    respond(res, {
+      events: result.events,
+      cursor: result.cursor,
+      gap: result.gap,
+      missedEstimate: result.missedEstimate,
+    }, { count: result.events.length })
   })
 
   // GET /tail/stats — buffer utilization metrics
@@ -159,13 +147,7 @@ export function tailRoutes(deps: TailDeps): Router {
       connectionsActive += count
     }
 
-    res.status(HttpStatus.OK).json({
-      data: {
-        ...stats,
-        connectionsActive,
-      },
-      meta: { fetchedAt: new Date().toISOString() },
-    })
+    respond(res, { ...stats, connectionsActive })
   })
 
   return router
@@ -210,17 +192,13 @@ export function tailSseRoute(deps: TailDeps): Router {
 
     // Check if tail is explicitly disabled
     if (tailMode === 'disabled') {
-      res.status(HttpStatus.FORBIDDEN).json({
-        error: { code: 'TAIL_DISABLED', message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.' },
-      })
+      next(new AppError(HttpStatus.FORBIDDEN, 'TAIL_DISABLED', 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.'))
       return
     }
 
     // Check connection limit
     if (getConnectionCount(resolvedTenantId) >= maxConn) {
-      res.status(HttpStatus.TOO_MANY_REQUESTS).json({
-        error: { code: 'CONNECTION_LIMIT', message: `Maximum tail connections reached (${maxConn}). Close an existing connection first.` },
-      })
+      next(new AppError(HttpStatus.TOO_MANY_REQUESTS, 'CONNECTION_LIMIT', `Maximum tail connections reached (${maxConn}). Close an existing connection first.`))
       return
     }
 
@@ -246,9 +224,9 @@ export function tailSseRoute(deps: TailDeps): Router {
         const replay = deps.tailBuffer.since(resolvedTenantId, afterSeq, {
           service: filters.service,
           level: filters.level,
-          minLevel: filters.min_level,
-          templateId: filters.template_id,
-          minAnomalyScore: filters.min_anomaly,
+          minLevel: filters.minLevel,
+          templateId: filters.templateId,
+          minAnomalyScore: filters.minAnomaly,
           limit: 200,
         })
         if (replay.gap) {
@@ -366,12 +344,12 @@ export function tailSseRoute(deps: TailDeps): Router {
 
 function matchesFilter(
   event: TailEvent,
-  filters: { service?: string; level?: string; min_level?: string; template_id?: string; min_anomaly?: number },
+  filters: { service?: string; level?: string; minLevel?: string; templateId?: string; minAnomaly?: number },
 ): boolean {
   if (filters.service && event.service !== filters.service) return false
   if (filters.level && event.level !== filters.level) return false
-  if (filters.min_level && !levelMeetsSeverity(event.level, filters.min_level)) return false
-  if (filters.template_id && event.templateId !== filters.template_id) return false
-  if (filters.min_anomaly !== undefined && event.anomalyScore < filters.min_anomaly) return false
+  if (filters.minLevel && !levelMeetsSeverity(event.level, filters.minLevel)) return false
+  if (filters.templateId && event.templateId !== filters.templateId) return false
+  if (filters.minAnomaly !== undefined && event.anomalyScore < filters.minAnomaly) return false
   return true
 }

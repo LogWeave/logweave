@@ -1,11 +1,11 @@
 import { Router } from 'express'
+import { validationError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { MAX_BATCH_SIZE } from '../lib/constants.js'
 import type { IngestDeps } from '../lib/ingest-deps.js'
 import { getTenantId } from '../middleware/auth.js'
 import { ingestBatch } from '../pipeline/ingest.js'
 import { GenericLogParser } from '../pipeline/parse-generic.js'
-
-import { MAX_BATCH_SIZE } from '../lib/constants.js'
 
 const genericParser = new GenericLogParser()
 
@@ -21,20 +21,11 @@ export function genericIngestRoutes(deps: IngestDeps): Router {
       const events: unknown[] = Array.isArray(body) ? body : [body]
 
       if (events.length === 0) {
-        res.status(HttpStatus.BAD_REQUEST).json({
-          error: { code: 'VALIDATION_ERROR', message: 'At least one event required' },
-        })
-        return
+        throw validationError('At least one event required')
       }
 
       if (events.length > MAX_BATCH_SIZE) {
-        res.status(HttpStatus.BAD_REQUEST).json({
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: `Batch size ${events.length} exceeds maximum of ${MAX_BATCH_SIZE}`,
-          },
-        })
-        return
+        throw validationError(`Batch size ${events.length} exceeds maximum of ${MAX_BATCH_SIZE}`)
       }
 
       const result = await ingestBatch(
