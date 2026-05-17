@@ -5,6 +5,7 @@ import { insertAuditEvent } from '../db/audit-queries.js'
 import type { DbClient } from '../db/client.js'
 import { AppError, unauthorized } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import type { TailBuffer } from '../tail/buffer.js'
@@ -100,10 +101,7 @@ export function tailRoutes(deps: TailDeps): Router {
     const tenantId = getTenantId(res)
     const token = deps.tailTokenStore.issue(tenantId)
 
-    res.status(HttpStatus.OK).json({
-      data: { token },
-      meta: { fetchedAt: new Date().toISOString() },
-    })
+    respond(res, { token })
   })
 
   // GET /tail/poll — cursor-based polling for MCP tool
@@ -112,13 +110,9 @@ export function tailRoutes(deps: TailDeps): Router {
     const tailMode = deps.settingsStore.get(tenantId).tailMode
 
     if (!tailMode || tailMode === 'disabled') {
-      res.status(HttpStatus.OK).json({
-        data: { events: [], cursor: 0 },
-        meta: {
-          count: 0,
-          fetchedAt: new Date().toISOString(),
-          message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.',
-        },
+      respond(res, { events: [], cursor: 0 }, {
+        count: 0,
+        message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.',
       })
       return
     }
@@ -137,18 +131,12 @@ export function tailRoutes(deps: TailDeps): Router {
       ? deps.tailBuffer.since(tenantId, params.cursor, filterOpts)
       : deps.tailBuffer.recent(tenantId, { ...filterOpts, seconds: params.seconds })
 
-    res.status(HttpStatus.OK).json({
-      data: {
-        events: result.events,
-        cursor: result.cursor,
-        gap: result.gap,
-        missedEstimate: result.missedEstimate,
-      },
-      meta: {
-        count: result.events.length,
-        fetchedAt: new Date().toISOString(),
-      },
-    })
+    respond(res, {
+      events: result.events,
+      cursor: result.cursor,
+      gap: result.gap,
+      missedEstimate: result.missedEstimate,
+    }, { count: result.events.length })
   })
 
   // GET /tail/stats — buffer utilization metrics
@@ -159,13 +147,7 @@ export function tailRoutes(deps: TailDeps): Router {
       connectionsActive += count
     }
 
-    res.status(HttpStatus.OK).json({
-      data: {
-        ...stats,
-        connectionsActive,
-      },
-      meta: { fetchedAt: new Date().toISOString() },
-    })
+    respond(res, { ...stats, connectionsActive })
   })
 
   return router

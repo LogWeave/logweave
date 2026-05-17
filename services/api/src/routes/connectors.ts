@@ -13,6 +13,7 @@ import { getAdapter } from '../connectors/shared.js'
 import type { ConnectorConfig } from '../connectors/types.js'
 import { notFound } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { respond } from '../lib/respond.js'
 import { getTenantId, requireAdmin } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { uuidv7 } from '../uuid.js'
@@ -229,10 +230,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
         })),
       )
 
-      res.status(HttpStatus.OK).json({
-        data,
-        meta: { count: data.length, fetchedAt: new Date().toISOString() },
-      })
+      respond(res, data, { count: data.length })
     } catch (err) {
       next(err)
     }
@@ -253,10 +251,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
       const adapter = getAdapter(config.type)
       const result = await adapter.testConnection(config)
 
-      res.status(HttpStatus.OK).json({
-        data: result,
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, result)
     } catch (err) {
       next(err)
     }

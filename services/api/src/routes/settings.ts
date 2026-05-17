@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { DbClient } from '../db/client.js'
 import { AppError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
@@ -35,13 +36,10 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const tenantId = getTenantId(res)
       const settings = deps.settingsStore.get(tenantId)
 
-      res.status(HttpStatus.OK).json({
-        data: {
-          configured: settings.slackWebhookUrl !== undefined,
-          lastTestStatus: settings.lastTestStatus ?? null,
-          lastTestAt: settings.lastTestAt ?? null,
-        },
-        meta: { fetchedAt: new Date().toISOString() },
+      respond(res, {
+        configured: settings.slackWebhookUrl !== undefined,
+        lastTestStatus: settings.lastTestStatus ?? null,
+        lastTestAt: settings.lastTestAt ?? null,
       })
     } catch (err) {
       next(err)
@@ -57,10 +55,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       await deps.settingsStore.set(tenantId, { slackWebhookUrl: body.webhookUrl })
       deps.logger.info({ tenantId }, 'Slack webhook configured')
 
-      res.status(HttpStatus.OK).json({
-        data: { configured: true },
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, { configured: true })
     } catch (err) {
       next(err)
     }
@@ -85,10 +80,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const tenantId = getTenantId(res)
       const settings = deps.settingsStore.get(tenantId)
 
-      res.status(HttpStatus.OK).json({
-        data: { extractTags: settings.extractTags ?? [] },
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, { extractTags: settings.extractTags ?? [] })
     } catch (err) {
       next(err)
     }
@@ -117,10 +109,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       await deps.settingsStore.set(tenantId, { extractTags: body.extractTags })
       deps.logger.info({ tenantId, tagCount: body.extractTags.length }, 'Tag extraction keys updated')
 
-      res.status(HttpStatus.OK).json({
-        data: { extractTags: body.extractTags },
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, { extractTags: body.extractTags })
     } catch (err) {
       next(err)
     }
@@ -147,14 +136,11 @@ export function settingsRoutes(deps: SettingsDeps): Router {
         hasEvents = rows.length > 0
       }
 
-      res.status(HttpStatus.OK).json({
-        data: {
-          hasEvents,
-          mcpConnected: settings.lastMcpConnectionAt !== undefined,
-          clusteringConfigured: settings.clusteringSensitivity !== undefined,
-          dismissed: settings.onboardingDismissedAt !== undefined,
-        },
-        meta: { fetchedAt: new Date().toISOString() },
+      respond(res, {
+        hasEvents,
+        mcpConnected: settings.lastMcpConnectionAt !== undefined,
+        clusteringConfigured: settings.clusteringSensitivity !== undefined,
+        dismissed: settings.onboardingDismissedAt !== undefined,
       })
     } catch (err) {
       next(err)
@@ -174,10 +160,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
         deps.logger.info({ tenantId }, 'Onboarding dismissed')
       }
 
-      res.status(HttpStatus.OK).json({
-        data: { dismissed: true },
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, { dismissed: true })
     } catch (err) {
       next(err)
     }
@@ -196,10 +179,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       await deps.settingsStore.set(tenantId, { clusteringSensitivity: body.sensitivity })
       deps.logger.info({ tenantId, sensitivity: body.sensitivity }, 'Clustering sensitivity updated')
 
-      res.status(HttpStatus.OK).json({
-        data: { sensitivity: body.sensitivity },
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, { sensitivity: body.sensitivity })
     } catch (err) {
       next(err)
     }
@@ -211,10 +191,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const tenantId = getTenantId(res)
       const settings = deps.settingsStore.get(tenantId)
 
-      res.status(HttpStatus.OK).json({
-        data: { sensitivity: settings.clusteringSensitivity ?? null },
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, { sensitivity: settings.clusteringSensitivity ?? null })
     } catch (err) {
       next(err)
     }
@@ -231,9 +208,8 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const body = req.body as z.infer<typeof previewSchema>
 
       if (!deps.clusterClient || !deps.db) {
-        res.status(HttpStatus.OK).json({
-          data: { patternCount: 0, compressionRatio: 0, sampleTemplates: [] },
-          meta: { fetchedAt: new Date().toISOString(), message: 'Preview unavailable — clusterer not connected' },
+        respond(res, { patternCount: 0, compressionRatio: 0, sampleTemplates: [] }, {
+          message: 'Preview unavailable — clusterer not connected',
         })
         return
       }
@@ -252,9 +228,8 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       })
 
       if (rows.length === 0) {
-        res.status(HttpStatus.OK).json({
-          data: { patternCount: 0, compressionRatio: 0, sampleTemplates: [] },
-          meta: { fetchedAt: new Date().toISOString(), message: 'No log data to preview — send some logs first' },
+        respond(res, { patternCount: 0, compressionRatio: 0, sampleTemplates: [] }, {
+          message: 'No log data to preview — send some logs first',
         })
         return
       }
@@ -263,17 +238,13 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const result = await deps.clusterClient.preview(messages, body.sensitivity)
 
       if (!result) {
-        res.status(HttpStatus.OK).json({
-          data: { patternCount: 0, compressionRatio: 0, sampleTemplates: [] },
-          meta: { fetchedAt: new Date().toISOString(), message: 'Clusterer preview failed — try again later' },
+        respond(res, { patternCount: 0, compressionRatio: 0, sampleTemplates: [] }, {
+          message: 'Clusterer preview failed — try again later',
         })
         return
       }
 
-      res.status(HttpStatus.OK).json({
-        data: result,
-        meta: { fetchedAt: new Date().toISOString(), sampleSize: messages.length },
-      })
+      respond(res, result, { sampleSize: messages.length })
     } catch (err) {
       next(err)
     }
@@ -298,10 +269,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
       deps.logger.info({ tenantId, sensitivity: body.sensitivity, cleared }, 'Clustering reset')
 
-      res.status(HttpStatus.OK).json({
-        data: { sensitivity: body.sensitivity, cleared },
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, { sensitivity: body.sensitivity, cleared })
     } catch (err) {
       next(err)
     }
@@ -313,17 +281,14 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const tenantId = getTenantId(res)
       const settings = deps.settingsStore.get(tenantId)
 
-      res.status(HttpStatus.OK).json({
-        data: {
-          noiseDebugPct: settings.costNoiseDebugPct ?? 5,
-          reviewInfoPct: settings.costReviewInfoPct ?? 10,
-          reviewWarnPct: settings.costReviewWarnPct ?? 20,
-          isCustom:
-            settings.costNoiseDebugPct !== undefined ||
-            settings.costReviewInfoPct !== undefined ||
-            settings.costReviewWarnPct !== undefined,
-        },
-        meta: { fetchedAt: new Date().toISOString() },
+      respond(res, {
+        noiseDebugPct: settings.costNoiseDebugPct ?? 5,
+        reviewInfoPct: settings.costReviewInfoPct ?? 10,
+        reviewWarnPct: settings.costReviewWarnPct ?? 20,
+        isCustom:
+          settings.costNoiseDebugPct !== undefined ||
+          settings.costReviewInfoPct !== undefined ||
+          settings.costReviewWarnPct !== undefined,
       })
     } catch (err) {
       next(err)
@@ -351,14 +316,11 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       deps.logger.info({ tenantId, ...updates }, 'Cost optimizer thresholds updated')
 
       const settings = deps.settingsStore.get(tenantId)
-      res.status(HttpStatus.OK).json({
-        data: {
-          noiseDebugPct: settings.costNoiseDebugPct ?? 5,
-          reviewInfoPct: settings.costReviewInfoPct ?? 10,
-          reviewWarnPct: settings.costReviewWarnPct ?? 20,
-          isCustom: true,
-        },
-        meta: { fetchedAt: new Date().toISOString() },
+      respond(res, {
+        noiseDebugPct: settings.costNoiseDebugPct ?? 5,
+        reviewInfoPct: settings.costReviewInfoPct ?? 10,
+        reviewWarnPct: settings.costReviewWarnPct ?? 20,
+        isCustom: true,
       })
     } catch (err) {
       next(err)
@@ -386,12 +348,9 @@ export function settingsRoutes(deps: SettingsDeps): Router {
         lastTestAt: new Date().toISOString(),
       })
 
-      res.status(HttpStatus.OK).json({
-        data: {
-          success: result.success,
-          ...(result.error ? { error: result.error } : {}),
-        },
-        meta: { fetchedAt: new Date().toISOString() },
+      respond(res, {
+        success: result.success,
+        ...(result.error ? { error: result.error } : {}),
       })
     } catch (err) {
       next(err)
@@ -403,12 +362,9 @@ export function settingsRoutes(deps: SettingsDeps): Router {
     try {
       const tenantId = getTenantId(res)
       const settings = deps.settingsStore.get(tenantId)
-      res.status(HttpStatus.OK).json({
-        data: {
-          minBaseline: settings.spikeMinBaseline ?? 10,
-          isCustom: settings.spikeMinBaseline !== undefined,
-        },
-        meta: { fetchedAt: new Date().toISOString() },
+      respond(res, {
+        minBaseline: settings.spikeMinBaseline ?? 10,
+        isCustom: settings.spikeMinBaseline !== undefined,
       })
     } catch (err) {
       next(err)
@@ -426,10 +382,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const body = req.body as z.infer<typeof spikeBaselineSchema>
       await deps.settingsStore.set(tenantId, { spikeMinBaseline: body.minBaseline })
       deps.logger.info({ tenantId, spikeMinBaseline: body.minBaseline }, 'Spike min baseline updated')
-      res.status(HttpStatus.OK).json({
-        data: { minBaseline: body.minBaseline, isCustom: true },
-        meta: { fetchedAt: new Date().toISOString() },
-      })
+      respond(res, { minBaseline: body.minBaseline, isCustom: true })
     } catch (err) {
       next(err)
     }
