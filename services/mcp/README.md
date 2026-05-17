@@ -45,7 +45,7 @@ Add to your MCP config (`~/.config/claude-desktop/config.json` or `.mcp.json`):
 
 ## Tools
 
-The server registers 27 tools (plus 3 dev-only tools when `LOGWEAVE_DEV=1`):
+The server registers 26 tools (plus 3 dev-only tools when `LOGWEAVE_DEV=1`):
 
 **Overview & health** — `overview`, `service_health`, `clustering_health`, `list_services`, `level_distribution`, `compare_periods`
 

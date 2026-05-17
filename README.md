@@ -14,7 +14,7 @@
 
 ## What It Does
 
-You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 25 MCP tools. Raw logs stay in your infrastructure — LogWeave stores only the patterns, metadata, and custom fields you configure.
+You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 26 MCP tools. Raw logs stay in your infrastructure — LogWeave stores only the patterns, metadata, and custom fields you configure.
 
 LogWeave works alongside your existing logging stack (Datadog, Grafana, CloudWatch). It adds an AI-queryable intelligence layer on top — it doesn't replace your log storage or search tools.
 
@@ -28,7 +28,7 @@ cp .env.production.example .env
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Open `http://localhost:3000` and log in with `admin` / `admin` (you'll be prompted to change the password).
+On first start, LogWeave creates a default `admin` user and prints a one-time random password to **stderr** (look for the `LOGWEAVE BOOTSTRAP` banner). Capture it from your container logs (`docker compose logs api`) and log in at `http://localhost:3000` — you'll be required to change it on first login.
 
 **Send your first log:**
 
@@ -68,7 +68,7 @@ Anchor any query to a deployment and instantly see what's new, what's spiking, a
 
 ### Anomaly Detection
 
-Every service is continuously scored against its 7-day baseline using z-score analysis. No manual thresholds to configure — LogWeave tells you whether an error rate is normal or a statistical outlier automatically.
+Each log pattern is continuously scored against its rolling baseline using z-score analysis. No manual thresholds to configure — LogWeave tells you whether an error rate is normal or a statistical outlier automatically.
 
 ![Unusual Activity](screenshots/mcp-unusual-activity.png)
 
@@ -90,7 +90,7 @@ Available via dashboard widget, REST API (`GET /v1/cost/analysis`), and MCP tool
 
 Millions of individual log lines become hundreds of meaningful patterns with occurrence counts, sparkline trends, and anomaly scores. You see signals, not noise.
 
-### 25 MCP Tools
+### 26 MCP Tools
 
 Your AI assistant gets structured access to your production runtime:
 
@@ -129,7 +129,7 @@ Click any pattern to drill into occurrence counts, status code breakdown, and ho
 
 ### Live Tail
 
-Stream logs in real-time across all services with filtering by service, level, and pattern. 8+ events/sec with zero lag.
+Stream logs in real-time across all services with filtering by service, level, and pattern.
 
 ![Live Tail](screenshots/live-tail.png)
 
