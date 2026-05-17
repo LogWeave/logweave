@@ -823,7 +823,7 @@ export async function logweaveCreateRule(
   client: LogWeaveClient,
   args: {
     name: string
-    rule_type?: string
+    rule_type: 'threshold' | 'template_watch'
     metric?: string
     service?: string
     operator?: string
@@ -834,16 +834,16 @@ export async function logweaveCreateRule(
     channels?: string[]
   },
 ): Promise<string> {
-  const ruleType = args.rule_type === 'template_watch' ? 'template_watch' : 'threshold'
-
-  if (ruleType === 'template_watch') {
+  if (args.rule_type === 'template_watch') {
     if (!args.template_id) return 'Error: template_id is required for template_watch rules. Get the ID from error_patterns or search_templates.'
-    if (!args.template_text) return 'Error: template_text is required for template_watch rules. Copy the pattern text from the pattern listing.'
 
     const body = {
       name: args.name,
       ruleType: 'template_watch',
-      config: { templateId: args.template_id, templateText: args.template_text },
+      config: {
+        templateId: args.template_id,
+        ...(args.template_text ? { templateText: args.template_text } : {}),
+      },
       channels: args.channels ?? [],
     }
     const res = (await client.post('/rules', body)) as ApiResponse
@@ -853,7 +853,7 @@ export async function logweaveCreateRule(
     text += `- Name: ${rule.name}\n`
     text += `- Rule ID: ${rule.ruleId}\n`
     text += `- Type: template_watch\n`
-    text += `- Pattern: ${args.template_text}\n`
+    text += `- Pattern: ${args.template_text ?? args.template_id}\n`
     text += `- Enabled: ${rule.enabled}\n`
     const channels = (rule.channels as string[]) ?? []
     text += `- Channels: ${channels.length > 0 ? `${channels.length} webhook(s)` : 'tenant default'}\n`

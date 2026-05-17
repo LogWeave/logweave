@@ -509,7 +509,6 @@ server.registerTool(
       name: z.string().describe('Human-readable rule name'),
       rule_type: z
         .enum(['threshold', 'template_watch'])
-        .default('threshold')
         .describe('Rule type: "threshold" for metric-based alerts, "template_watch" to alert on a specific log pattern'),
       // threshold fields
       metric: z
@@ -536,7 +535,7 @@ server.registerTool(
       client,
       args as {
         name: string
-        rule_type?: string
+        rule_type: 'threshold' | 'template_watch'
         metric?: string
         service?: string
         operator?: string
