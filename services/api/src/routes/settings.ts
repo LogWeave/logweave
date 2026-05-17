@@ -350,7 +350,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
       respond(res, {
         success: result.success,
-        ...(result.error ? { error: result.error } : {}),
+        ...(result.error ? { failureReason: result.error } : {}),
       })
     } catch (err) {
       next(err)

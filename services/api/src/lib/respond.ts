@@ -8,9 +8,11 @@ interface ApiResponse<T> {
 }
 
 /**
- * Standard API response helper with retention metadata.
- * Emits `timeRange` only when `hours` is supplied — non-time-windowed routes
- * (settings, deploys, watches, rules, connectors, tail) should omit it.
+ * Standard API response helper. Always emits `fetchedAt`.
+ * Emits both `timeRange` and `dataRetention` only when `hours` is supplied —
+ * non-time-windowed routes (settings, watches, rules, connectors, tail token,
+ * etc.) shouldn't advertise retention because their payload isn't bounded by
+ * a time window.
  */
 export function respond<T>(
   res: Response,
@@ -22,8 +24,9 @@ export function respond<T>(
     meta: {
       ...meta,
       fetchedAt: new Date().toISOString(),
-      ...(meta.hours !== undefined ? { timeRange: formatTimeRange(meta.hours) } : {}),
-      dataRetention: DATA_RETENTION,
+      ...(meta.hours !== undefined
+        ? { timeRange: formatTimeRange(meta.hours), dataRetention: DATA_RETENTION }
+        : {}),
     },
   }
   res.status(HttpStatus.OK).json(body)
