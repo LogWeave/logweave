@@ -24,17 +24,9 @@ import { QueryError } from '../../components/ui/query-error'
 import { Skeleton } from '../../components/ui/skeleton'
 import { cn } from '../../lib/cn'
 
-// ---------------------------------------------------------------------------
-// Type guards
-// ---------------------------------------------------------------------------
-
 function isThresholdConfig(rule: AlertRule): rule is AlertRule & { config: ThresholdConfig } {
   return rule.ruleType === 'threshold'
 }
-
-// ---------------------------------------------------------------------------
-// Components
-// ---------------------------------------------------------------------------
 
 function RuleRow({ rule }: { rule: AlertRule }) {
   const navigate = useNavigate()

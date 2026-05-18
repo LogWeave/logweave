@@ -1,9 +1,6 @@
 import type { LogWeaveClient } from './client.js'
 
-/**
- * Tool handler functions — each maps to one LogWeave API endpoint.
- * Returns formatted text for LLM consumption.
- */
+// Handlers return formatted text (markdown) for LLM consumption, not JSON.
 
 interface ApiResponse {
   data: unknown

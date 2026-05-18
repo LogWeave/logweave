@@ -70,19 +70,11 @@ import {
   volumeQuerySchema,
 } from './dashboard-types.js'
 
-// ---------------------------------------------------------------------------
-// Dependencies
-// ---------------------------------------------------------------------------
-
 export interface DashboardDeps {
   db: DbClient
   logger: pino.Logger
   clusterClient?: import('../pipeline/cluster-client.js').ClusterClient
 }
-
-// ---------------------------------------------------------------------------
-// ClickHouse row casting
-// ---------------------------------------------------------------------------
 
 // ClickHouse JSONEachRow returns numbers as strings. The DB layer types them
 // as `number` for convenience, but we must call Number() on every numeric
@@ -117,10 +109,6 @@ export function mapCrossServiceTemplates(rows: RawRow[]): CrossServiceTemplate[]
     }
   })
 }
-
-// ---------------------------------------------------------------------------
-// Row mapping helpers
-// ---------------------------------------------------------------------------
 
 function mapTemplateRows(rows: RawRow[], newTodayIds: Set<string>): TemplateRow[] {
   return rows.map((r) => ({
@@ -179,10 +167,6 @@ function mapSparklineRows(rows: RawRow[]): SparklineData {
   return result
 }
 
-// ---------------------------------------------------------------------------
-// Change event mapping helpers
-// ---------------------------------------------------------------------------
-
 function mapNewEvents(rows: RawRow[]): ChangeEvent[] {
   return rows.map((r) => ({
     type: 'new' as const,
@@ -221,14 +205,9 @@ function mapResolvedEvents(rows: RawRow[]): ChangeEvent[] {
   }))
 }
 
-// ---------------------------------------------------------------------------
-// Route factory
-// ---------------------------------------------------------------------------
-
 export function dashboardRoutes(deps: DashboardDeps): Router {
   const router = Router()
 
-  // 1. GET /dashboard/templates
   router.get(
     '/dashboard/templates',
     validateQuery(templatesQuerySchema),
@@ -257,7 +236,6 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     },
   )
 
-  // 2. GET /dashboard/services
   router.get('/dashboard/services', validateQuery(servicesQuerySchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
@@ -277,7 +255,6 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     }
   })
 
-  // 3. GET /dashboard/volume
   router.get('/dashboard/volume', validateQuery(volumeQuerySchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
@@ -312,7 +289,6 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     }
   })
 
-  // 4. GET /dashboard/overview
   router.get('/dashboard/overview', validateQuery(overviewQuerySchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
@@ -362,7 +338,6 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     }
   })
 
-  // 5. GET /dashboard/template-sparklines
   router.get(
     '/dashboard/template-sparklines',
     validateQuery(sparklineQuerySchema),
@@ -386,7 +361,6 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     },
   )
 
-  // 6. GET /dashboard/clustering-health
   router.get(
     '/dashboard/clustering-health',
     validateQuery(clusteringHealthQuerySchema),
@@ -428,7 +402,6 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     },
   )
 
-  // 7. GET /dashboard/changes
   router.get('/dashboard/changes', validateQuery(changesQuerySchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
@@ -477,7 +450,6 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     }
   })
 
-  // 8. GET /dashboard/levels
   router.get('/dashboard/levels', validateQuery(levelsQuerySchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
@@ -499,7 +471,6 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     }
   })
 
-  // 9. GET /dashboard/template-status-codes
   router.get(
     '/dashboard/template-status-codes',
     validateQuery(templateStatusCodesQuerySchema),
@@ -524,7 +495,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
     },
   )
 
-  // 10. GET /templates/search — supports mode=substring (default) and mode=semantic
+  // supports mode=substring (default) and mode=semantic
   router.get('/templates/search', validateQuery(templateSearchSchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)

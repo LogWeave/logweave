@@ -86,10 +86,6 @@ export class AnomalyScorer {
     this.now = options.now ?? Date.now
   }
 
-  // ---------------------------------------------------------------------------
-  // Lifecycle
-  // ---------------------------------------------------------------------------
-
   /** Start periodic baseline refresh + counter pruning. */
   start(): void {
     if (this.intervalHandle || this.stopped) return // already started or stopped
@@ -113,10 +109,7 @@ export class AnomalyScorer {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Scoring (hot path — pure arithmetic, no I/O)
-  // ---------------------------------------------------------------------------
-
+  // Hot path: pure arithmetic, no I/O.
   /**
    * Record an event and return its anomaly score.
    * Called once per event during ingest Phase 3 (enrich).
@@ -194,10 +187,6 @@ export class AnomalyScorer {
     return results
   }
 
-  // ---------------------------------------------------------------------------
-  // Scoring internals (pure arithmetic)
-  // ---------------------------------------------------------------------------
-
   /**
    * Pure scoring arithmetic — no side effects, no counter mutation.
    * Shared by recordAndScore (hot path) and getWatchedScores (evaluator).
@@ -229,10 +218,7 @@ export class AnomalyScorer {
     return now - (now % FIVE_MINUTES_MS)
   }
 
-  // ---------------------------------------------------------------------------
-  // Baseline refresh (background — async I/O)
-  // ---------------------------------------------------------------------------
-
+  // Baseline refresh runs in the background — async I/O.
   /** Refresh baselines for all active tenants. Catches all errors. */
   async refreshBaselines(): Promise<void> {
     if (this.refreshRunning) return
@@ -269,10 +255,6 @@ export class AnomalyScorer {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Counter pruning
-  // ---------------------------------------------------------------------------
-
   /** Remove stale interval counters and warmup entries for inactive tenants. */
   private pruneOldCounters(): void {
     const currentTime = this.now()
@@ -294,10 +276,8 @@ export class AnomalyScorer {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Test helpers — allow tests to pre-populate state without exposing internals
-  // ---------------------------------------------------------------------------
-
+  // Test helpers — pre-populate state without exposing internals.
+  // Tracked for removal in #206 (replace with scorer-public-contract tests).
   /** @internal Set baseline for a specific template (testing only). */
   setBaseline(tenantId: string, service: string, templateId: string, avgCount: number): void {
     this.baselineCache.set(`${tenantId}${D}${service}${D}${templateId}`, avgCount)

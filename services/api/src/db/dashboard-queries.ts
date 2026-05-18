@@ -9,7 +9,8 @@ import {
   tenantQuery,
 } from './queries.js'
 
-// -- ClickHouse row interfaces (snake_case, matching query output) --
+// Row interfaces stay snake_case to match raw ClickHouse JSONEachRow output;
+// route handlers convert to camelCase via mapping helpers.
 
 interface DashboardTemplateRow {
   template_id: string
@@ -74,8 +75,6 @@ interface ClusteringHealthTrendRow {
   total: number
   unclustered: number
 }
-
-// -- Dashboard query option types --
 
 interface DashboardTemplateOptions extends PaginationOptions {
   service?: string
