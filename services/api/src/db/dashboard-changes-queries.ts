@@ -80,7 +80,7 @@ export function computeTimeWindow(since: string): TimeWindow {
  * ClickHouse parameterized queries with DateTime64(3) type reject
  * 'T' separators and 'Z' suffixes.
  */
-export function toClickHouseDateTime(iso: string): string {
+function toClickHouseDateTime(iso: string): string {
   return iso.replace('T', ' ').replace('Z', '')
 }
 

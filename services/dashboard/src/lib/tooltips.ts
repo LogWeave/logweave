@@ -50,5 +50,3 @@ export const TOOLTIPS = {
   compareToggle:
     'Overlays the equivalent previous time window in dashed lines so you can compare current volume against the prior period.',
 } as const
-
-export type TooltipKey = keyof typeof TOOLTIPS

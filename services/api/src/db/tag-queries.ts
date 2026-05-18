@@ -1,7 +1,7 @@
 import type { DbClient } from './client.js'
 import { tenantQuery } from './queries.js'
 
-export interface EventTagRow {
+interface EventTagRow {
   event_id: string
   template_id: string
   service: string

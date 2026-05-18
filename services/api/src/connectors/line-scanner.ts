@@ -13,7 +13,7 @@ import type { Readable } from 'node:stream'
 // JSON field extraction
 // ---------------------------------------------------------------------------
 
-export interface ExtractedFields {
+interface JsonScanFields {
   message?: string
   timestamp?: string
 }
@@ -22,7 +22,7 @@ export interface ExtractedFields {
  * Parse a JSON log line and extract the message + timestamp fields.
  * Supports common field names: message/msg for message, timestamp/@timestamp/time for time.
  */
-export function extractJsonFields(line: string): ExtractedFields | undefined {
+export function extractJsonFields(line: string): JsonScanFields | undefined {
   try {
     const obj = JSON.parse(line)
     return {
@@ -38,14 +38,14 @@ export function extractJsonFields(line: string): ExtractedFields | undefined {
 // Stream scanning
 // ---------------------------------------------------------------------------
 
-export interface ScanStreamOptions {
+interface ScanStreamOptions {
   stream: Readable
   regex: RegExp
   logFormat: 'jsonl' | 'text'
   remaining: number
 }
 
-export interface ScanStreamResult {
+interface ScanStreamResult {
   matches: Array<{ message: string; timestamp?: string }>
   bytesRead: number
 }

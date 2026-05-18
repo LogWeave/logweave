@@ -10,7 +10,7 @@ export interface CostAnalysisRow {
   service_total: string
 }
 
-export interface CostAnalysisOptions {
+interface CostAnalysisOptions {
   hours?: number
   service?: string
   level?: string[]

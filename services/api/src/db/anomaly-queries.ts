@@ -1,7 +1,7 @@
 import type { DbClient } from './client.js'
 import { tenantQuery } from './queries.js'
 
-export interface BaselineRow {
+interface BaselineRow {
   template_id: string
   service: string
   avg_count_per_interval: number

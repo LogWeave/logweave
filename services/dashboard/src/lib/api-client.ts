@@ -1,6 +1,6 @@
 import { config } from '../config'
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
@@ -8,13 +8,6 @@ export class ApiError extends Error {
     super(message)
     this.name = 'ApiError'
   }
-}
-
-/** Callback for handling 401 responses (set by AuthProvider). */
-let onUnauthorized: (() => void) | null = null
-
-export function setOnUnauthorized(callback: (() => void) | null): void {
-  onUnauthorized = callback
 }
 
 function getCsrfToken(): string | undefined {
@@ -63,9 +56,6 @@ class ApiClient {
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
-      if (res.status === 401 && onUnauthorized) {
-        onUnauthorized()
-      }
       const body = await res.json().catch(() => ({}))
       const message =
         res.status === 401
@@ -87,7 +77,6 @@ class ApiClient {
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
-      if (res.status === 401 && onUnauthorized) onUnauthorized()
       const body = await res.json().catch(() => ({}))
       throw new ApiError(res.status, body?.error?.message ?? res.statusText)
     }
@@ -105,7 +94,6 @@ class ApiClient {
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
-      if (res.status === 401 && onUnauthorized) onUnauthorized()
       const errBody = await res.json().catch(() => ({}))
       throw new ApiError(res.status, errBody?.error?.message ?? res.statusText)
     }
@@ -122,7 +110,6 @@ class ApiClient {
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
-      if (res.status === 401 && onUnauthorized) onUnauthorized()
       const errBody = await res.json().catch(() => ({}))
       throw new ApiError(res.status, errBody?.error?.message ?? res.statusText)
     }
