@@ -6,8 +6,6 @@ import { LogWeaveClient } from './client.js'
 import { type DevToolsConfig, devDataSummary, devHealth, devQuery } from './dev-tools.js'
 import {
   logweaveCostOptimizer,
-  logweaveLiveTail,
-  logweaveRawLogs,
   logweaveLevelDistribution,
   logweaveListRules,
   logweaveCreateRule,
@@ -18,6 +16,7 @@ import { registerChanges } from './registrations/changes.js'
 import { registerCorrelations } from './registrations/correlations.js'
 import { registerOverview } from './registrations/overview.js'
 import { registerPatterns } from './registrations/patterns.js'
+import { registerRaw } from './registrations/raw.js'
 import { READ_ONLY, WRITE_OP, toolHandler } from './shared/handler.js'
 
 // ---------------------------------------------------------------------------
@@ -48,6 +47,7 @@ registerOverview(server, client)
 registerPatterns(server, client)
 registerCorrelations(server, client)
 registerChanges(server, client)
+registerRaw(server, client)
 
 // ---------------------------------------------------------------------------
 // Correlation & analysis tools
@@ -56,61 +56,6 @@ registerChanges(server, client)
 // ---------------------------------------------------------------------------
 // Raw log drill-down
 // ---------------------------------------------------------------------------
-
-server.registerTool(
-  'raw_logs',
-  {
-    title: 'Raw Log Samples',
-    description:
-      'Fetch actual raw log lines that match a template pattern from the configured log source (S3, Elasticsearch, Loki, or local filesystem). ' +
-      'Use this to see real log content when investigating an error — actual IPs, user IDs, error messages. ' +
-      'Requires a connector to be configured in Settings. If none is configured, this tool will tell you. ' +
-      'Always specify both template_id (from error_patterns, changes, or search_templates) and service.',
-    inputSchema: {
-      template_id: z.string().describe('Template ID to match against raw logs'),
-      service: z.string().describe('Service name — required to locate the correct log source path'),
-      hours: z.number().optional().describe('Time window in hours (default: 1, max: 24)'),
-      limit: z.number().optional().describe('Max lines to return (default: 20, max: 100)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveRawLogs(client, args as { template_id: string; service: string; hours?: number; limit?: number }),
-  ),
-)
-
-// ---------------------------------------------------------------------------
-// Live tail
-// ---------------------------------------------------------------------------
-
-server.registerTool(
-  'live_tail',
-  {
-    title: 'Live Event Stream',
-    description:
-      'Poll the live event buffer to see what is happening right now. Returns recent events ' +
-      'from the ingest pipeline. Use cursor from previous calls to get only new events (avoids duplicates). ' +
-      'Filter by service, level, template_id, or anomaly score. Requires tail to be enabled for the tenant. ' +
-      'Use this during incident investigation to watch patterns emerge in real-time.',
-    inputSchema: {
-      service: z.string().optional().describe('Filter to a specific service'),
-      level: z.string().optional().describe('Filter to exact log level (e.g. ERROR)'),
-      min_level: z.string().optional().describe('Minimum severity threshold (e.g. WARN shows WARN+ERROR+FATAL)'),
-      template_id: z.string().optional().describe('Filter to a specific template pattern'),
-      min_anomaly: z.number().optional().describe('Minimum anomaly score (0-1)'),
-      seconds: z.number().optional().describe('How far back on first call (default: 30, max: 60)'),
-      limit: z.number().optional().describe('Max events to return (default: 50, max: 200)'),
-      cursor: z.number().optional().describe('Sequence number from previous call — get only new events'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveLiveTail(client, args as {
-      service?: string; level?: string; min_level?: string; template_id?: string;
-      min_anomaly?: number; seconds?: number; limit?: number; cursor?: number
-    }),
-  ),
-)
 
 // ---------------------------------------------------------------------------
 // New tools from gap analysis (#113)
