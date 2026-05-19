@@ -5,18 +5,16 @@ import { z } from 'zod'
 import { LogWeaveClient } from './client.js'
 import { type DevToolsConfig, devDataSummary, devHealth, devQuery } from './dev-tools.js'
 import {
-  logweaveChanges,
   logweaveCostOptimizer,
-  logweaveDeploys,
   logweaveLiveTail,
   logweaveRawLogs,
-  logweaveDiagnoseService,
   logweaveLevelDistribution,
   logweaveListRules,
   logweaveCreateRule,
   logweaveListAlerts,
   logweaveIncidentPostmortem,
 } from './tools.js'
+import { registerChanges } from './registrations/changes.js'
 import { registerCorrelations } from './registrations/correlations.js'
 import { registerOverview } from './registrations/overview.js'
 import { registerPatterns } from './registrations/patterns.js'
@@ -49,46 +47,7 @@ const server = new McpServer({
 registerOverview(server, client)
 registerPatterns(server, client)
 registerCorrelations(server, client)
-
-server.registerTool(
-  'changes',
-  {
-    title: 'Recent Changes',
-    description:
-      'See what changed recently: new error patterns, spiking patterns, and resolved patterns. ' +
-      'Anchor to a deploy using since (ISO8601 timestamp) or deploy_id from deploys tool. ' +
-      'Use this after deploys or to understand what is different from normal. ' +
-      'Do not use for listing all errors — use error_patterns instead.',
-    inputSchema: {
-      hours: z.number().optional().describe('Time window in hours (default: 24). Ignored if since or deploy_id is set.'),
-      service: z.string().optional().describe('Filter to a specific service name'),
-      since: z.string().optional().describe('ISO8601 timestamp to anchor comparison (e.g. deploy time)'),
-      deploy_id: z.string().optional().describe('Deploy ID from logweave_deploys to anchor comparison'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveChanges(client, args as { hours?: number; service?: string; since?: string; deploy_id?: string }),
-  ),
-)
-
-server.registerTool(
-  'deploys',
-  {
-    title: 'Recent Deployments',
-    description:
-      'List recent deployments. Use this to find deploy IDs and timestamps for anchoring changes queries. ' +
-      'Returns service name, version, commit SHA, and timestamp.',
-    inputSchema: {
-      service: z.string().optional().describe('Filter to a specific service name'),
-      limit: z.number().optional().describe('Max results to return (default: 10)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveDeploys(client, args as { service?: string; limit?: number }),
-  ),
-)
+registerChanges(server, client)
 
 // ---------------------------------------------------------------------------
 // Correlation & analysis tools
@@ -156,25 +115,6 @@ server.registerTool(
 // ---------------------------------------------------------------------------
 // New tools from gap analysis (#113)
 // ---------------------------------------------------------------------------
-
-server.registerTool(
-  'diagnose_service',
-  {
-    title: 'Diagnose Service',
-    description:
-      'Full diagnostic report for a service: health metrics, outlier detection (z-score), ' +
-      'and recent changes (new/spiking/resolved patterns). Combines service_health + service_outlier + changes ' +
-      'into a single call. Use this when investigating why a specific service is having problems.',
-    inputSchema: {
-      service: z.string().describe('Service name (use list_services to discover names)'),
-      hours: z.number().optional().describe('Time window in hours (default: 24)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveDiagnoseService(client, args as { service: string; hours?: number }),
-  ),
-)
 
 server.registerTool(
   'level_distribution',
