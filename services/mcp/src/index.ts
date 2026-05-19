@@ -6,14 +6,10 @@ import { LogWeaveClient } from './client.js'
 import { type DevToolsConfig, devDataSummary, devHealth, devQuery } from './dev-tools.js'
 import {
   logweaveChanges,
-  logweaveCorrelations,
   logweaveCostOptimizer,
   logweaveDeploys,
   logweaveLiveTail,
   logweaveRawLogs,
-  logweaveRelatedPatterns,
-  logweaveServiceOutlier,
-  logweaveTraceDetails,
   logweaveDiagnoseService,
   logweaveLevelDistribution,
   logweaveListRules,
@@ -21,6 +17,7 @@ import {
   logweaveListAlerts,
   logweaveIncidentPostmortem,
 } from './tools.js'
+import { registerCorrelations } from './registrations/correlations.js'
 import { registerOverview } from './registrations/overview.js'
 import { registerPatterns } from './registrations/patterns.js'
 import { READ_ONLY, WRITE_OP, toolHandler } from './shared/handler.js'
@@ -51,6 +48,7 @@ const server = new McpServer({
 
 registerOverview(server, client)
 registerPatterns(server, client)
+registerCorrelations(server, client)
 
 server.registerTool(
   'changes',
@@ -95,84 +93,6 @@ server.registerTool(
 // ---------------------------------------------------------------------------
 // Correlation & analysis tools
 // ---------------------------------------------------------------------------
-
-server.registerTool(
-  'trace_details',
-  {
-    title: 'Trace Details',
-    description:
-      'Show all events sharing a trace_id, ordered chronologically across services. ' +
-      'Use this to understand the full request flow when investigating an error. ' +
-      'Requires a trace_id from log events. Do not guess trace IDs.',
-    inputSchema: {
-      trace_id: z.string().describe('Trace ID to look up (from log events or error context)'),
-      hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveTraceDetails(client, args as { trace_id: string; hours?: number }),
-  ),
-)
-
-server.registerTool(
-  'related_patterns',
-  {
-    title: 'Related Patterns',
-    description:
-      'Find patterns that co-occur with a given template in the same request traces (causal correlation). ' +
-      'Use this to answer "what else happens when this error occurs?" ' +
-      'Requires a template_id from error_patterns, changes, or search_templates results.',
-    inputSchema: {
-      template_id: z.string().describe('Template ID to find related patterns for'),
-      hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
-      limit: z.number().optional().describe('Max results to return (default: 20, max: 100)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveRelatedPatterns(client, args as { template_id: string; hours?: number; limit?: number }),
-  ),
-)
-
-server.registerTool(
-  'correlations',
-  {
-    title: 'Statistical Correlations',
-    description:
-      'Find patterns whose occurrence counts are statistically correlated with a given template (Pearson r >= 0.7). ' +
-      'Unlike related_patterns (same request), this finds patterns that spike or dip at the same times — even across unrelated requests. ' +
-      'Use this to find systemic issues (e.g. error in service A always spikes with error in service B).',
-    inputSchema: {
-      template_id: z.string().describe('Template ID to correlate against'),
-      hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
-      limit: z.number().optional().describe('Max results to return (default: 10, max: 50)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveCorrelations(client, args as { template_id: string; hours?: number; limit?: number }),
-  ),
-)
-
-server.registerTool(
-  'service_outlier',
-  {
-    title: 'Service Outlier Detection',
-    description:
-      'Check if a service is having an abnormal error rate compared to its 7-day baseline (z-score). ' +
-      'Returns normal, elevated (z > 1.5), or outlier (z > 2.0) verdict. ' +
-      'Use this to quickly check if a service is misbehaving. Use service_health for deeper investigation.',
-    inputSchema: {
-      service: z.string().describe('Service name to check'),
-      hours: z.number().optional().describe('Current window in hours for comparison (default: 1, max: 168)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveServiceOutlier(client, args as { service: string; hours?: number }),
-  ),
-)
 
 // ---------------------------------------------------------------------------
 // Raw log drill-down
