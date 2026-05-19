@@ -7,9 +7,6 @@ import { type DevToolsConfig, devDataSummary, devHealth, devQuery } from './dev-
 import {
   logweaveCostOptimizer,
   logweaveLevelDistribution,
-  logweaveListRules,
-  logweaveCreateRule,
-  logweaveListAlerts,
   logweaveIncidentPostmortem,
 } from './tools.js'
 import { registerChanges } from './registrations/changes.js'
@@ -17,6 +14,7 @@ import { registerCorrelations } from './registrations/correlations.js'
 import { registerOverview } from './registrations/overview.js'
 import { registerPatterns } from './registrations/patterns.js'
 import { registerRaw } from './registrations/raw.js'
+import { registerRules } from './registrations/rules.js'
 import { READ_ONLY, WRITE_OP, toolHandler } from './shared/handler.js'
 
 // ---------------------------------------------------------------------------
@@ -48,6 +46,7 @@ registerPatterns(server, client)
 registerCorrelations(server, client)
 registerChanges(server, client)
 registerRaw(server, client)
+registerRules(server, client)
 
 // ---------------------------------------------------------------------------
 // Correlation & analysis tools
@@ -82,95 +81,6 @@ server.registerTool(
 // ---------------------------------------------------------------------------
 // Alert rules + history tools
 // ---------------------------------------------------------------------------
-
-server.registerTool(
-  'list_rules',
-  {
-    title: 'List Alert Rules',
-    description:
-      'Show all alert rules for this tenant with their configs, status, and channel assignments. ' +
-      'Use this to see what alerting is configured before creating new rules.',
-    inputSchema: {},
-    annotations: READ_ONLY,
-  },
-  toolHandler(() => logweaveListRules(client)),
-)
-
-server.registerTool(
-  'create_rule',
-  {
-    title: 'Create Alert Rule',
-    description:
-      'Create an alert rule. Two types: ' +
-      '(1) threshold — alert when a service metric exceeds a value (e.g. "alert if payments has >10 errors in 5 minutes"). ' +
-      '(2) template_watch — alert whenever a specific log pattern appears (use after finding a pattern with error_patterns or search_templates). ' +
-      'Use list_rules to verify creation.',
-    inputSchema: {
-      name: z.string().describe('Human-readable rule name'),
-      rule_type: z
-        .enum(['threshold', 'template_watch'])
-        .describe('Rule type: "threshold" for metric-based alerts, "template_watch" to alert on a specific log pattern'),
-      // threshold fields
-      metric: z
-        .enum(['error_count', 'warn_count', 'log_count'])
-        .optional()
-        .describe('(threshold only) Metric to monitor'),
-      service: z.string().optional().describe('(threshold only) Service name to monitor'),
-      operator: z.enum(['>', '>=', '<', '<=']).optional().describe('(threshold only) Comparison operator'),
-      value: z.number().optional().describe('(threshold only) Threshold value'),
-      window_minutes: z.number().optional().describe('(threshold only) Evaluation window in minutes (1-60)'),
-      // template_watch fields
-      template_id: z.string().optional().describe('(template_watch only) Template ID to watch — get this from error_patterns or search_templates'),
-      template_text: z.string().optional().describe('(template_watch only) Template text for display — copy from the pattern listing'),
-      // shared
-      channels: z
-        .array(z.string())
-        .optional()
-        .describe('Webhook URLs or PagerDuty routing keys for notifications (empty = tenant default)'),
-    },
-    annotations: WRITE_OP,
-  },
-  toolHandler((args) =>
-    logweaveCreateRule(
-      client,
-      args as {
-        name: string
-        rule_type: 'threshold' | 'template_watch'
-        metric?: string
-        service?: string
-        operator?: string
-        value?: number
-        window_minutes?: number
-        template_id?: string
-        template_text?: string
-        channels?: string[]
-      },
-    ),
-  ),
-)
-
-server.registerTool(
-  'list_alerts',
-  {
-    title: 'Alert History',
-    description:
-      'Query recent alert history — what rules fired, when, and what triggered them. ' +
-      'Filter by service or rule_id. Use this to investigate alert activity.',
-    inputSchema: {
-      hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
-      rule_id: z.string().optional().describe('Filter to a specific rule ID'),
-      service: z.string().optional().describe('Filter to alerts from a specific service'),
-      limit: z.number().optional().describe('Max results (default: 100, max: 500)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveListAlerts(
-      client,
-      args as { hours?: number; rule_id?: string; service?: string; limit?: number },
-    ),
-  ),
-)
 
 server.registerTool(
   'incident_postmortem',
