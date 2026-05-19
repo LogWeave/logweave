@@ -11,15 +11,12 @@ import {
   logweaveDeploys,
   logweaveErrorPatterns,
   logweaveLiveTail,
-  logweaveOverview,
   logweaveRawLogs,
   logweaveRelatedPatterns,
   logweaveSearchTemplates,
-  logweaveServiceHealth,
   logweaveServiceOutlier,
   logweaveTemplateDetail,
   logweaveTraceDetails,
-  logweaveListServices,
   logweaveDiagnoseService,
   logweaveTemplateTrend,
   logweaveLevelDistribution,
@@ -30,6 +27,7 @@ import {
   logweaveSearchByTag,
   logweaveIncidentPostmortem,
 } from './tools.js'
+import { registerOverview } from './registrations/overview.js'
 
 // ---------------------------------------------------------------------------
 // Configuration — fail fast on missing env vars (stderr only, never stdout)
@@ -61,21 +59,7 @@ const server = new McpServer({
   version: '0.1.0',
 })
 
-server.registerTool(
-  'overview',
-  {
-    title: 'System Overview',
-    description:
-      'Get a system health overview: total events, error rate, service count, and top error patterns. ' +
-      'Use this first to understand the current state of the system. ' +
-      'Do not use for specific service or template queries — use service_health or template_detail instead.',
-    inputSchema: {
-      hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) => logweaveOverview(client, args as { hours?: number })),
-)
+registerOverview(server, client)
 
 server.registerTool(
   'error_patterns',
@@ -135,25 +119,6 @@ server.registerTool(
   },
   toolHandler((args) =>
     logweaveTemplateDetail(client, args as { template_id: string; hours?: number }),
-  ),
-)
-
-server.registerTool(
-  'service_health',
-  {
-    title: 'Service Health',
-    description:
-      'Health report for a specific service: error rate, log volume, top error patterns, and volume trend. ' +
-      'Use this to check if a specific service is having problems. ' +
-      'Do not use for cross-service overview — use overview instead.',
-    inputSchema: {
-      service: z.string().describe('Service name to check'),
-      hours: z.number().optional().describe('Time window in hours (default: 24)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveServiceHealth(client, args as { service: string; hours?: number }),
   ),
 )
 
@@ -341,22 +306,6 @@ server.registerTool(
 // ---------------------------------------------------------------------------
 // New tools from gap analysis (#113)
 // ---------------------------------------------------------------------------
-
-server.registerTool(
-  'list_services',
-  {
-    title: 'List Services',
-    description:
-      'List all services with error rates, log volumes, and anomaly scores. ' +
-      'Use this to discover which services exist and which need attention. ' +
-      'Start here when you need to find service names for service_health or diagnose_service.',
-    inputSchema: {
-      hours: z.number().optional().describe('Time window in hours (default: 24)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) => logweaveListServices(client, args as { hours?: number })),
-)
 
 server.registerTool(
   'diagnose_service',
@@ -601,47 +550,6 @@ server.registerTool(
   toolHandler((args) =>
     logweaveCostOptimizer(client, args as { hours?: number; service?: string }),
   ),
-)
-
-server.registerTool(
-  'clustering_health',
-  {
-    title: 'Clustering Health',
-    description:
-      'Check the health of the log clustering pipeline. Reports ClickHouse connectivity, ' +
-      'clusterer circuit breaker state, consecutive failures, and key metrics (ingested, clustered, ' +
-      'unclustered counts). Use this when data seems stale or patterns are not updating.',
-    inputSchema: {},
-    annotations: READ_ONLY,
-  },
-  toolHandler(async () => {
-    const data = await client.get('/readyz')
-    const r = data as {
-      status: string
-      clickhouse: string
-      clusterer: { status: string; consecutiveFailures: number; circuitOpen: boolean }
-      metrics: Record<string, number>
-    }
-
-    let text = `# Clustering Pipeline Health\n\n`
-    text += `**Overall:** ${r.status}\n`
-    text += `**ClickHouse:** ${r.clickhouse}\n`
-    text += `**Clusterer:** ${r.clusterer.status}`
-    if (r.clusterer.circuitOpen) {
-      text += ` ⚠ CIRCUIT OPEN (${r.clusterer.consecutiveFailures} consecutive failures)\n`
-      text += `\nThe circuit breaker is open — new events are being stored as unclustered (template_id=0) and will be re-clustered when the clusterer recovers.\n`
-    } else if (r.clusterer.consecutiveFailures > 0) {
-      text += ` (${r.clusterer.consecutiveFailures} recent failures)\n`
-    } else {
-      text += `\n`
-    }
-    text += `\n## Metrics\n\n`
-    text += `| Metric | Value |\n|--------|-------|\n`
-    for (const [key, val] of Object.entries(r.metrics)) {
-      text += `| ${key} | ${val} |\n`
-    }
-    return text
-  }),
 )
 
 server.registerTool(

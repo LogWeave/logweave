@@ -1,37 +1,6 @@
 import type { LogWeaveClient } from './client.js'
 import { type ApiResponse, formatMeta } from './shared/handler.js'
 
-export async function logweaveOverview(
-  client: LogWeaveClient,
-  args: { hours?: number },
-): Promise<string> {
-  const res = (await client.getComposite('/overview', {
-    hours: args.hours,
-  })) as ApiResponse
-
-  const d = res.data as Record<string, unknown>
-  const patterns = (d.topErrorPatterns as Array<Record<string, unknown>>) ?? []
-
-  let text = `## System Overview\n\n`
-  text += `- Total events: ${d.totalEvents}\n`
-  text += `- Unique templates: ${d.totalTemplates}\n`
-  text += `- New today: ${d.newTemplatesToday}\n`
-  text += `- Unclustered: ${d.unclusteredCount}\n`
-  text += `- Error rate: ${((d.errorRate as number) * 100).toFixed(1)}%\n`
-  text += `- Services: ${d.serviceCount}\n`
-
-  if (patterns.length > 0) {
-    text += `\n### Top Error Patterns\n\n`
-    for (const p of patterns) {
-      const services = (p.servicesAffected as string[]).join(', ')
-      text += `- **${p.templateText}** [id: ${p.templateId}] — ${p.occurrenceCount} occurrences (${services})\n`
-    }
-  }
-
-  text += formatMeta(res.meta)
-  return text
-}
-
 export async function logweaveErrorPatterns(
   client: LogWeaveClient,
   args: { hours?: number; service?: string; limit?: number },
@@ -163,56 +132,6 @@ export async function logweaveTemplateDetail(
     text += `- Range: ${min}–${max} per interval (avg ${avg.toFixed(1)})\n`
     text += `- Latest: ${sparkline[sparkline.length - 1].intervalStart}: ${sparkline[sparkline.length - 1].count}\n`
     text += `- Peak: ${sparkline[counts.indexOf(max)].intervalStart}: ${max}\n`
-  }
-
-  text += formatMeta(res.meta)
-  return text
-}
-
-export async function logweaveServiceHealth(
-  client: LogWeaveClient,
-  args: { service: string; hours?: number },
-): Promise<string> {
-  const res = (await client.getComposite(`/services/${args.service}/health`, {
-    hours: args.hours,
-  })) as ApiResponse
-
-  const d = res.data as Record<string, unknown>
-  const patterns = (d.topErrorPatterns as Array<Record<string, unknown>>) ?? []
-  const trend = (d.volumeTrend as Array<Record<string, unknown>>) ?? []
-
-  let text = `## Service Health: ${d.service}\n\n`
-  text += `- Log count: ${d.logCount}\n`
-  text += `- Error count: ${d.errorCount} (${((d.errorRate as number) * 100).toFixed(1)}%)\n`
-  text += `- Warn count: ${d.warnCount} (${((d.warnRate as number) * 100).toFixed(1)}%)\n`
-
-  if (patterns.length > 0) {
-    text += `\n### Top Error Patterns\n`
-    for (const p of patterns) {
-      text += `- **${p.templateText}** — ${p.occurrenceCount} occurrences\n`
-    }
-  }
-
-  if (trend.length > 0) {
-    const logCounts = trend.map((t) => t.logCount as number)
-    const errCounts = trend.map((t) => t.errorCount as number)
-    const totalLogs = logCounts.reduce((a, b) => a + b, 0)
-    const totalErrors = errCounts.reduce((a, b) => a + b, 0)
-    const maxLogs = Math.max(...logCounts)
-    const maxErrors = Math.max(...errCounts)
-
-    // Trend direction from first vs last third
-    const third = Math.max(1, Math.floor(logCounts.length / 3))
-    const firstThirdAvg = logCounts.slice(0, third).reduce((a, b) => a + b, 0) / third
-    const lastThirdAvg = logCounts.slice(-third).reduce((a, b) => a + b, 0) / third
-    const trendDir = lastThirdAvg > firstThirdAvg * 1.2 ? 'volume trending UP' :
-      lastThirdAvg < firstThirdAvg * 0.8 ? 'volume trending DOWN' : 'volume stable'
-
-    text += `\n### Volume Trend (${trend.length} intervals)\n`
-    text += `- Direction: ${trendDir}\n`
-    text += `- Total: ${totalLogs} logs, ${totalErrors} errors\n`
-    text += `- Peak volume: ${maxLogs} logs/interval, peak errors: ${maxErrors}/interval\n`
-    text += `- Latest: ${trend[trend.length - 1].intervalStart}: ${trend[trend.length - 1].logCount} logs, ${trend[trend.length - 1].errorCount} errors\n`
   }
 
   text += formatMeta(res.meta)
@@ -520,31 +439,6 @@ export async function logweaveLiveTail(
 // ---------------------------------------------------------------------------
 // New tools from gap analysis (#113)
 // ---------------------------------------------------------------------------
-
-export async function logweaveListServices(
-  client: LogWeaveClient,
-  args: { hours?: number },
-): Promise<string> {
-  const res = (await client.get('/dashboard/services', { hours: args.hours })) as ApiResponse
-  const rows = (res.data as Array<Record<string, unknown>>) ?? []
-
-  if (rows.length === 0) {
-    return `No services found.${formatMeta(res.meta)}`
-  }
-
-  let text = `## Services (${rows.length})\n\n`
-  for (const r of rows) {
-    const errorRate = ((r.errorRate as number) * 100).toFixed(1)
-    text += `- **${r.service}** — ${r.logCount} logs, ${r.errorCount} errors (${errorRate}%)`
-    if ((r.newTemplateCount as number) > 0) {
-      text += ` [${r.newTemplateCount} new patterns]`
-    }
-    text += '\n'
-  }
-
-  text += formatMeta(res.meta)
-  return text
-}
 
 export async function logweaveDiagnoseService(
   client: LogWeaveClient,
