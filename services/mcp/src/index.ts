@@ -9,25 +9,21 @@ import {
   logweaveCorrelations,
   logweaveCostOptimizer,
   logweaveDeploys,
-  logweaveErrorPatterns,
   logweaveLiveTail,
   logweaveRawLogs,
   logweaveRelatedPatterns,
-  logweaveSearchTemplates,
   logweaveServiceOutlier,
-  logweaveTemplateDetail,
   logweaveTraceDetails,
   logweaveDiagnoseService,
-  logweaveTemplateTrend,
   logweaveLevelDistribution,
-  logweaveTemplateEvents,
   logweaveListRules,
   logweaveCreateRule,
   logweaveListAlerts,
-  logweaveSearchByTag,
   logweaveIncidentPostmortem,
 } from './tools.js'
 import { registerOverview } from './registrations/overview.js'
+import { registerPatterns } from './registrations/patterns.js'
+import { READ_ONLY, WRITE_OP, toolHandler } from './shared/handler.js'
 
 // ---------------------------------------------------------------------------
 // Configuration — fail fast on missing env vars (stderr only, never stdout)
@@ -48,38 +44,13 @@ if (!apiKey) {
 
 const client = new LogWeaveClient({ apiUrl, apiKey })
 
-import { READ_ONLY, WRITE_OP, toolHandler } from './shared/handler.js'
-
-// ---------------------------------------------------------------------------
-// MCP Server — uses registerTool (modern API, server.tool is deprecated)
-// ---------------------------------------------------------------------------
-
 const server = new McpServer({
   name: 'logweave',
   version: '0.1.0',
 })
 
 registerOverview(server, client)
-
-server.registerTool(
-  'error_patterns',
-  {
-    title: 'Error Patterns',
-    description:
-      'List error patterns sorted by occurrence count. Only shows templates with actual errors (level=error). ' +
-      'Shows template text, service, error count, and whether the pattern is new today. ' +
-      'Use this to see what errors are happening across all services. For a single service, pass the service parameter.',
-    inputSchema: {
-      hours: z.number().optional().describe('Time window in hours (default: 24)'),
-      service: z.string().optional().describe('Filter to a specific service name'),
-      limit: z.number().optional().describe('Max results to return (default: 100)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveErrorPatterns(client, args as { hours?: number; service?: string; limit?: number }),
-  ),
-)
+registerPatterns(server, client)
 
 server.registerTool(
   'changes',
@@ -100,47 +71,6 @@ server.registerTool(
   },
   toolHandler((args) =>
     logweaveChanges(client, args as { hours?: number; service?: string; since?: string; deploy_id?: string }),
-  ),
-)
-
-server.registerTool(
-  'template_detail',
-  {
-    title: 'Template Detail',
-    description:
-      'Deep dive on a specific error pattern: occurrence history, status codes, affected services, anomaly score. ' +
-      'Use a template_id from error_patterns or changes results. ' +
-      'Do not use without a template_id.',
-    inputSchema: {
-      template_id: z.string().describe('Template ID to look up (from error_patterns or changes results)'),
-      hours: z.number().optional().describe('Time window in hours (default: 24)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveTemplateDetail(client, args as { template_id: string; hours?: number }),
-  ),
-)
-
-server.registerTool(
-  'search_templates',
-  {
-    title: 'Search Templates',
-    description:
-      'Search for error patterns by text. Supports two modes: ' +
-      '"substring" (default, exact text matching) and "semantic" (finds conceptually related patterns — ' +
-      'e.g. "database slow" matches "connection pool exhausted"). Use semantic mode when the exact wording is unknown. ' +
-      'Minimum 3 characters.',
-    inputSchema: {
-      query: z.string().describe('Search text (minimum 3 characters)'),
-      hours: z.number().optional().describe('Time window in hours (default: 24)'),
-      limit: z.number().optional().describe('Max results to return (default: 100)'),
-      mode: z.enum(['substring', 'semantic']).optional().describe('Search mode (default: substring)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveSearchTemplates(client, args as { query: string; hours?: number; limit?: number; mode?: string }),
   ),
 )
 
@@ -327,25 +257,6 @@ server.registerTool(
 )
 
 server.registerTool(
-  'template_trend',
-  {
-    title: 'Template Long-Term Trend',
-    description:
-      'Get daily occurrence counts for a template over up to 365 days. ' +
-      'Use this to determine if a pattern is getting worse over weeks/months, or if it is seasonal. ' +
-      'For short-term trends (hours), use template_detail instead.',
-    inputSchema: {
-      template_id: z.string().describe('Template ID (from error_patterns, changes, or search_templates)'),
-      days: z.number().optional().describe('Number of days to look back (default: 90, max: 365)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveTemplateTrend(client, args as { template_id: string; days?: number }),
-  ),
-)
-
-server.registerTool(
   'level_distribution',
   {
     title: 'Log Level Distribution',
@@ -360,30 +271,6 @@ server.registerTool(
   },
   toolHandler((args) =>
     logweaveLevelDistribution(client, args as { hours?: number; service?: string }),
-  ),
-)
-
-server.registerTool(
-  'template_events',
-  {
-    title: 'Template Events',
-    description:
-      'Get individual log events for a template pattern. Shows timestamp, service, route, status code, ' +
-      'duration, and trace ID for each event. Filter by status code to investigate specific error types. ' +
-      'Use trace IDs with trace_details to follow requests across services.',
-    inputSchema: {
-      template_id: z.string().describe('Template ID'),
-      status_code: z.number().optional().describe('Filter to a specific HTTP status code (e.g. 500)'),
-      hours: z.number().optional().describe('Time window in hours (default: 24)'),
-      limit: z.number().optional().describe('Max events to return (default: 20, max: 100)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveTemplateEvents(
-      client,
-      args as { template_id: string; status_code?: number; hours?: number; limit?: number },
-    ),
   ),
 )
 
@@ -476,30 +363,6 @@ server.registerTool(
     logweaveListAlerts(
       client,
       args as { hours?: number; rule_id?: string; service?: string; limit?: number },
-    ),
-  ),
-)
-
-server.registerTool(
-  'search_by_tag',
-  {
-    title: 'Search by Tag',
-    description:
-      'Find events by a custom metadata tag (customer_id, order_id, user_id, etc.). ' +
-      'Only works if the tenant has configured tag extraction in Settings. ' +
-      'Use this when investigating a specific customer, order, or request.',
-    inputSchema: {
-      key: z.string().describe('Tag key to search (e.g. "customer_id", "order_id")'),
-      value: z.string().describe('Tag value to match (e.g. "ACME-123")'),
-      hours: z.number().optional().describe('Time window in hours (default: 24)'),
-      limit: z.number().optional().describe('Max results (default: 50, max: 200)'),
-    },
-    annotations: READ_ONLY,
-  },
-  toolHandler((args) =>
-    logweaveSearchByTag(
-      client,
-      args as { key: string; value: string; hours?: number; limit?: number },
     ),
   ),
 )
