@@ -1,19 +1,5 @@
 import type { LogWeaveClient } from './client.js'
-
-// Handlers return formatted text (markdown) for LLM consumption, not JSON.
-
-interface ApiResponse {
-  data: unknown
-  meta: Record<string, unknown>
-}
-
-function formatMeta(meta: Record<string, unknown>): string {
-  const parts: string[] = []
-  if (meta.timeRange) parts.push(`Time range: ${meta.timeRange}`)
-  if (meta.dataRetention) parts.push(`Data retention: ${meta.dataRetention}`)
-  if (meta.message) parts.push(`Note: ${meta.message}`)
-  return parts.length > 0 ? `\n\n---\n${parts.join('\n')}` : ''
-}
+import { type ApiResponse, formatMeta } from './shared/handler.js'
 
 export async function logweaveOverview(
   client: LogWeaveClient,

@@ -50,48 +50,7 @@ if (!apiKey) {
 
 const client = new LogWeaveClient({ apiUrl, apiKey })
 
-// ---------------------------------------------------------------------------
-// Helper: wrap tool handler with try/catch → isError response
-// Never throws — tool errors are returned as isError: true so the LLM can
-// recover (retry, adjust params, inform user) instead of crashing the server.
-// ---------------------------------------------------------------------------
-
-type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean }
-
-function toolHandler(
-  fn: (args: Record<string, unknown>) => Promise<string>,
-): (args: Record<string, unknown>) => Promise<ToolResult> {
-  return async (args) => {
-    try {
-      const text = await fn(args)
-      return { content: [{ type: 'text' as const, text }] }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return {
-        isError: true,
-        content: [{ type: 'text' as const, text: `Error: ${message}` }],
-      }
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Shared annotations
-// ---------------------------------------------------------------------------
-
-const READ_ONLY = {
-  readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-} as const
-
-const WRITE_OP = {
-  readOnlyHint: false,
-  destructiveHint: false,
-  idempotentHint: false,
-  openWorldHint: false,
-} as const
+import { READ_ONLY, WRITE_OP, toolHandler } from './shared/handler.js'
 
 // ---------------------------------------------------------------------------
 // MCP Server — uses registerTool (modern API, server.tool is deprecated)
