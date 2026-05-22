@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  LogWeave S3 connector — cross-account IAM role with least-privilege access to a
+  single bucket/prefix. LogWeave assumes this role via STS to read log files for
+  pattern drill-down. No raw log content is stored by LogWeave; objects are read
+  on demand and discarded.
+
+Parameters:
+  LogWeaveAccountId:
+    Type: String
+    Description: AWS account ID of the LogWeave service (the trusted principal).
+    AllowedPattern: '^\d{12}$'
+    ConstraintDescription: Must be a 12-digit AWS account ID.
+
+  ExternalId:
+    Type: String
+    Description: >
+      Per-connector ExternalId for the trust policy. Prevents the confused
+      deputy problem. LogWeave generates this when you create the connector;
+      copy it from the dashboard.
+    MinLength: 16
+    MaxLength: 256
+    AllowedPattern: '^[A-Za-z0-9\-_=:/+]+$'
+
+  BucketName:
+    Type: String
+    Description: S3 bucket containing the log files.
+    AllowedPattern: '^[a-z0-9.\-]{3,63}$'
+    ConstraintDescription: Must be a valid S3 bucket name (3-63 chars, lowercase).
+
+  BucketPrefix:
+    Type: String
+    Description: >
+      Object key prefix the role is allowed to read (e.g. "logs/"). Use "" to
+      allow the entire bucket — not recommended.
+    Default: ''
+    MaxLength: 1024
+
+  RoleName:
+    Type: String
+    Description: Name for the created IAM role.
+    Default: LogWeaveS3ConnectorRole
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '^[\w+=,.@\-]+$'
+
+Resources:
+  LogWeaveConnectorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: >-
+        Allows LogWeave to read log files from a single bucket/prefix on demand.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${LogWeaveAccountId}:root'
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      Policies:
+        - PolicyName: LogWeaveS3ReadOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ListBucketPrefix
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketName}'
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - !Sub '${BucketPrefix}*'
+              - Sid: GetObjectsUnderPrefix
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketName}/${BucketPrefix}*'
+
+Outputs:
+  RoleArn:
+    Description: >-
+      ARN of the created role. Copy this into the LogWeave connector "Role ARN"
+      field to finish setup.
+    Value: !GetAtt LogWeaveConnectorRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-RoleArn'
+
+  ExternalId:
+    Description: ExternalId configured on the trust policy (for verification).
+    Value: !Ref ExternalId

@@ -260,6 +260,8 @@ export function createApp(deps: AppDependencies): CreatedApp {
       db: deps.db,
       logger: deps.logger,
       encryptionKey: deps.config.encryptionKey,
+      awsAccountId: deps.config.awsAccountId,
+      s3CfnTemplateUrl: deps.config.s3CfnTemplateUrl,
     }),
   )
   v1.use(

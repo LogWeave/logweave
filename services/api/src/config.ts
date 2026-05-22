@@ -78,6 +78,11 @@ const configSchema = z.object({
     .default('true')
     .transform((v) => v === 'true'),
   retentionIntervalMs: z.coerce.number().int().min(60_000).max(86_400_000).default(86_400_000),
+  awsAccountId: z
+    .string()
+    .regex(/^\d{12}$/, 'LOGWEAVE_AWS_ACCOUNT_ID must be a 12-digit AWS account ID')
+    .optional(),
+  s3CfnTemplateUrl: z.string().url().optional(),
 })
 
 export type Config = z.infer<typeof configSchema>
@@ -108,5 +113,7 @@ export function loadConfig(): Config {
     encryptionKey: process.env.LOGWEAVE_ENCRYPTION_KEY,
     retentionEnabled: process.env.LOGWEAVE_RETENTION_ENABLED,
     retentionIntervalMs: process.env.LOGWEAVE_RETENTION_INTERVAL_MS,
+    awsAccountId: process.env.LOGWEAVE_AWS_ACCOUNT_ID || undefined,
+    s3CfnTemplateUrl: process.env.LOGWEAVE_S3_CFN_TEMPLATE_URL || undefined,
   })
 }
