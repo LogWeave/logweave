@@ -57,7 +57,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub 'arn:aws:iam::${LogWeaveAccountId}:root'
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${LogWeaveAccountId}:root'
             Action: sts:AssumeRole
             Condition:
               StringEquals:
@@ -70,7 +70,7 @@ Resources:
               - Sid: ListBucketPrefix
                 Effect: Allow
                 Action: s3:ListBucket
-                Resource: !Sub 'arn:aws:s3:::${BucketName}'
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketName}'
                 Condition:
                   StringLike:
                     s3:prefix:
@@ -78,7 +78,7 @@ Resources:
               - Sid: GetObjectsUnderPrefix
                 Effect: Allow
                 Action: s3:GetObject
-                Resource: !Sub 'arn:aws:s3:::${BucketName}/${BucketPrefix}*'
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketName}/${BucketPrefix}*'
 
 Outputs:
   RoleArn:

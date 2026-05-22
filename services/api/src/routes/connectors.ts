@@ -49,7 +49,10 @@ const s3ConfigSchema = z
     // Cross-account AssumeRole (production path). Set together with externalId.
     roleArn: z
       .string()
-      .regex(/^arn:aws:iam::\d{12}:role\/[\w+=,.@\-/]+$/, 'roleArn must be a valid IAM role ARN')
+      .regex(
+        /^arn:(aws|aws-cn|aws-us-gov):iam::\d{12}:role\/[\w+=,.@\-/]+$/,
+        'roleArn must be a valid IAM role ARN',
+      )
       .max(2048)
       .optional(),
     externalId: z.string().min(16).max(256).optional(),
@@ -198,8 +201,18 @@ const quickCreateUrlSchema = z.object({
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Secrets that should never be returned in API responses. */
-const SECRET_KEYS = new Set(['secretAccessKey', 'accessKeyId', 'password', 'apiKey'])
+/**
+ * Secrets that should never be returned in API responses. externalId is the
+ * second factor in the IAM trust policy — combined with roleArn it lets the
+ * holder assume the role, so we redact it from list/echo responses.
+ */
+const SECRET_KEYS = new Set([
+  'secretAccessKey',
+  'accessKeyId',
+  'password',
+  'apiKey',
+  'externalId',
+])
 
 function redactConfig(configJson: string): Record<string, unknown> {
   try {
