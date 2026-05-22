@@ -1,11 +1,12 @@
+import type { Readable } from 'node:stream'
+import { createGunzip } from 'node:zlib'
 import {
   GetObjectCommand,
   ListObjectsV2Command,
   type ListObjectsV2CommandOutput,
   S3Client,
 } from '@aws-sdk/client-s3'
-import { createGunzip } from 'node:zlib'
-import { Readable } from 'node:stream'
+import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts'
 import { getInternalEvents } from '../internal-events/emitter.js'
 import { scanStream } from './line-scanner.js'
 import { templateToRegex } from './template-regex.js'
@@ -87,25 +88,57 @@ function s3ConsoleUrl(config: S3ConnectorConfig, key: string): string {
 export class S3Adapter implements LogSourceAdapter {
   readonly type = 's3'
 
-  private createClient(config: S3ConnectorConfig): S3Client {
-    return new S3Client({
-      region: config.region,
-      ...(config.endpoint
-        ? {
-            endpoint: config.endpoint,
-            forcePathStyle: config.forcePathStyle ?? true,
-            credentials: {
-              accessKeyId: config.accessKeyId ?? '',
-              secretAccessKey: config.secretAccessKey ?? '',
-            },
-          }
-        : {}),
-    })
+  private async createClient(config: S3ConnectorConfig): Promise<S3Client> {
+    // MinIO / dev-mode: static credentials against a custom endpoint.
+    if (config.endpoint) {
+      return new S3Client({
+        region: config.region,
+        endpoint: config.endpoint,
+        forcePathStyle: config.forcePathStyle ?? true,
+        credentials: {
+          accessKeyId: config.accessKeyId ?? '',
+          secretAccessKey: config.secretAccessKey ?? '',
+        },
+      })
+    }
+
+    // Production: assume the customer's cross-account role via STS.
+    if (config.roleArn) {
+      const sts = new STSClient({ region: config.region })
+      try {
+        const result = await sts.send(
+          new AssumeRoleCommand({
+            RoleArn: config.roleArn,
+            RoleSessionName: `logweave-s3-${Date.now()}`,
+            ExternalId: config.externalId,
+            DurationSeconds: 3600,
+          }),
+        )
+        const creds = result.Credentials
+        if (!creds?.AccessKeyId || !creds.SecretAccessKey || !creds.SessionToken) {
+          throw new Error('AssumeRole did not return credentials')
+        }
+        return new S3Client({
+          region: config.region,
+          credentials: {
+            accessKeyId: creds.AccessKeyId,
+            secretAccessKey: creds.SecretAccessKey,
+            sessionToken: creds.SessionToken,
+            expiration: creds.Expiration,
+          },
+        })
+      } finally {
+        sts.destroy()
+      }
+    }
+
+    // Fallback: default credential chain (env / instance profile).
+    return new S3Client({ region: config.region })
   }
 
   async testConnection(config: ConnectorConfig): Promise<ConnectionTestResult> {
     const s3Config = config as S3ConnectorConfig
-    const client = this.createClient(s3Config)
+    const client = await this.createClient(s3Config)
 
     try {
       const result = await client.send(
@@ -121,25 +154,30 @@ export class S3Adapter implements LogSourceAdapter {
 
       return {
         success: true,
-        message: count > 0
-          ? `Connected. Found ${count} file(s) with prefix "${s3Config.prefix}".`
-          : `Connected but no files found with prefix "${s3Config.prefix}". Check your path pattern.`,
+        message:
+          count > 0
+            ? `Connected. Found ${count} file(s) with prefix "${s3Config.prefix}".`
+            : `Connected but no files found with prefix "${s3Config.prefix}". Check your path pattern.`,
         filesFound: count,
       }
     } catch (err) {
       client.destroy()
       const msg = err instanceof Error ? err.message : String(err)
-      const code = msg.includes('AccessDenied') || msg.includes('Forbidden')
-        ? 'S3_ACCESS_DENIED'
-        : msg.includes('NoSuchBucket')
-          ? 'S3_NO_SUCH_BUCKET'
-          : 'S3_UNKNOWN'
+      const code =
+        msg.includes('AccessDenied') || msg.includes('Forbidden')
+          ? 'S3_ACCESS_DENIED'
+          : msg.includes('NoSuchBucket')
+            ? 'S3_NO_SUCH_BUCKET'
+            : 'S3_UNKNOWN'
       getInternalEvents().emit({
         event: 's3.connector_failed',
         severity: 'error',
         code,
         summary: 's3 connector test failed',
-        fields: { region: s3Config.region, error_name: (err as { name?: string } | undefined)?.name ?? 'unknown' },
+        fields: {
+          region: s3Config.region,
+          error_name: (err as { name?: string } | undefined)?.name ?? 'unknown',
+        },
       })
 
       if (msg.includes('AccessDenied') || msg.includes('Forbidden')) {
@@ -167,7 +205,7 @@ export class S3Adapter implements LogSourceAdapter {
 
   async fetchRawLogs(params: FetchRawLogsParams): Promise<RawLogResult> {
     const config = params.config as S3ConnectorConfig
-    const client = this.createClient(config)
+    const client = await this.createClient(config)
     const regex = templateToRegex(params.templateText)
     const limit = Math.min(params.limit, SCAN_DEFAULTS.maxLimit)
 
@@ -245,7 +283,6 @@ export class S3Adapter implements LogSourceAdapter {
           }
         } catch {
           // Skip unreadable files (permissions, deleted between list and get, etc.)
-          continue
         }
       }
 
@@ -274,9 +311,7 @@ export class S3Adapter implements LogSourceAdapter {
     regex: RegExp,
     remaining: number,
   ): Promise<{ matches: Array<{ message: string; timestamp?: string }>; bytesRead: number }> {
-    const result = await client.send(
-      new GetObjectCommand({ Bucket: config.bucket, Key: key }),
-    )
+    const result = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }))
 
     if (!result.Body) {
       return { matches: [], bytesRead: 0 }

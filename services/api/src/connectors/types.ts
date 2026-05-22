@@ -15,6 +15,10 @@ export interface S3ConnectorConfig {
   region: string
   logFormat: 'jsonl' | 'text'
   compression: 'none' | 'gzip'
+  /** Cross-account IAM role ARN that LogWeave assumes to read this bucket. */
+  roleArn?: string
+  /** ExternalId attached to the trust policy (per-connector, confused-deputy protection). */
+  externalId?: string
   /** MinIO/dev-only: S3-compatible endpoint URL */
   endpoint?: string
   /** MinIO/dev-only: required for path-style access */

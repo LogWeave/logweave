@@ -4,6 +4,7 @@ import {
   useConnectors,
   useCreateConnector,
   useDeleteConnector,
+  useS3QuickCreateUrl,
   useTestConnector,
 } from '../../api/queries'
 import type { ConnectorType } from '../../api/types'
@@ -44,6 +45,8 @@ const S3_FIELDS: FieldDef[] = [
   { key: 'prefix', label: 'Prefix', placeholder: 'logs/' },
   { key: 'pathPattern', label: 'Path Pattern', placeholder: '{prefix}{service}/{year}/{month}/{day}/{hour}/', required: true },
   { key: 'region', label: 'Region', placeholder: 'us-east-1', required: true },
+  { key: 'roleArn', label: 'Role ARN (recommended)', placeholder: 'arn:aws:iam::123456789012:role/LogWeaveS3ConnectorRole' },
+  { key: 'externalId', label: 'External ID', placeholder: 'paste from quick-create' },
   { key: 'endpoint', label: 'Endpoint (MinIO/dev)', placeholder: 'http://minio:9002' },
   { key: 'accessKeyId', label: 'Access Key ID', placeholder: 'minioadmin', type: 'password' },
   { key: 'secretAccessKey', label: 'Secret Access Key', placeholder: '', type: 'password' },
@@ -91,6 +94,7 @@ export function ConnectorSettings() {
   const createMutation = useCreateConnector()
   const deleteMutation = useDeleteConnector()
   const testMutation = useTestConnector()
+  const quickCreateMutation = useS3QuickCreateUrl()
 
   const [showAddForm, setShowAddForm] = useState(false)
   const [connectorName, setConnectorName] = useState('')
@@ -165,6 +169,36 @@ export function ConnectorSettings() {
       },
       onError: () => toast.error(`Failed to test ${name}`),
     })
+  }
+
+  const handleQuickCreate = () => {
+    const bucket = formValues.bucket?.trim()
+    const region = formValues.region?.trim() || 'us-east-1'
+    if (!bucket) {
+      toast.error('Enter the S3 bucket name first')
+      return
+    }
+    quickCreateMutation.mutate(
+      { bucket, prefix: formValues.prefix?.trim() || '', region },
+      {
+        onSuccess: (resp) => {
+          const data = resp?.data
+          if (!data) {
+            toast.error('Quick-create URL response was empty')
+            return
+          }
+          setFormValues((prev) => ({ ...prev, externalId: data.externalId }))
+          window.open(data.url, '_blank', 'noopener,noreferrer')
+          toast.success(
+            'Opened AWS Console. Create the stack, then paste the Role ARN below.',
+          )
+        },
+        onError: (err) =>
+          toast.error(
+            err instanceof Error ? err.message : 'Failed to build quick-create URL',
+          ),
+      },
+    )
   }
 
   const handleDelete = (connectorId: string, name: string) => {
@@ -261,6 +295,25 @@ export function ConnectorSettings() {
                   ))}
                 </select>
               </div>
+
+              {/* S3 quick-create hint */}
+              {connectorType === 's3' && !formValues.endpoint?.trim() && (
+                <div className="rounded-[var(--radius-md)] border border-border-subtle bg-surface-elevated px-3 py-2 text-[11px] text-text-muted space-y-1.5">
+                  <div>
+                    <span className="text-text-primary font-medium">Quick setup:</span> enter
+                    your bucket and region above, click <em>Quick-create IAM role</em>, then
+                    paste the Role ARN AWS shows you back into the form.
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleQuickCreate}
+                    disabled={quickCreateMutation.isPending}
+                  >
+                    {quickCreateMutation.isPending ? 'Building URL...' : 'Quick-create IAM role'}
+                  </Button>
+                </div>
+              )}
 
               {/* Dynamic fields */}
               <div className="space-y-2">

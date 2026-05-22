@@ -453,6 +453,22 @@ export function useDeleteConnector() {
   })
 }
 
+export interface S3QuickCreateUrlResponse {
+  url: string
+  externalId: string
+  region: string
+}
+
+export function useS3QuickCreateUrl() {
+  return useMutation({
+    mutationFn: (body: { bucket: string; prefix?: string; region?: string }) =>
+      api.post<ApiResponse<S3QuickCreateUrlResponse>>(
+        '/v1/connectors/s3/quick-create-url',
+        body,
+      ),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Cost optimizer
 // ---------------------------------------------------------------------------
