@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { DbClient } from '../../src/db/client.js'
-import { queryTemplateTrend } from '../../src/db/dashboard-queries.js'
+import { queryTemplateTrend } from '../../src/db/dashboard/template-trend.js'
 
 function createCapturingDb(
   mockData: unknown = [],

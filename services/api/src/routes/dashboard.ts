@@ -12,24 +12,27 @@ import { truncateTemplateText } from '../format.js'
 import { isoTimestamp, respond } from '../lib/respond.js'
 import {
   type ClusteringHealthSnapshotRow,
-  type OverviewAggregatesRow,
-  type OverviewCountsRow,
   queryClusteringHealthSnapshot,
   queryClusteringHealthTrend,
+} from '../db/dashboard/clustering.js'
+import { queryLevelDistribution } from '../db/dashboard/levels.js'
+import {
+  type OverviewAggregatesRow,
+  type OverviewCountsRow,
   queryDashboardOverviewAggregates,
   queryDashboardOverviewCounts,
-  queryDashboardServices,
+} from '../db/dashboard/overview.js'
+import { querySemanticSearch, queryTemplateSearch } from '../db/dashboard/search.js'
+import { queryDashboardServices } from '../db/dashboard/services.js'
+import { queryTemplateStatusCodes } from '../db/dashboard/status-codes.js'
+import { queryTemplateEvents } from '../db/dashboard/template-events.js'
+import { queryTemplateTrend } from '../db/dashboard/template-trend.js'
+import {
   queryDashboardTemplates,
-  queryDashboardVolume,
-  queryLevelDistribution,
   queryNewTodayIds,
-  querySemanticSearch,
-  queryTemplateEvents,
-  queryTemplateTrend,
-  queryTemplateSearch,
   queryTemplateSparklines,
-  queryTemplateStatusCodes,
-} from '../db/dashboard-queries.js'
+} from '../db/dashboard/templates.js'
+import { queryDashboardVolume } from '../db/dashboard/volume.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import {

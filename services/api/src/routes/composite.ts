@@ -10,12 +10,14 @@ import type { DbClient } from '../db/client.js'
 import {
   queryDashboardOverviewAggregates,
   queryDashboardOverviewCounts,
-  queryDashboardServices,
-  queryDashboardVolume,
+} from '../db/dashboard/overview.js'
+import { queryDashboardServices } from '../db/dashboard/services.js'
+import { queryTemplateStatusCodes } from '../db/dashboard/status-codes.js'
+import {
   queryTemplateSparklines,
-  queryTemplateStatusCodes,
   queryTemplatesAcrossServices,
-} from '../db/dashboard-queries.js'
+} from '../db/dashboard/templates.js'
+import { queryDashboardVolume } from '../db/dashboard/volume.js'
 import { notFound } from '../errors.js'
 import { truncateTemplateText } from '../format.js'
 import { respond } from '../lib/respond.js'
