@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
   useConnectors,
@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { cn } from '../../lib/cn'
+import { clearDraft, loadDraft, saveDraft } from './connector-draft'
 
 // ---------------------------------------------------------------------------
 // Type labels
@@ -100,12 +101,57 @@ export function ConnectorSettings() {
   const [connectorName, setConnectorName] = useState('')
   const [connectorType, setConnectorType] = useState<ConnectorType>('s3')
   const [formValues, setFormValues] = useState<Record<string, string>>({})
+  const [restoredFromDraft, setRestoredFromDraft] = useState(false)
+
+  // A draft is "active" only when it contains a generated ExternalId — that's
+  // the irrecoverable bit. Other form input lost on tab-close is not worth
+  // guarding against.
+  const draftActive = connectorType === 's3' && !!formValues.externalId?.trim()
+
+  // Hydrate from a stored draft whenever the form opens or the type changes.
+  // Only S3 has a generated secret today; if other types grow one, broaden this.
+  useEffect(() => {
+    if (!showAddForm || connectorType !== 's3') {
+      setRestoredFromDraft(false)
+      return
+    }
+    const draft = loadDraft(connectorType)
+    if (!draft) {
+      setRestoredFromDraft(false)
+      return
+    }
+    setFormValues(draft.formValues)
+    if (draft.name) setConnectorName(draft.name)
+    setRestoredFromDraft(true)
+  }, [showAddForm, connectorType])
+
+  // Warn on tab close while a draft holds an ExternalId. The native confirm
+  // is the standard primitive here — one click to dismiss, only fires when
+  // there's actually something to lose.
+  useEffect(() => {
+    if (!draftActive) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      // Most browsers ignore the custom string and show their own copy, but
+      // setting returnValue is still required to trigger the prompt.
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [draftActive])
 
   const resetForm = () => {
     setConnectorName('')
     setConnectorType('s3')
     setFormValues({})
     setShowAddForm(false)
+    setRestoredFromDraft(false)
+  }
+
+  const handleStartOver = () => {
+    clearDraft(connectorType)
+    setFormValues({})
+    setRestoredFromDraft(false)
   }
 
   const handleCreate = () => {
@@ -149,6 +195,7 @@ export function ConnectorSettings() {
       {
         onSuccess: () => {
           toast.success(`Connector "${connectorName}" created`)
+          clearDraft(connectorType)
           resetForm()
         },
         onError: (err) =>
@@ -187,7 +234,9 @@ export function ConnectorSettings() {
             toast.error('Quick-create URL response was empty')
             return
           }
-          setFormValues((prev) => ({ ...prev, externalId: data.externalId }))
+          const nextValues = { ...formValues, externalId: data.externalId }
+          setFormValues(nextValues)
+          saveDraft('s3', { formValues: nextValues, name: connectorName })
           window.open(data.url, '_blank', 'noopener,noreferrer')
           toast.success(
             'Opened AWS Console. Create the stack, then paste the Role ARN below.',
@@ -299,40 +348,75 @@ export function ConnectorSettings() {
               {/* S3 quick-create hint */}
               {connectorType === 's3' && !formValues.endpoint?.trim() && (
                 <div className="rounded-[var(--radius-md)] border border-border-subtle bg-surface-elevated px-3 py-2 text-[11px] text-text-muted space-y-1.5">
-                  <div>
-                    <span className="text-text-primary font-medium">Quick setup:</span> enter
-                    your bucket and region above, click <em>Quick-create IAM role</em>, then
-                    paste the Role ARN AWS shows you back into the form.
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleQuickCreate}
-                    disabled={quickCreateMutation.isPending}
-                  >
-                    {quickCreateMutation.isPending ? 'Building URL...' : 'Quick-create IAM role'}
-                  </Button>
+                  {draftActive ? (
+                    <>
+                      <div className="text-text-primary">
+                        ✓ ExternalId generated and stored in this browser.
+                      </div>
+                      <div>
+                        {restoredFromDraft
+                          ? 'Picked up from your previous session. '
+                          : 'AWS Console opened in a new tab — '}
+                        Complete CloudFormation in AWS, then paste the Role ARN
+                        below and save.{' '}
+                        <button
+                          type="button"
+                          onClick={handleStartOver}
+                          className="text-text-muted underline decoration-dotted hover:text-text-primary"
+                        >
+                          Start over
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <span className="text-text-primary font-medium">Quick setup:</span>{' '}
+                        enter your bucket and region above, click{' '}
+                        <em>Quick-create IAM role</em>, then paste the Role ARN AWS shows you
+                        back into the form.
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleQuickCreate}
+                        disabled={quickCreateMutation.isPending}
+                      >
+                        {quickCreateMutation.isPending
+                          ? 'Building URL...'
+                          : 'Quick-create IAM role'}
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
 
               {/* Dynamic fields */}
               <div className="space-y-2">
-                {fieldsForType(connectorType).map((field) => (
-                  <div key={field.key}>
-                    <label className="text-[10px] text-text-muted block mb-0.5">
-                      {field.label}
-                      {field.required && <span className="text-danger-500 ml-0.5">*</span>}
-                    </label>
-                    <Input
-                      type={field.type ?? 'text'}
-                      placeholder={field.placeholder}
-                      value={formValues[field.key] ?? ''}
-                      onChange={(e) =>
-                        setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))
-                      }
-                    />
-                  </div>
-                ))}
+                {fieldsForType(connectorType).map((field) => {
+                  // ExternalId is generated by quick-create, not user-entered.
+                  // Editing it would de-sync from the CloudFormation stack the
+                  // user just created. Lock it once populated; Start over to clear.
+                  const isLockedExternalId =
+                    field.key === 'externalId' && !!formValues.externalId?.trim()
+                  return (
+                    <div key={field.key}>
+                      <label className="text-[10px] text-text-muted block mb-0.5">
+                        {field.label}
+                        {field.required && <span className="text-danger-500 ml-0.5">*</span>}
+                      </label>
+                      <Input
+                        type={field.type ?? 'text'}
+                        placeholder={field.placeholder}
+                        value={formValues[field.key] ?? ''}
+                        onChange={(e) =>
+                          setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                        }
+                        readOnly={isLockedExternalId}
+                      />
+                    </div>
+                  )
+                })}
 
                 {/* Log format selector for S3 and filesystem */}
                 {(connectorType === 's3' || connectorType === 'filesystem') && (
