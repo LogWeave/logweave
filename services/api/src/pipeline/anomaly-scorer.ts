@@ -52,9 +52,9 @@ export interface AnomalyScorerOptions {
 /**
  * In-memory anomaly scorer for the ingest pipeline.
  *
- * Compares current 5-minute interval event counts against a rolling 1-hour
- * baseline from template_stats. Uses graduated thresholds: 10x during warmup
- * (first 60 minutes), 3x in steady state.
+ * Compares current 5-minute interval event counts against a 7-day baseline
+ * matched by hour-of-day (UTC). See ADR-014. Uses graduated thresholds: 10x
+ * during warmup (first 60 minutes), 3x in steady state.
  *
  * All scoring is pure arithmetic against cached maps — no ClickHouse queries
  * in the hot path. Baselines are refreshed asynchronously every 60 seconds.
@@ -73,11 +73,20 @@ export class AnomalyScorer {
   private readonly baselineRefreshMs: number
   private readonly now: () => number
 
-  /** Current interval event counts: `{tenant}:{service}:{templateId}:{intervalStart}` → count */
+  /** Current interval event counts: `{tenant}\0{service}\0{templateId}\0{intervalStart}` → count */
   private readonly intervalCounters = new Map<string, number>()
-  /** Baseline avg count per 5-min interval: `{tenant}:{service}:{templateId}` → avgCount */
-  private readonly baselineCache = new Map<string, number>()
-  /** First-seen time per tenant+service: `{tenant}:{service}` → { firstSeen, lastSeen } */
+  /**
+   * Per-hour baseline: `{tenant}\0{service}\0{templateId}\0{hourOfDay}` → avgCount.
+   * Looked up first at scoring time using the current UTC hour.
+   */
+  private readonly baselineByHour = new Map<string, number>()
+  /**
+   * Cross-hour mean baseline: `{tenant}\0{service}\0{templateId}` → avgCount.
+   * Fallback for the current hour when sparse data leaves a gap (cold-start
+   * tenant, rarely-fired template, etc.).
+   */
+  private readonly baselineMean = new Map<string, number>()
+  /** First-seen time per tenant+service: `{tenant}\0{service}` → { firstSeen, lastSeen } */
   private readonly warmupTracker = new Map<string, { firstSeen: number; lastSeen: number }>()
 
   private intervalHandle: ReturnType<typeof setTimeout> | null = null
@@ -190,13 +199,12 @@ export class AnomalyScorer {
 
       const score = this.computeScore(tenantId, service, templateId, count, age)
       if (score > 0) {
-        const baselineKey = `${tenantId}${D}${service}${D}${templateId}`
         results.push({
           templateId,
           service,
           score,
           currentCount: count,
-          baselineCount: this.baselineCache.get(baselineKey) ?? 0,
+          baselineCount: this.lookupBaseline(tenantId, service, templateId) ?? 0,
         })
       }
     }
@@ -208,8 +216,7 @@ export class AnomalyScorer {
    * Shared by recordAndScore (hot path) and getWatchedScores (evaluator).
    */
   private computeScore(tenantId: string, service: string, templateId: string, count: number, age: number): number {
-    const baselineKey = `${tenantId}${D}${service}${D}${templateId}`
-    const baseline = this.baselineCache.get(baselineKey)
+    const baseline = this.lookupBaseline(tenantId, service, templateId)
 
     // No baseline or baseline=0 → use absolute threshold for new templates
     if (baseline === undefined || baseline <= 0) {
@@ -227,6 +234,22 @@ export class AnomalyScorer {
     const score = count / effectiveBaseline / threshold
 
     return score >= 1.0 ? score : 0
+  }
+
+  /**
+   * Resolve the baseline for the current UTC hour. Hour-specific entry first,
+   * then the cross-hour mean as fallback (sparse hours for an established
+   * template), then `undefined` (no baseline → new-template absolute-threshold
+   * path).
+   */
+  private lookupBaseline(tenantId: string, service: string, templateId: string): number | undefined {
+    const hourOfDay = new Date(this.now()).getUTCHours()
+    const hourKey = `${tenantId}${D}${service}${D}${templateId}${D}${hourOfDay}`
+    const hourBaseline = this.baselineByHour.get(hourKey)
+    if (hourBaseline !== undefined) return hourBaseline
+
+    const meanKey = `${tenantId}${D}${service}${D}${templateId}`
+    return this.baselineMean.get(meanKey)
   }
 
   private currentIntervalStart(): number {
@@ -253,12 +276,29 @@ export class AnomalyScorer {
           const rows = await queryAnomalyBaselines(this.db, tenantId)
           // Clear-and-replace: remove stale entries for this tenant, then add fresh ones
           const prefix = `${tenantId}${D}`
-          for (const key of this.baselineCache.keys()) {
-            if (key.startsWith(prefix)) this.baselineCache.delete(key)
+          for (const key of this.baselineByHour.keys()) {
+            if (key.startsWith(prefix)) this.baselineByHour.delete(key)
           }
+          for (const key of this.baselineMean.keys()) {
+            if (key.startsWith(prefix)) this.baselineMean.delete(key)
+          }
+
+          // Build per-hour map + accumulate per-template sums for the mean.
+          const sums = new Map<string, { total: number; n: number }>()
           for (const row of rows) {
-            const key = `${tenantId}${D}${row.service}${D}${row.template_id}`
-            this.baselineCache.set(key, Number(row.avg_count_per_interval))
+            const avg = Number(row.avg_count_per_interval)
+            const hour = Number(row.hour_of_day)
+            const hourKey = `${tenantId}${D}${row.service}${D}${row.template_id}${D}${hour}`
+            this.baselineByHour.set(hourKey, avg)
+
+            const meanKey = `${tenantId}${D}${row.service}${D}${row.template_id}`
+            const acc = sums.get(meanKey) ?? { total: 0, n: 0 }
+            acc.total += avg
+            acc.n += 1
+            sums.set(meanKey, acc)
+          }
+          for (const [meanKey, { total, n }] of sums) {
+            this.baselineMean.set(meanKey, total / n)
           }
         } catch (err) {
           this.logger.warn({ err, tenantId }, 'Baseline refresh failed for tenant')
