@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
-import { AnomalyScorer } from '../../src/pipeline/anomaly-scorer.js'
+import { AnomalyScorer, WARMUP_SENTINEL_TEMPLATE_ID } from '../../src/pipeline/anomaly-scorer.js'
 import { AlertDispatcher, type AlertEvent, type TemplateAlertEvent } from '../../src/watches/alert-observer.js'
 import { AlertEvaluator } from '../../src/watches/alert-evaluator.js'
 import { WatchStore } from '../../src/watches/watch-store.js'
@@ -51,7 +51,7 @@ function createTestSetup(options: SetupOptions = {}): Setup {
   function registerWarmup(tenantId: string, service: string, msAgo: number): void {
     const restore = clock.t
     clock.t = restore - msAgo
-    scorer.recordAndScore(tenantId, service, '__warmup_sentinel__')
+    scorer.recordAndScore(tenantId, service, WARMUP_SENTINEL_TEMPLATE_ID)
     clock.t = restore
   }
 
@@ -172,7 +172,7 @@ describe('AlertEvaluator', () => {
     // Register warmup via the public record path
     const restore = clock.t
     clock.t = restore - 2 * 3_600_000
-    scorer.recordAndScore('t1', 'api', '__warmup_sentinel__')
+    scorer.recordAndScore('t1', 'api', WARMUP_SENTINEL_TEMPLATE_ID)
     clock.t = restore
     await scorer.refreshBaselines()
 

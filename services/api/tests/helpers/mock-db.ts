@@ -46,6 +46,42 @@ export function createBaselineMockDb(baselines: BaselineSpec[]): DbClient {
   } as unknown as DbClient
 }
 
+// Dashboard query templates start with a `/* @query: <name> */` marker
+// (see services/api/src/db/dashboard/*). Mocks route by that name rather
+// than SQL fragments so refactors to the SQL don't break tests.
+const QUERY_NAME_RE = /@query:\s*(\w+)/
+
+export function extractQueryName(sql: string): string | undefined {
+  return QUERY_NAME_RE.exec(sql)?.[1]
+}
+
+/**
+ * Create a mock DbClient that routes by the `/* @query: <name> *\/` marker
+ * embedded in each dashboard SQL template. Unknown query names throw so
+ * that typos surface immediately instead of silently returning [].
+ */
+export function createQueryNameMockDb(queryResults?: Map<string, unknown>): DbClient {
+  return {
+    query: async (params: { query: string; query_params: Record<string, unknown> }) => {
+      if (!queryResults) return []
+      const name = extractQueryName(params.query)
+      if (!name) {
+        throw new Error(
+          `mock DbClient: query missing @query marker — add a /* @query: <name> */ comment to the SQL template`,
+        )
+      }
+      if (queryResults.has(name)) return queryResults.get(name)
+      // Configured but no entry for this name: tests sometimes intentionally
+      // leave queries unmocked (e.g. empty-result tests). Default to [].
+      return []
+    },
+    insert: async () => {},
+    command: async () => {},
+    ping: async () => true,
+    close: async () => {},
+  } as unknown as DbClient
+}
+
 /**
  * Create a mock DbClient that captures queries for assertion.
  * Returns `{ db, queries }` where `queries` is an array of captured query strings.

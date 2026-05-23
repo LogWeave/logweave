@@ -2,44 +2,14 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
 import type { DbClient } from '../../src/db/client.js'
-import { AnomalyScorer } from '../../src/pipeline/anomaly-scorer.js'
+import { AnomalyScorer, WARMUP_SENTINEL_TEMPLATE_ID } from '../../src/pipeline/anomaly-scorer.js'
+import { createBaselineMockDb } from '../helpers/mock-db.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const silentLogger = pino({ level: 'silent' })
-
-interface BaselineSpec {
-  tenantId: string
-  service: string
-  templateId: string
-  avgCount: number
-}
-
-/**
- * Mock DB that returns baseline rows scoped to whichever tenantId is in the
- * current `tenant_id` query parameter. Mirrors the real
- * `queryAnomalyBaselines` contract.
- */
-function createBaselineMockDb(baselines: BaselineSpec[]): DbClient {
-  return {
-    query: async (params: { query: string; query_params: Record<string, unknown> }) => {
-      const tenantId = params.query_params?.tenant_id as string | undefined
-      return baselines
-        .filter((b) => b.tenantId === tenantId)
-        .map((b) => ({
-          template_id: b.templateId,
-          service: b.service,
-          avg_count_per_interval: String(b.avgCount),
-        }))
-    },
-    insert: async () => {},
-    command: async () => {},
-    ping: async () => true,
-    close: async () => {},
-  } as unknown as DbClient
-}
 
 interface ScorerHarness {
   scorer: AnomalyScorer
@@ -83,7 +53,7 @@ function createHarness(
     // First event for an unseen tenant+service initialises the warmup tracker
     // at the current clock and returns 0 — the scorer's public way of marking
     // "first seen at now".
-    scorer.recordAndScore(tenantId, service, '__warmup_sentinel__')
+    scorer.recordAndScore(tenantId, service, WARMUP_SENTINEL_TEMPLATE_ID)
     clock.t = restore
   }
 

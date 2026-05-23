@@ -7,6 +7,7 @@ import type { DbClient } from '../src/db/client.js'
 import { createAuthMiddleware } from '../src/middleware/auth.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
 import { dashboardRoutes } from '../src/routes/dashboard.js'
+import { createQueryNameMockDb } from './helpers/mock-db.js'
 
 // ---------------------------------------------------------------------------
 // Test constants
@@ -137,43 +138,12 @@ const mockClusteringHealthTrendRows = [
 ]
 
 // ---------------------------------------------------------------------------
-// Mock DbClient factory
-// ---------------------------------------------------------------------------
-
-/**
- * Each query template starts with a `/* @query: <name> *\/` marker
- * (see services/api/src/db/dashboard/*). Tests route mock data by that name,
- * so refactors to the SQL (column renames, GROUP BY changes) do not break tests
- * as long as the query identity is preserved.
- */
-const QUERY_NAME_RE = /@query:\s*(\w+)/
-
-function extractQueryName(sql: string): string | undefined {
-  return QUERY_NAME_RE.exec(sql)?.[1]
-}
-
-function createMockDb(queryResults?: Map<string, unknown>): DbClient {
-  return {
-    query: async (params: { query: string; query_params: Record<string, unknown> }) => {
-      if (!queryResults) return []
-      const name = extractQueryName(params.query)
-      if (name && queryResults.has(name)) return queryResults.get(name)
-      return []
-    },
-    insert: async () => {},
-    command: async () => {},
-    ping: async () => true,
-    close: async () => {},
-  } as unknown as DbClient
-}
-
-// ---------------------------------------------------------------------------
 // Test app factory
 // ---------------------------------------------------------------------------
 
 function createTestApp(queryResults?: Map<string, unknown>) {
   const logger = pino({ level: 'silent' })
-  const db = createMockDb(queryResults)
+  const db = createQueryNameMockDb(queryResults)
   const app = express()
   app.use(express.json())
   const auth = createAuthMiddleware(keyMap)

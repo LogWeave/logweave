@@ -38,6 +38,7 @@ export async function queryTemplateEvents(
     : ''
 
   const query = `
+/* @query: templateEvents */
 SELECT
     timestamp, trace_id, route, duration_ms, level, service, status_code
 FROM logweave.log_metadata

@@ -8,17 +8,33 @@ describe('loadConfig', () => {
     LOGWEAVE_API_KEYS: '{"test-key-1":"tenant-a","test-key-2":"tenant-b"}',
   }
 
-  // Only mutate the env keys this suite actually touches. Snapshotting all of
-  // process.env (or all LOGWEAVE_* keys) couples the test to whatever else
-  // happens to be present — if config.ts later reads a non-LOGWEAVE_ key, a
-  // broad snapshot/clear silently masks the dependency.
+  // Every LOGWEAVE_* env var loadConfig reads. The "applies defaults" test
+  // asserts default values, which only hold when the var is unset — so we
+  // must clear every key the schema consults, not just the ones a given
+  // test body assigns. Keep this in sync with src/config.ts loadConfig().
   const MANAGED_KEYS = [
-    'LOGWEAVE_CLICKHOUSE_URL',
-    'LOGWEAVE_CLUSTERER_URL',
-    'LOGWEAVE_API_KEYS',
     'LOGWEAVE_PORT',
+    'LOGWEAVE_CLICKHOUSE_URL',
+    'LOGWEAVE_CLICKHOUSE_USER',
+    'LOGWEAVE_CLICKHOUSE_PASSWORD',
+    'LOGWEAVE_CLUSTERER_URL',
+    'LOGWEAVE_CLUSTERER_TIMEOUT_MS',
     'LOGWEAVE_LOG_LEVEL',
+    'LOGWEAVE_SHUTDOWN_TIMEOUT_MS',
     'LOGWEAVE_RECOVERY_ENABLED',
+    'LOGWEAVE_RECOVERY_INTERVAL_MS',
+    'LOGWEAVE_RECOVERY_LOOKBACK_HOURS',
+    'LOGWEAVE_API_KEYS',
+    'LOGWEAVE_DASHBOARD_BASE_URL',
+    'LOGWEAVE_RATE_LIMIT_RPM',
+    'LOGWEAVE_RATE_LIMIT_TENANT_RPM',
+    'LOGWEAVE_RATE_LIMIT_INGEST_RPM',
+    'LOGWEAVE_MAX_CONCURRENT_QUERIES',
+    'LOGWEAVE_ENCRYPTION_KEY',
+    'LOGWEAVE_RETENTION_ENABLED',
+    'LOGWEAVE_RETENTION_INTERVAL_MS',
+    'LOGWEAVE_AWS_ACCOUNT_ID',
+    'LOGWEAVE_S3_CFN_TEMPLATE_URL',
   ] as const
 
   const envSnapshot = new Map<string, string | undefined>()
