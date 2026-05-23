@@ -89,14 +89,18 @@ const mockOverviewCountsRow = {
 // Mock DB
 // ---------------------------------------------------------------------------
 
+const QUERY_NAME_RE = /@query:\s*(\w+)/
+
+function extractQueryName(sql: string): string | undefined {
+  return QUERY_NAME_RE.exec(sql)?.[1]
+}
+
 function createMockDb(queryResults?: Map<string, unknown>): DbClient {
   return {
     query: async (params: { query: string; query_params: Record<string, unknown> }) => {
-      if (queryResults) {
-        for (const [key, value] of queryResults) {
-          if (params.query.includes(key)) return value
-        }
-      }
+      if (!queryResults) return []
+      const name = extractQueryName(params.query)
+      if (name && queryResults.has(name)) return queryResults.get(name)
       return []
     },
     insert: async () => {},
@@ -123,25 +127,25 @@ function createTestApp(queryResults?: Map<string, unknown>) {
 
 function templateDetailQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  map.set('groupArray(DISTINCT', mockCrossServiceRows)
-  map.set('template_id IN', mockSparklineRows)
-  map.set('status_code', mockStatusCodeRows)
+  map.set('templatesAcrossServices', mockCrossServiceRows)
+  map.set('templateSparklines', mockSparklineRows)
+  map.set('templateStatusCodes', mockStatusCodeRows)
   return map
 }
 
 function serviceHealthQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  map.set('GROUP BY service', mockServiceRows)
-  map.set('groupArray(DISTINCT', mockCrossServiceRows)
-  map.set('GROUP BY interval_start', mockVolumeRows)
+  map.set('dashboardServices', mockServiceRows)
+  map.set('templatesAcrossServices', mockCrossServiceRows)
+  map.set('dashboardVolume', mockVolumeRows)
   return map
 }
 
 function overviewQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  map.set('new_template_count', [mockOverviewAggRow])
-  map.set('uniq(service)', [mockOverviewCountsRow])
-  map.set('groupArray(DISTINCT', mockCrossServiceRows)
+  map.set('overviewAggregates', [mockOverviewAggRow])
+  map.set('overviewCounts', [mockOverviewCountsRow])
+  map.set('templatesAcrossServices', mockCrossServiceRows)
   return map
 }
 
@@ -259,12 +263,11 @@ describe('GET /v1/services/:name/health', () => {
     const logger = pino({ level: 'silent' })
     const db = {
       query: async (params: { query: string; query_params: Record<string, unknown> }) => {
-        if (params.query.includes('groupArray(DISTINCT')) {
+        const name = extractQueryName(params.query)
+        if (name === 'templatesAcrossServices') {
           captured.push(params.query_params)
         }
-        for (const [key, value] of queryMap) {
-          if (params.query.includes(key)) return value
-        }
+        if (name && queryMap.has(name)) return queryMap.get(name)
         return []
       },
       insert: async () => {},
@@ -340,12 +343,11 @@ describe('GET /v1/overview', () => {
     const logger = pino({ level: 'silent' })
     const db = {
       query: async (params: { query: string; query_params: Record<string, unknown> }) => {
-        if (params.query.includes('groupArray(DISTINCT')) {
+        const name = extractQueryName(params.query)
+        if (name === 'templatesAcrossServices') {
           captured.push(params.query_params)
         }
-        for (const [key, value] of queryMap) {
-          if (params.query.includes(key)) return value
-        }
+        if (name && queryMap.has(name)) return queryMap.get(name)
         return []
       },
       insert: async () => {},

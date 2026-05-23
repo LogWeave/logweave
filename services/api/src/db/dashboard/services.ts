@@ -34,6 +34,7 @@ export async function queryDashboardServices(
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
+/* @query: dashboardServices */
 SELECT
     service,
     countMerge(log_count)             AS log_count,

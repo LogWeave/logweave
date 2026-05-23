@@ -141,20 +141,23 @@ const mockClusteringHealthTrendRows = [
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a mock DbClient that routes queries based on SQL substring matching.
- * The queryResults map maps SQL substrings to the mock data that should be returned.
- * For single-row queries (overview aggregates, overview counts, clustering snapshot),
- * the mock returns the row directly (as a single-element array) since the route
- * handler accesses rows[0].
+ * Each query template starts with a `/* @query: <name> *\/` marker
+ * (see services/api/src/db/dashboard/*). Tests route mock data by that name,
+ * so refactors to the SQL (column renames, GROUP BY changes) do not break tests
+ * as long as the query identity is preserved.
  */
+const QUERY_NAME_RE = /@query:\s*(\w+)/
+
+function extractQueryName(sql: string): string | undefined {
+  return QUERY_NAME_RE.exec(sql)?.[1]
+}
+
 function createMockDb(queryResults?: Map<string, unknown>): DbClient {
   return {
     query: async (params: { query: string; query_params: Record<string, unknown> }) => {
-      if (queryResults) {
-        for (const [key, value] of queryResults) {
-          if (params.query.includes(key)) return value
-        }
-      }
+      if (!queryResults) return []
+      const name = extractQueryName(params.query)
+      if (name && queryResults.has(name)) return queryResults.get(name)
       return []
     },
     insert: async () => {},
@@ -185,56 +188,42 @@ function createTestApp(queryResults?: Map<string, unknown>) {
 
 function templatesQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  // Template stats query: groups by template_id, template_text, service
-  map.set('GROUP BY template_id', mockTemplateStatsRows)
-  // New today IDs query: uses is_new_template
-  map.set('is_new_template', mockNewTodayRows)
+  map.set('dashboardTemplates', mockTemplateStatsRows)
+  map.set('newTodayIds', mockNewTodayRows)
   return map
 }
 
 function servicesQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  map.set('GROUP BY service', mockServiceStatsRows)
+  map.set('dashboardServices', mockServiceStatsRows)
   return map
 }
 
-function volumeQueryMap(includePrevious = false): Map<string, unknown> {
+function volumeQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  // Volume queries go to service_stats with GROUP BY interval_start
-  // Both current and previous hit the same mock, so we return the
-  // same or different data depending on what's requested
-  if (includePrevious) {
-    // When offset is provided, both queries match the same SQL pattern.
-    // We return the current rows for both (test verifies the shape, not the data
-    // selection logic which belongs to the DB layer).
-    map.set('GROUP BY interval_start', mockVolumeRows)
-  } else {
-    map.set('GROUP BY interval_start', mockVolumeRows)
-  }
+  // dashboardVolume is the single query used for both current and previous
+  // windows (the route makes two calls with different offsets).
+  map.set('dashboardVolume', mockVolumeRows)
   return map
 }
 
 function overviewQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  // Aggregates from service_stats (no GROUP BY, no uniq)
-  map.set('new_template_count', [mockOverviewAggregatesRow])
-  // Counts from log_metadata with uniq(service)
-  map.set('uniq(service)', [mockOverviewCountsRow])
+  map.set('overviewAggregates', [mockOverviewAggregatesRow])
+  map.set('overviewCounts', [mockOverviewCountsRow])
   return map
 }
 
 function sparklineQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  map.set('template_id IN', mockSparklineRows)
+  map.set('templateSparklines', mockSparklineRows)
   return map
 }
 
 function clusteringHealthQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  // Snapshot: from log_metadata with clustered_events
-  map.set('clustered_events', [mockClusteringHealthSnapshotRow])
-  // Trend: from log_metadata with toStartOfHour
-  map.set('toStartOfHour', mockClusteringHealthTrendRows)
+  map.set('clusteringHealthSnapshot', [mockClusteringHealthSnapshotRow])
+  map.set('clusteringHealthTrend', mockClusteringHealthTrendRows)
   return map
 }
 
@@ -410,7 +399,7 @@ describe('GET /v1/dashboard/services', () => {
 
   it('computes errorRate and warnRate as 0 when logCount is 0', async () => {
     const zeroCountMap = new Map<string, unknown>()
-    zeroCountMap.set('GROUP BY service', [
+    zeroCountMap.set('dashboardServices', [
       {
         service: 'empty',
         log_count: '0',
@@ -552,10 +541,10 @@ describe('GET /v1/dashboard/overview', () => {
 
   it('computes errorRate as 0 when totalEvents is 0', async () => {
     const zeroMap = new Map<string, unknown>()
-    zeroMap.set('new_template_count', [
+    zeroMap.set('overviewAggregates', [
       { total_events: '0', error_count: '0', warn_count: '0', new_template_count: '0' },
     ])
-    zeroMap.set('uniq(service)', [
+    zeroMap.set('overviewCounts', [
       { unique_templates: '0', unclustered_count: '0', service_count: '0' },
     ])
     const app = createTestApp(zeroMap)
@@ -744,7 +733,7 @@ describe('GET /v1/dashboard/clustering-health', () => {
 
   it('compressionRatio is 0 when totalEvents is 0', async () => {
     const zeroMap = new Map<string, unknown>()
-    zeroMap.set('clustered_events', [
+    zeroMap.set('clusteringHealthSnapshot', [
       {
         total_events: '0',
         clustered_events: '0',
@@ -752,7 +741,7 @@ describe('GET /v1/dashboard/clustering-health', () => {
         unique_templates: '0',
       },
     ])
-    zeroMap.set('toStartOfHour', [])
+    zeroMap.set('clusteringHealthTrend', [])
     const app = createTestApp(zeroMap)
 
     const res = await request(app)
@@ -766,8 +755,8 @@ describe('GET /v1/dashboard/clustering-health', () => {
 
   it('trend point ratio is 0 when total is 0', async () => {
     const zeroTrendMap = new Map<string, unknown>()
-    zeroTrendMap.set('clustered_events', [mockClusteringHealthSnapshotRow])
-    zeroTrendMap.set('toStartOfHour', [
+    zeroTrendMap.set('clusteringHealthSnapshot', [mockClusteringHealthSnapshotRow])
+    zeroTrendMap.set('clusteringHealthTrend', [
       { interval_start: '2026-03-17T00:00:00.000Z', total: '0', unclustered: '0' },
     ])
     const app = createTestApp(zeroTrendMap)
@@ -830,12 +819,9 @@ const mockResolvedRows = [
 
 function changesQueryMap(): Map<string, unknown> {
   const map = new Map<string, unknown>()
-  // New templates query: uses is_new_template
-  map.set('is_new_template', mockNewTemplateRows)
-  // Spikes query: uses spike_ratio
-  map.set('spike_ratio', mockSpikeRows)
-  // Resolved query: uses previous_active
-  map.set('previous_active', mockResolvedRows)
+  map.set('newTemplates', mockNewTemplateRows)
+  map.set('templateSpikes', mockSpikeRows)
+  map.set('resolvedTemplates', mockResolvedRows)
   return map
 }
 
@@ -1073,8 +1059,8 @@ describe('cross-cutting: response envelope', () => {
       ...overviewQueryMap(),
       ...clusteringHealthQueryMap(),
     ])
-    // Add volume mock
-    allMocks.set('GROUP BY interval_start', mockVolumeRows)
+    // Add volume + changes mocks
+    allMocks.set('dashboardVolume', mockVolumeRows)
 
     const app = createTestApp(allMocks)
 

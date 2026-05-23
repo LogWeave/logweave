@@ -46,6 +46,7 @@ export async function queryDashboardVolume(
   // Use template_stats (5-min buckets) for smoother volume charts
   // instead of service_stats (1-hour buckets) which looks blocky
   const query = `
+/* @query: dashboardVolume */
 SELECT
     interval_start,
     service,

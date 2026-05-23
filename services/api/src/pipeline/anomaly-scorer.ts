@@ -276,15 +276,4 @@ export class AnomalyScorer {
     }
   }
 
-  // Test helpers — pre-populate state without exposing internals.
-  // Tracked for removal in #206 (replace with scorer-public-contract tests).
-  /** @internal Set baseline for a specific template (testing only). */
-  setBaseline(tenantId: string, service: string, templateId: string, avgCount: number): void {
-    this.baselineCache.set(`${tenantId}${D}${service}${D}${templateId}`, avgCount)
-  }
-
-  /** @internal Set warmup first-seen time for a tenant+service (testing only). */
-  setWarmup(tenantId: string, service: string, firstSeenMs: number): void {
-    this.warmupTracker.set(`${tenantId}${D}${service}`, { firstSeen: firstSeenMs, lastSeen: firstSeenMs })
-  }
 }

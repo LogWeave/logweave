@@ -8,28 +8,34 @@ describe('loadConfig', () => {
     LOGWEAVE_API_KEYS: '{"test-key-1":"tenant-a","test-key-2":"tenant-b"}',
   }
 
-  // Snapshot and restore full env to prevent cross-test pollution
-  let envSnapshot: Record<string, string | undefined> = {}
+  // Only mutate the env keys this suite actually touches. Snapshotting all of
+  // process.env (or all LOGWEAVE_* keys) couples the test to whatever else
+  // happens to be present — if config.ts later reads a non-LOGWEAVE_ key, a
+  // broad snapshot/clear silently masks the dependency.
+  const MANAGED_KEYS = [
+    'LOGWEAVE_CLICKHOUSE_URL',
+    'LOGWEAVE_CLUSTERER_URL',
+    'LOGWEAVE_API_KEYS',
+    'LOGWEAVE_PORT',
+    'LOGWEAVE_LOG_LEVEL',
+    'LOGWEAVE_RECOVERY_ENABLED',
+  ] as const
+
+  const envSnapshot = new Map<string, string | undefined>()
 
   beforeEach(() => {
-    envSnapshot = { ...process.env }
-    // Clear all LOGWEAVE_ vars to isolate tests
-    for (const key of Object.keys(process.env)) {
-      if (key.startsWith('LOGWEAVE_')) {
-        delete process.env[key]
-      }
+    envSnapshot.clear()
+    for (const key of MANAGED_KEYS) {
+      envSnapshot.set(key, process.env[key])
+      delete process.env[key]
     }
   })
 
   afterEach(() => {
-    // Restore original env
-    for (const key of Object.keys(process.env)) {
-      if (key.startsWith('LOGWEAVE_') && !(key in envSnapshot)) {
+    for (const [key, value] of envSnapshot) {
+      if (value === undefined) {
         delete process.env[key]
-      }
-    }
-    for (const [key, value] of Object.entries(envSnapshot)) {
-      if (value !== undefined) {
+      } else {
         process.env[key] = value
       }
     }
