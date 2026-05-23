@@ -82,6 +82,39 @@ Common failures:
   the connector doesn't match the one CloudFormation used. Easiest fix:
   delete the stack, run quick-create again, and update the connector.
 
+## Auditing access in your CloudTrail
+
+Every AssumeRole call LogWeave makes appears in your AWS CloudTrail under
+the IAM role's account. The `userIdentity.sessionContext.sessionIssuer`
+points at the LogWeave role; the `requestParameters.roleSessionName`
+field carries a per-(tenant, connector) identifier so you can pivot the
+audit log:
+
+```
+logweave-<tenantHash>-<connectorIdSuffix>
+```
+
+- `tenantHash` is a 12-character HMAC of the LogWeave tenant ID. It's
+  **not reversible** without LogWeave's server-side secret, so the
+  session name alone doesn't tell an attacker who the tenant is — but
+  it's stable, so you can filter CloudTrail for a specific tenant's
+  activity once you know which hash maps to which tenant on the
+  LogWeave side.
+- `connectorIdSuffix` is the first 8 characters of the LogWeave
+  connector UUID. Multiple connectors per tenant produce distinct
+  session names.
+
+Example CloudTrail filter for one specific connector:
+
+```
+eventName = AssumeRole AND
+requestParameters.roleSessionName starts-with logweave-abc123def456-789abcde
+```
+
+The hash is computed with HMAC-SHA256 using LogWeave's `LOGWEAVE_ENCRYPTION_KEY`
+as the secret, so the same tenant + connector always produces the same
+session name across LogWeave restarts.
+
 ## Operator setup (self-hosters only)
 
 If you run your own LogWeave instance and want the dashboard's

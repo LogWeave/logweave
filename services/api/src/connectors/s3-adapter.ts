@@ -9,8 +9,10 @@ import {
 import { AssumeRoleCommand, type AssumeRoleCommandOutput, STSClient } from '@aws-sdk/client-sts'
 import { getInternalEvents } from '../internal-events/emitter.js'
 import { scanStream } from './line-scanner.js'
+import { buildRoleSessionName } from './session-name.js'
 import { templateToRegex } from './template-regex.js'
 import {
+  type AdapterAuditContext,
   type ConnectionTestResult,
   type ConnectorConfig,
   type FetchRawLogsParams,
@@ -190,7 +192,10 @@ function s3ConsoleUrl(config: S3ConnectorConfig, key: string): string {
 export class S3Adapter implements LogSourceAdapter {
   readonly type = 's3'
 
-  private async createClient(config: S3ConnectorConfig): Promise<S3Client> {
+  private async createClient(
+    config: S3ConnectorConfig,
+    auditContext: AdapterAuditContext | undefined,
+  ): Promise<S3Client> {
     // MinIO / dev-mode: static credentials against a custom endpoint.
     if (config.endpoint) {
       return new S3Client({
@@ -206,6 +211,19 @@ export class S3Adapter implements LogSourceAdapter {
 
     // Production: assume the customer's cross-account role via STS.
     if (config.roleArn) {
+      if (!auditContext) {
+        // The session name plumbing is a hard requirement on the AWS path:
+        // it surfaces in the customer's CloudTrail. Forgetting to thread it
+        // through would silently regress per-tenant audit visibility.
+        throw new Error(
+          'S3Adapter: auditContext required when roleArn is configured (needed for RoleSessionName)',
+        )
+      }
+      const roleSessionName = buildRoleSessionName({
+        tenantId: auditContext.tenantId,
+        connectorId: auditContext.connectorId,
+        secret: auditContext.sessionNameSecret,
+      })
       const sts = new STSClient({ region: config.region })
       try {
         let result: AssumeRoleCommandOutput
@@ -213,7 +231,7 @@ export class S3Adapter implements LogSourceAdapter {
           result = await sts.send(
             new AssumeRoleCommand({
               RoleArn: config.roleArn,
-              RoleSessionName: `logweave-s3-${Date.now()}`,
+              RoleSessionName: roleSessionName,
               ExternalId: config.externalId,
               DurationSeconds: 3600,
             }),
@@ -252,7 +270,10 @@ export class S3Adapter implements LogSourceAdapter {
     return new S3Client({ region: config.region })
   }
 
-  async testConnection(config: ConnectorConfig): Promise<ConnectionTestResult> {
+  async testConnection(
+    config: ConnectorConfig,
+    auditContext?: AdapterAuditContext,
+  ): Promise<ConnectionTestResult> {
     const s3Config = config as S3ConnectorConfig
 
     // STS AssumeRole runs inside createClient. Its errors get a distinct
@@ -261,7 +282,7 @@ export class S3Adapter implements LogSourceAdapter {
     // permission vs bucket).
     let client: S3Client
     try {
-      client = await this.createClient(s3Config)
+      client = await this.createClient(s3Config, auditContext)
     } catch (err) {
       if (err instanceof StsAssumeRoleError) {
         const { code, message } = mapStsError(err.errorName)
@@ -340,7 +361,7 @@ export class S3Adapter implements LogSourceAdapter {
 
   async fetchRawLogs(params: FetchRawLogsParams): Promise<RawLogResult> {
     const config = params.config as S3ConnectorConfig
-    const client = await this.createClient(config)
+    const client = await this.createClient(config, params.auditContext)
     const regex = templateToRegex(params.templateText)
     const limit = Math.min(params.limit, SCAN_DEFAULTS.maxLimit)
 
