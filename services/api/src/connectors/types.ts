@@ -81,6 +81,22 @@ export type ConnectorConfig =
 // Adapter interface
 // ---------------------------------------------------------------------------
 
+/**
+ * Audit context plumbed into adapter calls. Currently used by S3Adapter to
+ * embed a stable identifier in the AWS STS RoleSessionName so customer
+ * CloudTrail logs can be filtered per-tenant / per-connector. Optional so
+ * test paths and adapters that don't need it can ignore it.
+ *
+ * `sessionNameSecret` is a server-side HMAC key — reusing the existing
+ * encryptionKey is fine (the HMAC is domain-separated). It MUST be set when
+ * S3 + roleArn is in play; the adapter throws if it's missing on that path.
+ */
+export interface AdapterAuditContext {
+  tenantId: string
+  connectorId: string
+  sessionNameSecret: string
+}
+
 export interface FetchRawLogsParams {
   config: ConnectorConfig
   templateText: string
@@ -89,6 +105,7 @@ export interface FetchRawLogsParams {
   limit: number
   sourceRef?: string
   cursor?: string
+  auditContext?: AdapterAuditContext
 }
 
 export interface RawLogLine {
@@ -117,7 +134,10 @@ export interface ConnectionTestResult {
 export interface LogSourceAdapter {
   readonly type: string
 
-  testConnection(config: ConnectorConfig): Promise<ConnectionTestResult>
+  testConnection(
+    config: ConnectorConfig,
+    auditContext?: AdapterAuditContext,
+  ): Promise<ConnectionTestResult>
 
   fetchRawLogs(params: FetchRawLogsParams): Promise<RawLogResult>
 }

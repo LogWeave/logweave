@@ -206,13 +206,7 @@ const quickCreateUrlSchema = z.object({
  * second factor in the IAM trust policy — combined with roleArn it lets the
  * holder assume the role, so we redact it from list/echo responses.
  */
-const SECRET_KEYS = new Set([
-  'secretAccessKey',
-  'accessKeyId',
-  'password',
-  'apiKey',
-  'externalId',
-])
+const SECRET_KEYS = new Set(['secretAccessKey', 'accessKeyId', 'password', 'apiKey', 'externalId'])
 
 function redactConfig(configJson: string): Record<string, unknown> {
   try {
@@ -336,7 +330,16 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
 
       const config = JSON.parse(await decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
       const adapter = getAdapter(config.type)
-      const result = await adapter.testConnection(config)
+      // decrypt above already required deps.encryptionKey to be set; the
+      // narrowing for sessionNameSecret is a safety net, not a real branch.
+      if (!deps.encryptionKey) {
+        throw new Error('encryptionKey is required to test connectors')
+      }
+      const result = await adapter.testConnection(config, {
+        tenantId,
+        connectorId,
+        sessionNameSecret: deps.encryptionKey,
+      })
 
       respond(res, result)
     } catch (err) {

@@ -48,6 +48,16 @@ pnpm dev           # dev server with hot reload
 pnpm build         # production build
 ```
 
+### CloudFormation templates
+
+CFN templates live under `services/*/cloudformation/`. CI runs `cfn-lint`
+with `--non-zero-exit-code error`; warnings are logged but don't fail
+the build. Run locally before pushing:
+
+```bash
+uvx cfn-lint --non-zero-exit-code error services/*/cloudformation/*.yaml
+```
+
 ## Code Standards
 
 - **TypeScript** for all API and dashboard code

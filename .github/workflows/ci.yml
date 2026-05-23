@@ -85,3 +85,21 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cloudformation:
+    name: CloudFormation (cfn-lint)
+    runs-on: ubuntu-latest
+    # Skip when no CFN templates exist
+    if: hashFiles('services/*/cloudformation/*.yaml', 'services/*/cloudformation/*.yml') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install cfn-lint
+        run: pip install cfn-lint
+      - name: Lint CloudFormation templates
+        # --non-zero-exit-code error: warnings/informational are logged but
+        # don't fail the build. Tighten to `warning` once any noise is
+        # cleaned up. Glob expansion is shell-side; CI uses bash by default.
+        run: cfn-lint --non-zero-exit-code error services/*/cloudformation/*.yaml services/*/cloudformation/*.yml
