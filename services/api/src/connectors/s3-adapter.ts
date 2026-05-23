@@ -6,7 +6,7 @@ import {
   type ListObjectsV2CommandOutput,
   S3Client,
 } from '@aws-sdk/client-s3'
-import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts'
+import { AssumeRoleCommand, type AssumeRoleCommandOutput, STSClient } from '@aws-sdk/client-sts'
 import { getInternalEvents } from '../internal-events/emitter.js'
 import { scanStream } from './line-scanner.js'
 import { templateToRegex } from './template-regex.js'
@@ -20,6 +20,85 @@ import {
   type S3ConnectorConfig,
   SCAN_DEFAULTS,
 } from './types.js'
+
+// ---------------------------------------------------------------------------
+// STS error handling
+// ---------------------------------------------------------------------------
+
+/**
+ * Tagged error so testConnection can distinguish a failure during the STS
+ * AssumeRole step from a failure later (ListObjectsV2 etc.). Carries the raw
+ * AWS error name so the mapper can give specific guidance.
+ */
+export class StsAssumeRoleError extends Error {
+  readonly errorName: string
+
+  constructor(awsErrorName: string, awsMessage: string) {
+    super(awsMessage)
+    this.name = 'StsAssumeRoleError'
+    this.errorName = awsErrorName
+  }
+}
+
+/**
+ * AWS SDK v3 sets the AWS error code as `error.name` (e.g. "AccessDenied",
+ * "InvalidClientTokenId"). Substring-matching the message string would be
+ * brittle — different SDK versions and translation layers reword the
+ * sentence — so we route on `name`.
+ */
+function awsErrorName(err: unknown): string {
+  return (err as { name?: string } | undefined)?.name ?? 'Unknown'
+}
+
+interface StsErrorMapping {
+  /** Internal-event code (operator-facing). */
+  code: string
+  /** User-facing message — never echoes the raw AWS message. */
+  message: string
+}
+
+export function mapStsError(errorName: string): StsErrorMapping {
+  switch (errorName) {
+    case 'AccessDenied':
+      return {
+        code: 'S3_ASSUME_ROLE_DENIED',
+        message:
+          "AWS denied the AssumeRole request. The IAM role exists but its trust policy doesn't accept this connection — most often the External ID in the role doesn't match the one LogWeave is sending. Re-run the quick-create flow (or update the role's trust policy by hand) to align the External ID.",
+      }
+    case 'InvalidClientTokenId':
+    case 'SignatureDoesNotMatch':
+      return {
+        code: 'S3_STS_INVALID_CREDENTIALS',
+        message:
+          "LogWeave's own AWS credentials are invalid or unsigned. This is a server-side configuration problem — contact whoever runs your LogWeave instance.",
+      }
+    case 'ExpiredToken':
+    case 'ExpiredTokenException':
+      return {
+        code: 'S3_STS_EXPIRED_TOKEN',
+        message:
+          "LogWeave's AWS session token has expired. This is a server-side configuration problem — contact whoever runs your LogWeave instance.",
+      }
+    case 'MalformedPolicyDocument':
+      return {
+        code: 'S3_STS_MALFORMED_POLICY',
+        message:
+          "The IAM role's trust policy is malformed. If you used quick-create, delete the CloudFormation stack and try again; otherwise check the role's trust policy JSON.",
+      }
+    case 'RegionDisabledException':
+      return {
+        code: 'S3_STS_REGION_DISABLED',
+        message:
+          'STS is disabled in the configured region. Pick a different region, or enable STS in your AWS account settings.',
+      }
+    default:
+      return {
+        code: 'S3_STS_UNKNOWN',
+        message:
+          "AssumeRole failed for a reason we don't have a specific message for. Common causes: the role hasn't finished provisioning yet (CloudFormation can take 30–60s), the role ARN was mistyped, or the role was deleted. Wait a minute and try again.",
+      }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -106,17 +185,31 @@ export class S3Adapter implements LogSourceAdapter {
     if (config.roleArn) {
       const sts = new STSClient({ region: config.region })
       try {
-        const result = await sts.send(
-          new AssumeRoleCommand({
-            RoleArn: config.roleArn,
-            RoleSessionName: `logweave-s3-${Date.now()}`,
-            ExternalId: config.externalId,
-            DurationSeconds: 3600,
-          }),
-        )
+        let result: AssumeRoleCommandOutput
+        try {
+          result = await sts.send(
+            new AssumeRoleCommand({
+              RoleArn: config.roleArn,
+              RoleSessionName: `logweave-s3-${Date.now()}`,
+              ExternalId: config.externalId,
+              DurationSeconds: 3600,
+            }),
+          )
+        } catch (err) {
+          // Re-throw as a tagged error so testConnection can map STS-specific
+          // failure modes without string-matching the SDK error name from a
+          // catch-all block.
+          throw new StsAssumeRoleError(
+            awsErrorName(err),
+            err instanceof Error ? err.message : String(err),
+          )
+        }
         const creds = result.Credentials
         if (!creds?.AccessKeyId || !creds.SecretAccessKey || !creds.SessionToken) {
-          throw new Error('AssumeRole did not return credentials')
+          throw new StsAssumeRoleError(
+            'NoCredentialsReturned',
+            'AssumeRole did not return credentials',
+          )
         }
         return new S3Client({
           region: config.region,
@@ -138,7 +231,28 @@ export class S3Adapter implements LogSourceAdapter {
 
   async testConnection(config: ConnectorConfig): Promise<ConnectionTestResult> {
     const s3Config = config as S3ConnectorConfig
-    const client = await this.createClient(s3Config)
+
+    // STS AssumeRole runs inside createClient. Its errors get a distinct
+    // event + actionable message — separate from S3-level failures because
+    // the user-facing remediation is different (trust policy vs IAM
+    // permission vs bucket).
+    let client: S3Client
+    try {
+      client = await this.createClient(s3Config)
+    } catch (err) {
+      if (err instanceof StsAssumeRoleError) {
+        const { code, message } = mapStsError(err.errorName)
+        getInternalEvents().emit({
+          event: 's3.assume_role_failed',
+          severity: 'error',
+          code,
+          summary: 's3 connector AssumeRole failed',
+          fields: { region: s3Config.region, error_name: err.errorName },
+        })
+        return { success: false, message }
+      }
+      throw err
+    }
 
     try {
       const result = await client.send(
@@ -162,31 +276,29 @@ export class S3Adapter implements LogSourceAdapter {
       }
     } catch (err) {
       client.destroy()
-      const msg = err instanceof Error ? err.message : String(err)
-      const code =
-        msg.includes('AccessDenied') || msg.includes('Forbidden')
-          ? 'S3_ACCESS_DENIED'
-          : msg.includes('NoSuchBucket')
-            ? 'S3_NO_SUCH_BUCKET'
-            : 'S3_UNKNOWN'
+      const errorName = awsErrorName(err)
+      const isAccessDenied = errorName === 'AccessDenied' || errorName === 'Forbidden'
+      const isNoSuchBucket = errorName === 'NoSuchBucket'
+      const code = isAccessDenied
+        ? 'S3_ACCESS_DENIED'
+        : isNoSuchBucket
+          ? 'S3_NO_SUCH_BUCKET'
+          : 'S3_UNKNOWN'
       getInternalEvents().emit({
         event: 's3.connector_failed',
         severity: 'error',
         code,
         summary: 's3 connector test failed',
-        fields: {
-          region: s3Config.region,
-          error_name: (err as { name?: string } | undefined)?.name ?? 'unknown',
-        },
+        fields: { region: s3Config.region, error_name: errorName },
       })
 
-      if (msg.includes('AccessDenied') || msg.includes('Forbidden')) {
+      if (isAccessDenied) {
         return {
           success: false,
           message: 'Access denied. Check IAM permissions (s3:ListBucket, s3:GetObject required).',
         }
       }
-      if (msg.includes('NoSuchBucket')) {
+      if (isNoSuchBucket) {
         return {
           success: false,
           message: `Bucket "${s3Config.bucket}" does not exist or is not accessible.`,
