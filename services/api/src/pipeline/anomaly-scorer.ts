@@ -1,6 +1,6 @@
 import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
-import { queryAnomalyBaselines } from '../db/anomaly-queries.js'
+import { BASELINE_ROW_WARN_THRESHOLD, queryAnomalyBaselines } from '../db/anomaly-queries.js'
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000
 const TEN_MINUTES_MS = 10 * 60 * 1000
@@ -77,15 +77,14 @@ export class AnomalyScorer {
   private readonly intervalCounters = new Map<string, number>()
   /**
    * Per-hour baseline: `{tenant}\0{service}\0{templateId}\0{hourOfDay}` → avgCount.
-   * Looked up first at scoring time using the current UTC hour.
+   * Looked up at scoring time using the current UTC hour. Missing entries
+   * deliberately fall through to the new-template absolute-threshold path —
+   * NOT to a cross-hour mean. A cross-hour mean would re-introduce diurnal
+   * blindness for peaky templates (e.g. a busy-day / quiet-night template
+   * whose cross-hour mean is dominated by daytime traffic would mask quiet-
+   * hour anomalies). See ADR-014.
    */
   private readonly baselineByHour = new Map<string, number>()
-  /**
-   * Cross-hour mean baseline: `{tenant}\0{service}\0{templateId}` → avgCount.
-   * Fallback for the current hour when sparse data leaves a gap (cold-start
-   * tenant, rarely-fired template, etc.).
-   */
-  private readonly baselineMean = new Map<string, number>()
   /** First-seen time per tenant+service: `{tenant}\0{service}` → { firstSeen, lastSeen } */
   private readonly warmupTracker = new Map<string, { firstSeen: number; lastSeen: number }>()
 
@@ -237,19 +236,15 @@ export class AnomalyScorer {
   }
 
   /**
-   * Resolve the baseline for the current UTC hour. Hour-specific entry first,
-   * then the cross-hour mean as fallback (sparse hours for an established
-   * template), then `undefined` (no baseline → new-template absolute-threshold
-   * path).
+   * Resolve the baseline for the current UTC hour. Returns `undefined` if no
+   * hour-specific entry exists, which routes scoring to the new-template
+   * absolute-threshold path. See ADR-014 for why we deliberately do NOT fall
+   * back to a cross-hour mean.
    */
   private lookupBaseline(tenantId: string, service: string, templateId: string): number | undefined {
     const hourOfDay = new Date(this.now()).getUTCHours()
     const hourKey = `${tenantId}${D}${service}${D}${templateId}${D}${hourOfDay}`
-    const hourBaseline = this.baselineByHour.get(hourKey)
-    if (hourBaseline !== undefined) return hourBaseline
-
-    const meanKey = `${tenantId}${D}${service}${D}${templateId}`
-    return this.baselineMean.get(meanKey)
+    return this.baselineByHour.get(hourKey)
   }
 
   private currentIntervalStart(): number {
@@ -272,6 +267,7 @@ export class AnomalyScorer {
       }
 
       for (const tenantId of tenants) {
+        const startMs = this.now()
         try {
           const rows = await queryAnomalyBaselines(this.db, tenantId)
           // Clear-and-replace: remove stale entries for this tenant, then add fresh ones
@@ -279,27 +275,20 @@ export class AnomalyScorer {
           for (const key of this.baselineByHour.keys()) {
             if (key.startsWith(prefix)) this.baselineByHour.delete(key)
           }
-          for (const key of this.baselineMean.keys()) {
-            if (key.startsWith(prefix)) this.baselineMean.delete(key)
-          }
-
-          // Build per-hour map + accumulate per-template sums for the mean.
-          const sums = new Map<string, { total: number; n: number }>()
           for (const row of rows) {
-            const avg = Number(row.avg_count_per_interval)
-            const hour = Number(row.hour_of_day)
-            const hourKey = `${tenantId}${D}${row.service}${D}${row.template_id}${D}${hour}`
-            this.baselineByHour.set(hourKey, avg)
-
-            const meanKey = `${tenantId}${D}${row.service}${D}${row.template_id}`
-            const acc = sums.get(meanKey) ?? { total: 0, n: 0 }
-            acc.total += avg
-            acc.n += 1
-            sums.set(meanKey, acc)
+            const hourKey = `${tenantId}${D}${row.service}${D}${row.template_id}${D}${Number(row.hour_of_day)}`
+            this.baselineByHour.set(hourKey, Number(row.avg_count_per_interval))
           }
-          for (const [meanKey, { total, n }] of sums) {
-            this.baselineMean.set(meanKey, total / n)
+          if (rows.length >= BASELINE_ROW_WARN_THRESHOLD) {
+            this.logger.warn(
+              { tenantId, rows: rows.length, threshold: BASELINE_ROW_WARN_THRESHOLD },
+              'Anomaly baseline row count is unusually high — investigate template cardinality',
+            )
           }
+          this.logger.debug(
+            { tenantId, rows: rows.length, durationMs: this.now() - startMs },
+            'Baseline refresh completed for tenant',
+          )
         } catch (err) {
           this.logger.warn({ err, tenantId }, 'Baseline refresh failed for tenant')
         }
