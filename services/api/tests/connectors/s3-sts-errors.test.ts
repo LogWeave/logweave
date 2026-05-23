@@ -22,27 +22,55 @@ describe('mapStsError', () => {
     assert.equal(code, 'S3_STS_INVALID_CREDENTIALS')
   })
 
-  it('ExpiredToken: tells user this is a server-side problem (their CFN is fine)', () => {
-    const { code, message } = mapStsError('ExpiredToken')
+  // SDK contract: @aws-sdk/client-sts collapses wire codes "ExpiredToken"
+  // and "ExpiredTokenException" to the modeled class name
+  // ExpiredTokenException. Lock the modeled name down so the regression
+  // doesn't silently route to the catch-all.
+  it('ExpiredTokenException: tells user this is a server-side problem (their CFN is fine)', () => {
+    const { code, message } = mapStsError('ExpiredTokenException')
     assert.equal(code, 'S3_STS_EXPIRED_TOKEN')
     assert.match(message, /server-side/i)
   })
 
-  it('ExpiredTokenException: same mapping as ExpiredToken (SDK variants)', () => {
-    const { code } = mapStsError('ExpiredTokenException')
-    assert.equal(code, 'S3_STS_EXPIRED_TOKEN')
-  })
-
-  it('MalformedPolicyDocument: tells user to redo CFN', () => {
-    const { code, message } = mapStsError('MalformedPolicyDocument')
+  // SDK contract: wire code "MalformedPolicy" surfaces as the modeled class
+  // name MalformedPolicyDocumentException. Earlier draft mapped the
+  // wire-code suffix instead of the class name and silently fell through to
+  // the catch-all — caught by adversarial review, regressed here.
+  it('MalformedPolicyDocumentException: tells user to update / re-create CFN stack', () => {
+    const { code, message } = mapStsError('MalformedPolicyDocumentException')
     assert.equal(code, 'S3_STS_MALFORMED_POLICY')
     assert.match(message, /trust policy|cloudformation/i)
+    // Should NOT recommend a destructive "delete" as the first remediation.
+    assert.doesNotMatch(message, /\bdelete the\b/i)
   })
 
   it('RegionDisabledException: tells user STS is disabled in the region', () => {
     const { code, message } = mapStsError('RegionDisabledException')
     assert.equal(code, 'S3_STS_REGION_DISABLED')
     assert.match(message, /region/i)
+  })
+
+  // STS emits these under load. They must NOT route to the catch-all,
+  // which would tell the user to wait for CloudFormation — wrong remediation.
+  it('ThrottlingException: tells user to retry shortly', () => {
+    const { code, message } = mapStsError('ThrottlingException')
+    assert.equal(code, 'S3_STS_THROTTLED')
+    assert.match(message, /rate.?limit|throttl|wait/i)
+    assert.doesNotMatch(message, /cloudformation/i)
+  })
+
+  it('Throttling (legacy SDK variant): same mapping as ThrottlingException', () => {
+    const { code } = mapStsError('Throttling')
+    assert.equal(code, 'S3_STS_THROTTLED')
+  })
+
+  // 200 OK with empty credentials → LogWeave server bug, not customer-fixable.
+  // Must not tell the user to wait for CloudFormation.
+  it('NoCredentialsReturned: dedicated server-side message, not the CFN-wait catch-all', () => {
+    const { code, message } = mapStsError('NoCredentialsReturned')
+    assert.equal(code, 'S3_STS_NO_CREDENTIALS')
+    assert.match(message, /server-side|bug|contact/i)
+    assert.doesNotMatch(message, /cloudformation/i)
   })
 
   it('Unknown error name: actionable fallback mentioning provisioning delay', () => {
@@ -53,9 +81,20 @@ describe('mapStsError', () => {
   })
 
   it('Never includes raw AWS account IDs, ARNs, or request fingerprints', () => {
-    // Spot-check a few mappings: messages should be templated, not echoes
+    // Spot-check across all branches: messages must be templated, not echoes
     // of AWS error sentences which can include sensitive identifiers.
-    for (const name of ['AccessDenied', 'InvalidClientTokenId', 'ExpiredToken', 'Unknown']) {
+    const names = [
+      'AccessDenied',
+      'InvalidClientTokenId',
+      'SignatureDoesNotMatch',
+      'ExpiredTokenException',
+      'MalformedPolicyDocumentException',
+      'RegionDisabledException',
+      'ThrottlingException',
+      'NoCredentialsReturned',
+      'Unknown',
+    ]
+    for (const name of names) {
       const { message } = mapStsError(name)
       assert.doesNotMatch(message, /\barn:aws/i)
       assert.doesNotMatch(message, /\b\d{12}\b/) // 12-digit AWS account IDs

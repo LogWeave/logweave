@@ -41,6 +41,13 @@ export class StsAssumeRoleError extends Error {
 }
 
 /**
+ * Synthetic name used when AssumeRole returns 200 OK but with no credentials
+ * in the response. Distinct from a real AWS error: indicates a LogWeave
+ * server-side bug, not a customer-fixable trust-policy issue.
+ */
+const NO_CREDENTIALS_RETURNED = 'NoCredentialsReturned'
+
+/**
  * AWS SDK v3 sets the AWS error code as `error.name` (e.g. "AccessDenied",
  * "InvalidClientTokenId"). Substring-matching the message string would be
  * brittle — different SDK versions and translation layers reword the
@@ -72,24 +79,40 @@ export function mapStsError(errorName: string): StsErrorMapping {
         message:
           "LogWeave's own AWS credentials are invalid or unsigned. This is a server-side configuration problem — contact whoever runs your LogWeave instance.",
       }
-    case 'ExpiredToken':
+    // AWS SDK v3 sets `error.name = 'ExpiredTokenException'` for both wire
+    // codes "ExpiredToken" and "ExpiredTokenException" — the SDK collapses
+    // them to the modeled class name.
     case 'ExpiredTokenException':
       return {
         code: 'S3_STS_EXPIRED_TOKEN',
         message:
           "LogWeave's AWS session token has expired. This is a server-side configuration problem — contact whoever runs your LogWeave instance.",
       }
-    case 'MalformedPolicyDocument':
+    // Same collapse: wire "MalformedPolicy" surfaces as the class name
+    // "MalformedPolicyDocumentException" in the SDK.
+    case 'MalformedPolicyDocumentException':
       return {
         code: 'S3_STS_MALFORMED_POLICY',
         message:
-          "The IAM role's trust policy is malformed. If you used quick-create, delete the CloudFormation stack and try again; otherwise check the role's trust policy JSON.",
+          "The IAM role's trust policy is malformed. If you used quick-create, update or re-create the CloudFormation stack; otherwise check the role's trust policy JSON.",
       }
     case 'RegionDisabledException':
       return {
         code: 'S3_STS_REGION_DISABLED',
         message:
           'STS is disabled in the configured region. Pick a different region, or enable STS in your AWS account settings.',
+      }
+    case 'Throttling':
+    case 'ThrottlingException':
+      return {
+        code: 'S3_STS_THROTTLED',
+        message: 'AWS rate-limited the AssumeRole request. Wait a few seconds and try again.',
+      }
+    case NO_CREDENTIALS_RETURNED:
+      return {
+        code: 'S3_STS_NO_CREDENTIALS',
+        message:
+          'AWS accepted the AssumeRole request but returned no credentials. This is a LogWeave server-side bug — contact whoever runs your LogWeave instance.',
       }
     default:
       return {
@@ -207,7 +230,7 @@ export class S3Adapter implements LogSourceAdapter {
         const creds = result.Credentials
         if (!creds?.AccessKeyId || !creds.SecretAccessKey || !creds.SessionToken) {
           throw new StsAssumeRoleError(
-            'NoCredentialsReturned',
+            NO_CREDENTIALS_RETURNED,
             'AssumeRole did not return credentials',
           )
         }
