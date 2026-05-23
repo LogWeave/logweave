@@ -403,4 +403,182 @@ describe('AnomalyScorer', () => {
     // count is now 25, score = 25/20 = 1.25
     assert.ok(lastScore > 0, `baseline=0 with high count should score > 0, got ${lastScore}`)
   })
+
+  // ---------------------------------------------------------------------------
+  // Hour-of-day baseline tests (ADR-014)
+  // ---------------------------------------------------------------------------
+
+  // Fixed clock at 2026-05-23 03:00:00 UTC — exact start of UTC hour 3.
+  // Using a fixed wall-time lets us assert the hour-of-day lookup behaviour
+  // without depending on the harness's default Date.now() at runtime.
+  const HOUR_3_UTC_MS = Date.UTC(2026, 4, 23, 3, 0, 0)
+  const HOUR_15_UTC_MS = Date.UTC(2026, 4, 23, 15, 0, 0)
+
+  it('hour-of-day match: uses the baseline for the current UTC hour', async () => {
+    const { scorer, registerWarmup } = createHarness({
+      clock: HOUR_3_UTC_MS,
+      coldStartMs: 0,
+      steadyThreshold: 3,
+      db: createBaselineMockDb([
+        // Quiet hour: very small baseline at 3 AM UTC
+        { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 1, hourOfDay: 3 },
+        // Loud hour: huge baseline at 3 PM UTC
+        { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 1000, hourOfDay: 15 },
+      ]),
+    })
+    registerWarmup('t1', 'api', 2 * 3_600_000)
+    await scorer.refreshBaselines()
+
+    // 30 events at 3 AM UTC: 30 / 1 / 3 = 10 → strongly anomalous (vs the
+    // tiny quiet-hour baseline). If the scorer wrongly used the 3 PM
+    // baseline (1000), this would be 30/1000/3 = 0.01 → score=0.
+    let lastScore = 0
+    for (let i = 0; i < 30; i++) {
+      lastScore = scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    }
+    assert.ok(lastScore > 1.0, `expected anomalous score at 3 AM, got ${lastScore}`)
+  })
+
+  it('hour-of-day match: same traffic looks normal during the loud hour', async () => {
+    const { scorer, registerWarmup } = createHarness({
+      clock: HOUR_15_UTC_MS,
+      coldStartMs: 0,
+      steadyThreshold: 3,
+      db: createBaselineMockDb([
+        { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 1, hourOfDay: 3 },
+        { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 1000, hourOfDay: 15 },
+      ]),
+    })
+    registerWarmup('t1', 'api', 2 * 3_600_000)
+    await scorer.refreshBaselines()
+
+    // 30 events at 3 PM UTC against the 1000-baseline: 30/1000/3 = 0.01 → 0.
+    let lastScore = 0
+    for (let i = 0; i < 30; i++) {
+      lastScore = scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    }
+    assert.equal(lastScore, 0, 'expected normal score at peak hour with matching baseline')
+  })
+
+  it('hour-of-day: missing current-hour entry routes to new-template path, NOT a cross-hour mean', async () => {
+    // ADR-014: we deliberately do NOT fall back to a cross-hour mean for
+    // an unknown hour, because for peaky templates the mean is dominated
+    // by busy hours and would silently swallow quiet-hour anomalies.
+    // Counter-example: baselines of 1000 at peak hours; mean ≈ 333.
+    // A 50-event burst at hour 3 against a 333 fallback → 0.05 (no alert).
+    // Against the new-template path (threshold 20) → 2.5 (alert fires).
+    const { scorer, registerWarmup } = createHarness({
+      clock: HOUR_3_UTC_MS,
+      coldStartMs: 0,
+      newTemplateThreshold: 20,
+      steadyThreshold: 3,
+      db: createBaselineMockDb([
+        // Peaky template: huge baselines at every hour EXCEPT 3 AM.
+        ...Array.from({ length: 24 }, (_, h) => h).filter((h) => h !== 3).map((hourOfDay) => ({
+          tenantId: 't1' as const,
+          service: 'api' as const,
+          templateId: 'tmpl-1' as const,
+          avgCount: 1000,
+          hourOfDay,
+        })),
+      ]),
+    })
+    registerWarmup('t1', 'api', 2 * 3_600_000)
+    await scorer.refreshBaselines()
+
+    let lastScore = 0
+    for (let i = 0; i < 50; i++) {
+      lastScore = scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    }
+    // 50 > newTemplateThreshold(20) → score = 50/20 = 2.5
+    assert.ok(lastScore > 1.0, `expected new-template path to fire, got ${lastScore}`)
+    assert.ok(Math.abs(lastScore - 2.5) < 0.01, `expected ~2.5, got ${lastScore}`)
+  })
+
+  it('refresh clears stale per-hour entries when an empty result comes back', async () => {
+    // A template that fires at hour 3 today but is removed from the baseline
+    // query result tomorrow (e.g. template stopped firing entirely) must not
+    // keep a stale entry in the cache.
+    let baselines = [
+      { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 10, hourOfDay: 3 },
+    ]
+    const db = {
+      query: async (params: { query: string; query_params: Record<string, unknown> }) => {
+        if (params.query_params?.tenant_id !== 't1') return []
+        return baselines.map((b) => ({
+          template_id: b.templateId,
+          service: b.service,
+          hour_of_day: b.hourOfDay,
+          avg_count_per_interval: String(b.avgCount),
+        }))
+      },
+      insert: async () => {},
+      command: async () => {},
+      ping: async () => true,
+      close: async () => {},
+    } as unknown as DbClient
+
+    const { scorer, registerWarmup } = createHarness({
+      clock: HOUR_3_UTC_MS,
+      coldStartMs: 0,
+      newTemplateThreshold: 20,
+      steadyThreshold: 3,
+      db,
+    })
+    registerWarmup('t1', 'api', 2 * 3_600_000)
+    await scorer.refreshBaselines()
+
+    // With baseline=10, 50 events → 50/10/3 = 1.67 (anomalous via baseline path)
+    let scoreWithBaseline = 0
+    for (let i = 0; i < 50; i++) {
+      scoreWithBaseline = scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    }
+    assert.ok(Math.abs(scoreWithBaseline - 50 / 10 / 3) < 0.01, 'baseline path active')
+
+    // Now the source returns empty — baseline should be cleared.
+    baselines = []
+    await scorer.refreshBaselines()
+
+    // Reset counters by advancing to the next 5-min bucket
+    const HARNESS_CLOCK_BUMP = 5 * 60_000
+    const { scorer: scorer2, registerWarmup: rw2 } = createHarness({
+      clock: HOUR_3_UTC_MS + HARNESS_CLOCK_BUMP,
+      coldStartMs: 0,
+      newTemplateThreshold: 20,
+      steadyThreshold: 3,
+      db,
+    })
+    rw2('t1', 'api', 2 * 3_600_000)
+    await scorer2.refreshBaselines() // pulls the now-empty result set
+
+    // Scoring with no baseline → new-template path. 25 > 20 → score = 1.25
+    let scoreAfterClear = 0
+    for (let i = 0; i < 25; i++) {
+      scoreAfterClear = scorer2.recordAndScore('t1', 'api', 'tmpl-1')
+    }
+    assert.ok(Math.abs(scoreAfterClear - 25 / 20) < 0.01,
+      `expected new-template path after stale clear, got ${scoreAfterClear}`)
+  })
+
+  it('hour-of-day fallback: no baseline at all → new-template absolute threshold path', async () => {
+    const { scorer, registerWarmup } = createHarness({
+      clock: HOUR_3_UTC_MS,
+      coldStartMs: 0,
+      newTemplateThreshold: 20,
+      db: createBaselineMockDb([
+        // Baselines exist for a different template; tmpl-new has nothing.
+        { tenantId: 't1', service: 'api', templateId: 'tmpl-other', avgCount: 5 },
+      ]),
+    })
+    registerWarmup('t1', 'api', 2 * 3_600_000)
+    await scorer.refreshBaselines()
+
+    let lastScore = 0
+    for (let i = 0; i < 25; i++) {
+      lastScore = scorer.recordAndScore('t1', 'api', 'tmpl-new')
+    }
+    // 25 / 20 = 1.25 — new-template threshold path, unaffected by other templates' baselines.
+    assert.ok(lastScore > 0, `expected new-template path to fire, got ${lastScore}`)
+    assert.ok(Math.abs(lastScore - 1.25) < 0.01, `expected ~1.25, got ${lastScore}`)
+  })
 })

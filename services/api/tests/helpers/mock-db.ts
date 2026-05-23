@@ -19,25 +19,44 @@ export interface BaselineSpec {
   service: string
   templateId: string
   avgCount: number
+  /**
+   * UTC hour-of-day (0–23) this baseline applies to. Omit to fan out to all
+   * 24 hours with the same avgCount — convenient for tests that don't care
+   * about hour-of-day behaviour.
+   */
+  hourOfDay?: number
 }
 
 /**
  * Mock DbClient that returns anomaly baseline rows scoped to the queried
- * tenant_id. Matches the shape of `queryAnomalyBaselines`. Use when a test
- * needs to feed baselines into AnomalyScorer.refreshBaselines() without
- * reaching into the scorer's private state.
+ * tenant_id. Matches the shape of `queryAnomalyBaselines` (template_id,
+ * service, hour_of_day, avg_count_per_interval). Use when a test needs to
+ * feed baselines into AnomalyScorer.refreshBaselines() without reaching
+ * into the scorer's private state.
  */
 export function createBaselineMockDb(baselines: BaselineSpec[]): DbClient {
   return {
     query: async (params: { query: string; query_params: Record<string, unknown> }) => {
       const tenantId = params.query_params?.tenant_id as string | undefined
-      return baselines
-        .filter((b) => b.tenantId === tenantId)
-        .map((b) => ({
-          template_id: b.templateId,
-          service: b.service,
-          avg_count_per_interval: String(b.avgCount),
-        }))
+      const rows: Array<{
+        template_id: string
+        service: string
+        hour_of_day: number
+        avg_count_per_interval: string
+      }> = []
+      for (const b of baselines) {
+        if (b.tenantId !== tenantId) continue
+        const hours = b.hourOfDay === undefined ? Array.from({ length: 24 }, (_, h) => h) : [b.hourOfDay]
+        for (const hour of hours) {
+          rows.push({
+            template_id: b.templateId,
+            service: b.service,
+            hour_of_day: hour,
+            avg_count_per_interval: String(b.avgCount),
+          })
+        }
+      }
+      return rows
     },
     insert: async () => {},
     command: async () => {},

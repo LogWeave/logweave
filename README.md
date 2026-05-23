@@ -68,7 +68,7 @@ Anchor any query to a deployment and instantly see what's new, what's spiking, a
 
 ### Anomaly Detection
 
-Each log pattern is continuously scored against its rolling baseline using z-score analysis. No manual thresholds to configure — LogWeave tells you whether an error rate is normal or a statistical outlier automatically.
+Each log pattern is continuously scored against a 7-day baseline matched by hour-of-day (UTC). No manual thresholds to configure — LogWeave tells you whether an error rate is normal or a statistical outlier automatically, with the same hour-of-day comparison so a quiet 3 AM doesn't look anomalous and a busy 3 PM doesn't hide real spikes.
 
 ![Unusual Activity](screenshots/mcp-unusual-activity.png)
 
