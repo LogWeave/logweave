@@ -73,6 +73,7 @@ export async function queryTemplatesAcrossServices(
   const templateFilter = templateId ? 'AND template_id = {template_id:String}' : ''
 
   const query = `
+/* @query: templatesAcrossServices */
 SELECT
     template_id,
     template_text,
@@ -119,6 +120,7 @@ export async function queryDashboardTemplates(
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
+/* @query: dashboardTemplates */
 SELECT
     template_id,
     template_text,
@@ -159,6 +161,7 @@ export async function queryNewTodayIds(
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
+/* @query: newTodayIds */
 SELECT DISTINCT template_id
 FROM logweave.log_metadata
 WHERE tenant_id = {tenant_id:String}
@@ -194,6 +197,7 @@ export async function queryTemplateSparklines(
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
+/* @query: templateSparklines */
 SELECT
     template_id,
     interval_start,

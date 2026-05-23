@@ -8,28 +8,50 @@ describe('loadConfig', () => {
     LOGWEAVE_API_KEYS: '{"test-key-1":"tenant-a","test-key-2":"tenant-b"}',
   }
 
-  // Snapshot and restore full env to prevent cross-test pollution
-  let envSnapshot: Record<string, string | undefined> = {}
+  // Every LOGWEAVE_* env var loadConfig reads. The "applies defaults" test
+  // asserts default values, which only hold when the var is unset — so we
+  // must clear every key the schema consults, not just the ones a given
+  // test body assigns. Keep this in sync with src/config.ts loadConfig().
+  const MANAGED_KEYS = [
+    'LOGWEAVE_PORT',
+    'LOGWEAVE_CLICKHOUSE_URL',
+    'LOGWEAVE_CLICKHOUSE_USER',
+    'LOGWEAVE_CLICKHOUSE_PASSWORD',
+    'LOGWEAVE_CLUSTERER_URL',
+    'LOGWEAVE_CLUSTERER_TIMEOUT_MS',
+    'LOGWEAVE_LOG_LEVEL',
+    'LOGWEAVE_SHUTDOWN_TIMEOUT_MS',
+    'LOGWEAVE_RECOVERY_ENABLED',
+    'LOGWEAVE_RECOVERY_INTERVAL_MS',
+    'LOGWEAVE_RECOVERY_LOOKBACK_HOURS',
+    'LOGWEAVE_API_KEYS',
+    'LOGWEAVE_DASHBOARD_BASE_URL',
+    'LOGWEAVE_RATE_LIMIT_RPM',
+    'LOGWEAVE_RATE_LIMIT_TENANT_RPM',
+    'LOGWEAVE_RATE_LIMIT_INGEST_RPM',
+    'LOGWEAVE_MAX_CONCURRENT_QUERIES',
+    'LOGWEAVE_ENCRYPTION_KEY',
+    'LOGWEAVE_RETENTION_ENABLED',
+    'LOGWEAVE_RETENTION_INTERVAL_MS',
+    'LOGWEAVE_AWS_ACCOUNT_ID',
+    'LOGWEAVE_S3_CFN_TEMPLATE_URL',
+  ] as const
+
+  const envSnapshot = new Map<string, string | undefined>()
 
   beforeEach(() => {
-    envSnapshot = { ...process.env }
-    // Clear all LOGWEAVE_ vars to isolate tests
-    for (const key of Object.keys(process.env)) {
-      if (key.startsWith('LOGWEAVE_')) {
-        delete process.env[key]
-      }
+    envSnapshot.clear()
+    for (const key of MANAGED_KEYS) {
+      envSnapshot.set(key, process.env[key])
+      delete process.env[key]
     }
   })
 
   afterEach(() => {
-    // Restore original env
-    for (const key of Object.keys(process.env)) {
-      if (key.startsWith('LOGWEAVE_') && !(key in envSnapshot)) {
+    for (const [key, value] of envSnapshot) {
+      if (value === undefined) {
         delete process.env[key]
-      }
-    }
-    for (const [key, value] of Object.entries(envSnapshot)) {
-      if (value !== undefined) {
+      } else {
         process.env[key] = value
       }
     }

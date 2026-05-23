@@ -27,6 +27,7 @@ export async function queryLevelDistribution(
   const serviceFilter = service ? 'AND service = {service:String}' : ''
 
   const query = `
+/* @query: levelDistribution */
 SELECT
     level,
     count() AS count

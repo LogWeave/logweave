@@ -22,6 +22,7 @@ export async function queryTemplateStatusCodes(
     : 'AND timestamp > now64(3) - toIntervalHour({hours:UInt32})'
 
   const query = `
+/* @query: templateStatusCodes */
 SELECT
     status_code,
     count() AS count

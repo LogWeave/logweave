@@ -23,6 +23,7 @@ export async function queryTemplateTrend(
   const days = Math.min(Math.max(options.days ?? 90, 1), MAX_TREND_DAYS)
 
   const query = `
+/* @query: templateTrend */
 SELECT
     day,
     countMerge(occurrence_count)      AS occurrence_count,

@@ -40,6 +40,7 @@ export async function queryDashboardOverviewAggregates(
       : 'AND interval_start > now64(3) - toIntervalHour({hours:UInt32})'
 
   const query = `
+/* @query: overviewAggregates */
 SELECT
     countMerge(log_count)             AS total_events,
     countMerge(error_count)         AS error_count,
@@ -81,6 +82,7 @@ export async function queryDashboardOverviewCounts(
       : 'AND timestamp > now64(3) - toIntervalHour({hours:UInt32})'
 
   const query = `
+/* @query: overviewCounts */
 SELECT
     uniqIf(template_id, template_id != '0') AS unique_templates,
     countIf(template_id = '0')              AS unclustered_count,

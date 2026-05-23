@@ -19,6 +19,16 @@ const DEFAULT_NEW_TEMPLATE_THRESHOLD = 20
 // Prevents key collision when identifiers contain colons or other common delimiters.
 const D = '\0'
 
+/**
+ * Test-only templateId. Lets tests initialise the warmup tracker for a
+ * tenant+service at a chosen historical clock without polluting the live
+ * counter map. Real ingest never produces this id (Drain3 emits UUIDv7s).
+ *
+ * The string is exported so tests can import the canonical constant rather
+ * than duplicating the literal — keeps the contract in one place.
+ */
+export const WARMUP_SENTINEL_TEMPLATE_ID = '__warmup_sentinel__'
+
 export interface WatchedScore {
   templateId: string
   service: string
@@ -130,6 +140,12 @@ export class AnomalyScorer {
       return 0 // First event for this tenant+service — cold start
     }
     entry.lastSeen = currentTime
+
+    // Test sentinel: lets tests rewind the clock and call recordAndScore() to
+    // initialise the warmup tracker without leaking counter state. Once the
+    // tracker entry exists (handled above), subsequent sentinel calls are no-ops
+    // — keeps the test helper idempotent.
+    if (templateId === WARMUP_SENTINEL_TEMPLATE_ID) return 0
 
     // Cold start check
     const age = currentTime - entry.firstSeen
@@ -276,15 +292,4 @@ export class AnomalyScorer {
     }
   }
 
-  // Test helpers — pre-populate state without exposing internals.
-  // Tracked for removal in #206 (replace with scorer-public-contract tests).
-  /** @internal Set baseline for a specific template (testing only). */
-  setBaseline(tenantId: string, service: string, templateId: string, avgCount: number): void {
-    this.baselineCache.set(`${tenantId}${D}${service}${D}${templateId}`, avgCount)
-  }
-
-  /** @internal Set warmup first-seen time for a tenant+service (testing only). */
-  setWarmup(tenantId: string, service: string, firstSeenMs: number): void {
-    this.warmupTracker.set(`${tenantId}${D}${service}`, { firstSeen: firstSeenMs, lastSeen: firstSeenMs })
-  }
 }

@@ -35,6 +35,7 @@ export async function queryClusteringHealthSnapshot(
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
+/* @query: clusteringHealthSnapshot */
 SELECT
     count()                                         AS total_events,
     countIf(template_id != '0')                     AS clustered_events,
@@ -69,6 +70,7 @@ export async function queryClusteringHealthTrend(
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
+/* @query: clusteringHealthTrend */
 SELECT
     toStartOfHour(timestamp)    AS interval_start,
     count()                     AS total,

@@ -122,6 +122,7 @@ export async function queryNewTemplates(
     const tw = computeTimeWindow(options.since)
 
     const query = `
+/* @query: newTemplates */
 WITH
   current_active AS (
     SELECT template_id, any(template_text) AS template_text,
@@ -170,6 +171,7 @@ LIMIT {limit:UInt32}`
   const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
 
   const query = `
+/* @query: newTemplates */
 SELECT
     template_id,
     any(template_text) AS template_text,
@@ -216,6 +218,7 @@ export async function queryTemplateSpikes(
     const tw = computeTimeWindow(options.since)
 
     const query = `
+/* @query: templateSpikes */
 WITH
   current AS (
     SELECT template_id, any(template_text) AS template_text, any(service) AS service_name,
@@ -268,6 +271,7 @@ LIMIT {limit:UInt32}`
   const window = hours * 2
 
   const query = `
+/* @query: templateSpikes */
 WITH
   current AS (
     SELECT template_id, any(template_text) AS template_text, any(service) AS service_name,
@@ -327,6 +331,7 @@ export async function queryResolvedTemplates(
     const tw = computeTimeWindow(options.since)
 
     const query = `
+/* @query: resolvedTemplates */
 WITH
   current_ids AS (
     SELECT DISTINCT template_id
@@ -376,6 +381,7 @@ LIMIT {limit:UInt32}`
   const window = hours * 2
 
   const query = `
+/* @query: resolvedTemplates */
 WITH
   current_ids AS (
     SELECT DISTINCT template_id

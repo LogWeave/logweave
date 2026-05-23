@@ -14,6 +14,74 @@ export function createMockDb(): DbClient {
   } as unknown as DbClient
 }
 
+export interface BaselineSpec {
+  tenantId: string
+  service: string
+  templateId: string
+  avgCount: number
+}
+
+/**
+ * Mock DbClient that returns anomaly baseline rows scoped to the queried
+ * tenant_id. Matches the shape of `queryAnomalyBaselines`. Use when a test
+ * needs to feed baselines into AnomalyScorer.refreshBaselines() without
+ * reaching into the scorer's private state.
+ */
+export function createBaselineMockDb(baselines: BaselineSpec[]): DbClient {
+  return {
+    query: async (params: { query: string; query_params: Record<string, unknown> }) => {
+      const tenantId = params.query_params?.tenant_id as string | undefined
+      return baselines
+        .filter((b) => b.tenantId === tenantId)
+        .map((b) => ({
+          template_id: b.templateId,
+          service: b.service,
+          avg_count_per_interval: String(b.avgCount),
+        }))
+    },
+    insert: async () => {},
+    command: async () => {},
+    ping: async () => true,
+    close: async () => {},
+  } as unknown as DbClient
+}
+
+// Dashboard query templates start with a `/* @query: <name> */` marker
+// (see services/api/src/db/dashboard/*). Mocks route by that name rather
+// than SQL fragments so refactors to the SQL don't break tests.
+const QUERY_NAME_RE = /@query:\s*(\w+)/
+
+export function extractQueryName(sql: string): string | undefined {
+  return QUERY_NAME_RE.exec(sql)?.[1]
+}
+
+/**
+ * Create a mock DbClient that routes by the `/* @query: <name> *\/` marker
+ * embedded in each dashboard SQL template. Unknown query names throw so
+ * that typos surface immediately instead of silently returning [].
+ */
+export function createQueryNameMockDb(queryResults?: Map<string, unknown>): DbClient {
+  return {
+    query: async (params: { query: string; query_params: Record<string, unknown> }) => {
+      if (!queryResults) return []
+      const name = extractQueryName(params.query)
+      if (!name) {
+        throw new Error(
+          `mock DbClient: query missing @query marker — add a /* @query: <name> */ comment to the SQL template`,
+        )
+      }
+      if (queryResults.has(name)) return queryResults.get(name)
+      // Configured but no entry for this name: tests sometimes intentionally
+      // leave queries unmocked (e.g. empty-result tests). Default to [].
+      return []
+    },
+    insert: async () => {},
+    command: async () => {},
+    ping: async () => true,
+    close: async () => {},
+  } as unknown as DbClient
+}
+
 /**
  * Create a mock DbClient that captures queries for assertion.
  * Returns `{ db, queries }` where `queries` is an array of captured query strings.

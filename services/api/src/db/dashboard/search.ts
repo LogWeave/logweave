@@ -29,6 +29,7 @@ export async function queryTemplateSearch(
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
+/* @query: templateSearch */
 WITH matching_templates AS (
     SELECT template_id, template_text
     FROM logweave.template_registry FINAL
@@ -88,6 +89,7 @@ export async function querySemanticSearch(
   const levelFilter = levels?.length ? 'AND level IN ({levels:Array(String)})' : ''
 
   const query = `
+/* @query: semanticSearch */
 WITH matching_templates AS (
     SELECT template_id, template_text,
            cosineDistance(embedding, {embedding:Array(Float32)}) AS distance
