@@ -155,7 +155,7 @@ Connect your log source in Settings for raw log drill-down from any pattern:
 
 | Connector | Setup | Auth |
 |-----------|-------|------|
-| **S3 / MinIO** | Bucket, region, path pattern | IAM / access keys |
+| **Amazon S3** | Bucket, region, path pattern | IAM AssumeRole |
 | **Elasticsearch / OpenSearch** | URL, index pattern | None, API key, or basic auth |
 | **Grafana Loki** | URL, label selector | Optional bearer token |
 | **Local Filesystem** | Directory path, file pattern | None (Docker volume mount) |

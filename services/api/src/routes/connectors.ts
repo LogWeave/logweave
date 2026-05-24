@@ -56,9 +56,9 @@ const s3ConfigSchema = z
       .max(2048)
       .optional(),
     externalId: z.string().min(16).max(256).optional(),
-    // endpoint, forcePathStyle, accessKeyId, secretAccessKey — dev/MinIO only.
-    // SSRF note: endpoint allows arbitrary URLs. In production, reject configs with
-    // endpoint set (AssumeRole doesn't need it). Currently allowed for local dev with MinIO.
+    // endpoint, forcePathStyle, accessKeyId, secretAccessKey — dev only,
+    // for pointing at an S3-compatible emulator like Floci. Blocked in
+    // production (SSRF risk — see ADR-010).
     endpoint: z.string().url().optional(),
     forcePathStyle: z.boolean().optional(),
     accessKeyId: z.string().max(128).optional(),
@@ -77,11 +77,11 @@ const s3ConfigSchema = z
   )
   .refine(
     (c) => {
-      // secretAccessKey only allowed with endpoint (MinIO mode)
+      // secretAccessKey only allowed with endpoint (dev mode)
       if (c.secretAccessKey && !c.endpoint) return false
       return true
     },
-    { message: 'secretAccessKey is only allowed with endpoint (MinIO/dev mode)' },
+    { message: 'secretAccessKey is only allowed with endpoint (dev mode)' },
   )
   .refine(
     (c) => {
@@ -89,7 +89,7 @@ const s3ConfigSchema = z
       if (c.accessKeyId && !c.endpoint) return false
       return true
     },
-    { message: 'accessKeyId is only allowed with endpoint (MinIO/dev mode)' },
+    { message: 'accessKeyId is only allowed with endpoint (dev mode)' },
   )
   .refine(
     (c) => {
@@ -101,7 +101,7 @@ const s3ConfigSchema = z
   )
   .refine(
     (c) => {
-      // roleArn and endpoint are mutually exclusive (AssumeRole vs MinIO)
+      // roleArn and endpoint are mutually exclusive (AssumeRole vs dev endpoint)
       if (c.roleArn && c.endpoint) return false
       return true
     },

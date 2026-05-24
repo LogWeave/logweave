@@ -1035,10 +1035,10 @@ Create a connector. Credentials are encrypted at rest.
 | `config.region` | string | yes | AWS region (1-64 chars) |
 | `config.logFormat` | string | yes | `"jsonl"` or `"text"` |
 | `config.compression` | string | yes | `"none"` or `"gzip"` |
-| `config.endpoint` | string | no | Custom endpoint (dev/MinIO only; blocked in production) |
+| `config.endpoint` | string | no | Custom S3-compatible endpoint (dev only; blocked in production) |
 | `config.forcePathStyle` | boolean | no | Path-style S3 access |
-| `config.accessKeyId` | string | no | Only with endpoint (MinIO mode) |
-| `config.secretAccessKey` | string | no | Only with endpoint (MinIO mode) |
+| `config.accessKeyId` | string | no | Static access key (dev only — production uses AssumeRole) |
+| `config.secretAccessKey` | string | no | Static secret key (dev only — production uses AssumeRole) |
 
 **Response** (201): `{ data: { connectorId, name, type, config (redacted) }, meta: { fetchedAt } }`
 

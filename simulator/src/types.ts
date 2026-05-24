@@ -71,9 +71,9 @@ export interface CliOptions {
   bufferSize: number
   flushMs: number
   dryRun: boolean
-  /** S3 bucket name — enables dual-write to MinIO/S3 when set */
+  /** S3 bucket name — enables dual-write to the local S3 emulator when set */
   s3Bucket?: string
-  /** S3 endpoint URL (default: http://localhost:9002) */
+  /** S3 endpoint URL (default: http://localhost:4566, the Floci dev container) */
   s3Endpoint?: string
   /** Tracks which flags were explicitly provided (vs defaults) */
   _explicit: {

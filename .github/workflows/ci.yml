@@ -47,7 +47,7 @@ jobs:
           echo "Collected $count tests"
 
   api:
-    name: API (lint + test)
+    name: API (lint + unit tests)
     runs-on: ubuntu-latest
     # Skip until API server code exists
     if: hashFiles('services/api/package.json') != ''
@@ -70,10 +70,52 @@ jobs:
         run: pnpm lint
       - name: Typecheck
         run: pnpm typecheck
-      - name: Run tests
-        run: pnpm test
+      - name: Run unit tests
+        run: pnpm test:unit
       - name: Security audit
         run: pnpm audit --audit-level=high
+
+  api-integration-s3:
+    name: API integration — S3 adapter (Floci)
+    runs-on: ubuntu-latest
+    # Skip until API server code exists
+    if: hashFiles('services/api/tests/integration/s3-adapter.integration.test.ts') != ''
+    defaults:
+      run:
+        working-directory: services/api
+    services:
+      floci:
+        image: floci/floci:latest
+        ports:
+          - 4566:4566
+        # No CMD-level healthcheck; the test's own probe handles readiness.
+    env:
+      FLOCI_ENDPOINT: http://localhost:4566
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: services/api/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Wait for Floci
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4566/ >/dev/null; then
+              echo "Floci ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Floci did not become ready within 30s"
+          exit 1
+      - name: Run S3 adapter integration test
+        run: node --import tsx --test tests/integration/s3-adapter.integration.test.ts
 
   secret-scan:
     name: Secret Scanning

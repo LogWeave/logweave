@@ -176,12 +176,11 @@ function resolvePathPrefixes(
 // S3 console link generation
 // ---------------------------------------------------------------------------
 
-function s3ConsoleUrl(config: S3ConnectorConfig, key: string): string {
-  if (config.endpoint) {
-    // MinIO console — assumes console runs on port 9001
-    const base = config.endpoint.replace(/:\d+$/, ':9001')
-    return `${base}/browser/${config.bucket}/${key}`
-  }
+function s3ConsoleUrl(config: S3ConnectorConfig, key: string): string | undefined {
+  // Dev endpoint (S3-compatible emulator like Floci): no public console to
+  // link to. Caller treats undefined as "no link" — the raw log line still
+  // renders, just without a clickable "view in console" affordance.
+  if (config.endpoint) return undefined
   return `https://s3.console.aws.amazon.com/s3/object/${config.bucket}?prefix=${encodeURIComponent(key)}`
 }
 
@@ -196,7 +195,9 @@ export class S3Adapter implements LogSourceAdapter {
     config: S3ConnectorConfig,
     auditContext: AdapterAuditContext | undefined,
   ): Promise<S3Client> {
-    // MinIO / dev-mode: static credentials against a custom endpoint.
+    // Dev mode: static credentials against a custom S3-compatible endpoint
+    // (e.g. Floci). Production never takes this branch — see the validation
+    // schema in routes/connectors.ts which blocks `endpoint` in prod.
     if (config.endpoint) {
       return new S3Client({
         region: config.region,
