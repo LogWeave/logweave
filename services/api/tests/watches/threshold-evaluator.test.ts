@@ -142,7 +142,7 @@ describe('ThresholdEvaluator', () => {
   })
 
   it('fires alert with >= operator when value equals threshold', async () => {
-    const { ruleStore, evaluator, alerts, setQueryResult } = createTestSetup()
+    const { ruleStore, evaluator, setQueryResult } = createTestSetup()
     await ruleStore.add({
       tenantId: 't1',
       name: 'High errors',
@@ -175,7 +175,7 @@ describe('ThresholdEvaluator', () => {
   })
 
   it('fires alert with <= operator', async () => {
-    const { ruleStore, evaluator, alerts, setQueryResult } = createTestSetup()
+    const { ruleStore, evaluator, setQueryResult } = createTestSetup()
     await ruleStore.add({
       tenantId: 't1',
       name: 'Low warnings',
@@ -301,7 +301,7 @@ describe('ThresholdEvaluator', () => {
   })
 
   it('treats missing service data as zero', async () => {
-    const { ruleStore, evaluator, alerts, setQueryResult } = createTestSetup()
+    const { ruleStore, evaluator, setQueryResult } = createTestSetup()
     await ruleStore.add({
       tenantId: 't1',
       name: 'High errors',

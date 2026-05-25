@@ -162,9 +162,11 @@ describe('RecoverySweep', () => {
     assert.equal(recovered, 10)
     // INSERT was called with 10 new rows
     assert.equal(insertedRows.length, 1)
-    assert.equal(insertedRows[0]?.length, 10)
+    const firstBatch = insertedRows[0]
+    assert.ok(firstBatch, 'expected first batch to exist')
+    assert.equal(firstBatch.length, 10)
     // All new rows have real template_ids
-    for (const row of insertedRows[0]!) {
+    for (const row of firstBatch) {
       assert.notEqual(row.template_id, '0')
       assert.equal(row.pre_processed_message, null)
     }
@@ -220,7 +222,8 @@ describe('RecoverySweep', () => {
 
     await sweep.runStartupReconciliation()
 
-    const newRow = insertedRows[0]?.[0]!
+    const newRow = insertedRows[0]?.[0]
+    assert.ok(newRow, 'expected one re-clustered row')
     // Template fields updated
     assert.equal(newRow.template_id, 'tpl-pay')
     assert.equal(newRow.template_text, 'Payment failed for user <*>')
@@ -283,9 +286,10 @@ describe('RecoverySweep', () => {
     const tenantIds = clusterCalls.map((c) => c.tenantId).sort()
     assert.deepEqual(tenantIds, ['tenant-a', 'tenant-b'])
     // Correct messages per tenant
-    const callA = clusterCalls.find((c) => c.tenantId === 'tenant-a')!
+    const callA = clusterCalls.find((c) => c.tenantId === 'tenant-a')
+    const callB = clusterCalls.find((c) => c.tenantId === 'tenant-b')
+    assert.ok(callA && callB, 'expected one cluster call per tenant')
     assert.deepEqual(callA.messages, ['msg-a1', 'msg-a2'])
-    const callB = clusterCalls.find((c) => c.tenantId === 'tenant-b')!
     assert.deepEqual(callB.messages, ['msg-b1', 'msg-b2'])
   })
 
@@ -298,7 +302,7 @@ describe('RecoverySweep', () => {
     const slowResults = [{ template_id: 'tpl-1', template_text: 'tpl', is_new: false }]
     const fetchFn = mockFetch(slowResults, { delayMs: 350 })
 
-    const { sweep, insertedRows } = createSweep({ pages: [rows, []], fetchFn })
+    const { sweep } = createSweep({ pages: [rows, []], fetchFn })
 
     const recovered = await sweep.runStartupReconciliation()
 
