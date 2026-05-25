@@ -142,7 +142,7 @@ describe('ThresholdEvaluator', () => {
   })
 
   it('fires alert with >= operator when value equals threshold', async () => {
-    const { ruleStore, evaluator, setQueryResult } = createTestSetup()
+    const { ruleStore, evaluator, alerts, setQueryResult } = createTestSetup()
     await ruleStore.add({
       tenantId: 't1',
       name: 'High errors',
@@ -155,6 +155,11 @@ describe('ThresholdEvaluator', () => {
 
     const count = await evaluator.evaluate()
     assert.equal(count, 1)
+    assert.equal(alerts.length, 1)
+    const alert = alerts[0] as ThresholdAlertEvent
+    assert.equal(alert.operator, '>=')
+    assert.equal(alert.metricValue, 10)
+    assert.equal(alert.thresholdValue, 10)
   })
 
   it('fires alert with < operator', async () => {
@@ -171,11 +176,16 @@ describe('ThresholdEvaluator', () => {
 
     const count = await evaluator.evaluate()
     assert.equal(count, 1)
-    assert.equal((alerts[0] as ThresholdAlertEvent).metric, 'log_count')
+    assert.equal(alerts.length, 1)
+    const alert = alerts[0] as ThresholdAlertEvent
+    assert.equal(alert.metric, 'log_count')
+    assert.equal(alert.operator, '<')
+    assert.equal(alert.metricValue, 50)
+    assert.equal(alert.thresholdValue, 100)
   })
 
   it('fires alert with <= operator', async () => {
-    const { ruleStore, evaluator, setQueryResult } = createTestSetup()
+    const { ruleStore, evaluator, alerts, setQueryResult } = createTestSetup()
     await ruleStore.add({
       tenantId: 't1',
       name: 'Low warnings',
@@ -188,6 +198,12 @@ describe('ThresholdEvaluator', () => {
 
     const count = await evaluator.evaluate()
     assert.equal(count, 1)
+    assert.equal(alerts.length, 1)
+    const alert = alerts[0] as ThresholdAlertEvent
+    assert.equal(alert.metric, 'warn_count')
+    assert.equal(alert.operator, '<=')
+    assert.equal(alert.metricValue, 5)
+    assert.equal(alert.thresholdValue, 5)
   })
 
   it('respects 30-minute cooldown', async () => {
