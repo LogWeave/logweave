@@ -261,6 +261,12 @@ export class S3Adapter implements LogSourceAdapter {
             sessionToken: creds.SessionToken,
             expiration: creds.Expiration,
           },
+          // `forcePathStyle` is normally only meaningful for the dev/MinIO
+          // path with a custom endpoint, but if the operator has set it on
+          // an AssumeRole config (e.g. integration tests pointed at an
+          // emulator via AWS_ENDPOINT_URL_S3) we honour it. Real AWS
+          // accepts path-style for now, so this is a safe no-op in prod.
+          forcePathStyle: config.forcePathStyle,
         })
       } finally {
         sts.destroy()

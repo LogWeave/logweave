@@ -10,7 +10,9 @@ services:
   # See ADR-010 / docs/connectors/s3-iam-setup.md for the production
   # AssumeRole flow this replaces in tests.
   floci:
-    image: floci/floci:latest
+    # Pinned by digest — Floci's :latest tag is unpinned; CI breaks silently
+    # on a Floci breaking change otherwise. Bump deliberately.
+    image: floci/floci@sha256:efa6922b024a875598347e7e4c347ca9cb61dc46a219b778a6510f20fb6f960d
     ports:
       - "4566:4566"   # AWS-compatible endpoint (S3, STS, IAM)
     # Floci has no dedicated /health path; root returns S3 ListAllMyBuckets
@@ -24,7 +26,7 @@ services:
 
   # Create default bucket on startup using the official aws-cli image.
   floci-init:
-    image: amazon/aws-cli:latest
+    image: amazon/aws-cli:2.34.53
     depends_on:
       floci:
         condition: service_healthy

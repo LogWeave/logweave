@@ -85,10 +85,17 @@ jobs:
         working-directory: services/api
     services:
       floci:
-        image: floci/floci:latest
+        # Pinned by digest — Floci's :latest is unpinned; bump deliberately.
+        image: floci/floci@sha256:efa6922b024a875598347e7e4c347ca9cb61dc46a219b778a6510f20fb6f960d
         ports:
           - 4566:4566
-        # No CMD-level healthcheck; the test's own probe handles readiness.
+        # Actions-native healthcheck — the job blocks until the service
+        # reports healthy, so no in-step wait loop is needed.
+        options: >-
+          --health-cmd "curl -sf http://localhost:4566/ || exit 1"
+          --health-interval 2s
+          --health-retries 15
+          --health-start-period 2s
     env:
       FLOCI_ENDPOINT: http://localhost:4566
     steps:
@@ -103,19 +110,12 @@ jobs:
           cache-dependency-path: services/api/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Wait for Floci
-        run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:4566/ >/dev/null; then
-              echo "Floci ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "::error::Floci did not become ready within 30s"
-          exit 1
       - name: Run S3 adapter integration test
-        run: node --import tsx --test tests/integration/s3-adapter.integration.test.ts
+        # The repo's `pnpm test:integration` script also runs ClickHouse-
+        # dependent tests under tests/db/, which this job intentionally does
+        # NOT provision (separate concern, separate job). Invoke the file
+        # directly so this job stays scoped to S3-against-Floci.
+        run: pnpm exec node --import tsx --test tests/integration/s3-adapter.integration.test.ts
 
   secret-scan:
     name: Secret Scanning
