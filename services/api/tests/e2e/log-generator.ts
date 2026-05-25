@@ -19,7 +19,10 @@ const PATHS = [
 ]
 
 function pick<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]!
+  // `arr.length > 0` is required by every caller in this file; Math.floor
+  // always lands in-bounds. Cast through unknown to satisfy the typechecker
+  // without an inline non-null assertion.
+  return arr[Math.floor(Math.random() * arr.length)] as T
 }
 
 function randInt(min: number, max: number): number {

@@ -232,7 +232,8 @@ describe('POST /v1/ingest/batch', () => {
         ],
       })
 
-    const rows = insertedRows[0]!
+    const rows = insertedRows[0]
+    assert.ok(rows, 'expected a batch to have been inserted')
     assert.equal(rows[0]?.timestamp, '2026-01-01T00:00:00Z')
     // Second row should have ingest time (ISO string starting with current year)
     assert.ok(rows[1]?.timestamp.startsWith('20'), 'Expected ingest time as fallback')

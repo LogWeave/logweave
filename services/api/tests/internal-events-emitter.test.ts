@@ -16,7 +16,6 @@ function makeFakeDb(opts: { throwOn?: 'insert' } = {}) {
   const inserts: Array<{ table: string; values: unknown[] }> = []
   return {
     db: {
-      // biome-ignore lint: shape-match for DbClient.insert
       async insert(params: { table: string; values: unknown[]; format: string }) {
         if (opts.throwOn === 'insert') throw new Error('CH down')
         inserts.push({ table: params.table, values: params.values })
@@ -113,7 +112,6 @@ describe('InternalEventEmitter', () => {
     })
     assert.throws(() =>
       emitter.emit({
-        // biome-ignore lint: deliberate type-bypass to test runtime guard
         event: 'made.up' as never,
         severity: 'info',
         code: 'X',
@@ -129,7 +127,6 @@ describe('InternalEventEmitter', () => {
       isProd: true,
     })
     emitter.emit({
-      // biome-ignore lint: deliberate type-bypass to test runtime guard
       event: 'made.up' as never,
       severity: 'info',
       code: 'X',
