@@ -12,8 +12,8 @@ import {
   type ConnectionTestResult,
   type ConnectorConfig,
   type FetchRawLogsParams,
-  type LokiConnectorConfig,
   type LogSourceAdapter,
+  type LokiConnectorConfig,
   type RawLogLine,
   type RawLogResult,
   SCAN_DEFAULTS,
@@ -45,8 +45,7 @@ function buildHeaders(config: LokiConnectorConfig): Record<string, string> {
  * Loki regex (RE2) does not support lazy quantifiers (.*?) — replace with greedy (.*).
  */
 function toLokiRegex(regex: RegExp): string {
-  return regex.source
-    .replace(/\.\*\?/g, '.*')
+  return regex.source.replace(/\.\*\?/g, '.*')
 }
 
 /**
@@ -128,7 +127,8 @@ export class LokiAdapter implements LogSourceAdapter {
       // Catch-all: do not echo the raw error back to the user.
       return {
         success: false,
-        message: 'Connection failed. Check the URL, stream selector, and credentials, then try again.',
+        message:
+          'Connection failed. Check the URL, stream selector, and credentials, then try again.',
       }
     }
   }

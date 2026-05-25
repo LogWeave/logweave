@@ -9,28 +9,24 @@
  *   e2e-key-tenant-b → e2e-tenant-b
  */
 import assert from 'node:assert/strict'
-import { describe, it, before, after } from 'node:test'
-import { createClient } from '@clickhouse/client'
+import { after, before, describe, it } from 'node:test'
 import type { ClickHouseClient } from '@clickhouse/client'
-import { DbClient } from '../../src/db/client.js'
-import {
-  queryTemplateStats,
-  queryServiceStats,
-  explainQuery,
-} from '../../src/db/queries.js'
+import { createClient } from '@clickhouse/client'
 // Relative import — avoids workspace:* devDep that would break Dockerfile
 import { LogWeaveTransport } from '../../../../packages/transport/src/transport.js'
-import { generateEvents } from './log-generator.js'
+import { DbClient } from '../../src/db/client.js'
+import { explainQuery, queryServiceStats, queryTemplateStats } from '../../src/db/queries.js'
 import {
+  countRowsSince,
+  getClickhouseNow,
   isReachable,
   pollUntil,
   sleep,
-  stopClusterer,
   startClusterer,
+  stopClusterer,
   waitForClusterer,
-  getClickhouseNow,
-  countRowsSince,
 } from './helpers.js'
+import { generateEvents } from './log-generator.js'
 
 const API_URL = 'http://localhost:3000'
 const CLUSTERER_URL = 'http://localhost:8000'
@@ -80,14 +76,21 @@ describe('E2E pipeline (Docker Compose)', () => {
 
   after(async () => {
     // Safety net: restart clusterer if it was stopped
-    try { startClusterer() } catch { /* may already be running */ }
+    try {
+      startClusterer()
+    } catch {
+      /* may already be running */
+    }
     if (clickhouse) await clickhouse.close()
   })
 
   // -- Normal path --
 
   it('ingests 10,000 events via transport with valid template_ids', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const transport = createTransport(KEY_A)
     const events = generateEvents(10_000)
@@ -101,10 +104,11 @@ describe('E2E pipeline (Docker Compose)', () => {
     // Poll for events to arrive. BufferManager.triggerFlush() is fire-and-forget —
     // closeAsync() only awaits the drain batch, not in-flight flushes. The 9500
     // threshold (95%) accounts for any flushes still completing when we start polling.
-    await pollUntil(
-      async () => (await countRowsSince(clickhouse, TENANT_A, startTime)) >= 9500,
-      { intervalMs: 2000, timeoutMs: 30_000, label: '10K events ingested' },
-    )
+    await pollUntil(async () => (await countRowsSince(clickhouse, TENANT_A, startTime)) >= 9500, {
+      intervalMs: 2000,
+      timeoutMs: 30_000,
+      label: '10K events ingested',
+    })
 
     const total = await countRowsSince(clickhouse, TENANT_A, startTime)
     assert.ok(total >= 9500, `Expected >= 9500 rows, got ${total}`)
@@ -128,7 +132,10 @@ describe('E2E pipeline (Docker Compose)', () => {
   })
 
   it('template_stats MV aggregates correctly after OPTIMIZE FINAL', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     await db.command({ query: 'OPTIMIZE TABLE logweave.template_stats FINAL' })
     const stats = (await queryTemplateStats(db, TENANT_A)) as Array<{
@@ -147,7 +154,10 @@ describe('E2E pipeline (Docker Compose)', () => {
   })
 
   it('service_stats MV aggregates correctly after OPTIMIZE FINAL', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     await db.command({ query: 'OPTIMIZE TABLE logweave.service_stats FINAL' })
     const stats = (await queryServiceStats(db, TENANT_A)) as Array<{ log_count: string }>
@@ -160,7 +170,10 @@ describe('E2E pipeline (Docker Compose)', () => {
   // -- Tenant isolation --
 
   it('tenant isolation holds — cross-tenant reads return empty', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const transport = createTransport(KEY_B, { bufferSize: 50 })
     const events = generateEvents(100)
@@ -170,10 +183,11 @@ describe('E2E pipeline (Docker Compose)', () => {
     }
     await transport.closeAsync()
 
-    await pollUntil(
-      async () => (await countRowsSince(clickhouse, TENANT_B, startTime)) >= 90,
-      { intervalMs: 1000, timeoutMs: 15_000, label: 'tenant B events ingested' },
-    )
+    await pollUntil(async () => (await countRowsSince(clickhouse, TENANT_B, startTime)) >= 90, {
+      intervalMs: 1000,
+      timeoutMs: 15_000,
+      label: 'tenant B events ingested',
+    })
 
     // Tenant B has rows
     const countB = await countRowsSince(clickhouse, TENANT_B, startTime)
@@ -211,7 +225,10 @@ describe('E2E pipeline (Docker Compose)', () => {
   // -- Degradation path --
 
   it('clusterer kill → template_id=0 fallback with pre_processed_message', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     stopClusterer()
     await sleep(3000)
@@ -239,14 +256,20 @@ describe('E2E pipeline (Docker Compose)', () => {
       query_params: { tenant_id: TENANT_A },
     })
     for (const row of rows) {
-      assert.ok(row.pre_processed_message, 'pre_processed_message should be populated for unclustered rows')
+      assert.ok(
+        row.pre_processed_message,
+        'pre_processed_message should be populated for unclustered rows',
+      )
     }
   })
 
   // -- Recovery path --
 
   it('recovery sweep reconciles unclustered rows after clusterer restart', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const totalBefore = await countRowsSince(clickhouse, TENANT_A, startTime)
     const unclusteredBefore = await countRowsSince(clickhouse, TENANT_A, startTime, 'unclustered')
@@ -267,11 +290,17 @@ describe('E2E pipeline (Docker Compose)', () => {
 
     // Verify rows were re-inserted (not just deleted) — total count should not decrease
     const totalAfter = await countRowsSince(clickhouse, TENANT_A, startTime)
-    assert.ok(totalAfter >= totalBefore, `Recovery should re-INSERT, not just DELETE (before=${totalBefore}, after=${totalAfter})`)
+    assert.ok(
+      totalAfter >= totalBefore,
+      `Recovery should re-INSERT, not just DELETE (before=${totalBefore}, after=${totalAfter})`,
+    )
   })
 
   it('recovered templates appear in template_stats MV', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     await db.command({ query: 'OPTIMIZE TABLE logweave.template_stats FINAL' })
     const stats = (await queryTemplateStats(db, TENANT_A)) as Array<{
@@ -295,7 +324,10 @@ describe('E2E pipeline (Docker Compose)', () => {
   // -- EXPLAIN verification --
 
   it('EXPLAIN confirms index usage for tenant-scoped queries', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const queries = [
       {

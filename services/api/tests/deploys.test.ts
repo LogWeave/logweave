@@ -93,7 +93,7 @@ function deploysQueryMap(): Map<string, unknown> {
   return map
 }
 
-function deployByIdMap(deploy = mockDeployRows[0]): Map<string, unknown> {
+function _deployByIdMap(deploy = mockDeployRows[0]): Map<string, unknown> {
   const map = new Map<string, unknown>()
   map.set('deploy_id = {deploy_id:String}', [deploy])
   map.set('ORDER BY timestamp DESC', mockDeployRows)
@@ -116,7 +116,10 @@ describe('POST /v1/deploys', () => {
     assert.equal(res.status, 201)
     assert.ok(res.body.data.deployId, 'should have deployId')
     // UUIDv7 format: 8-4-4-4-12 hex chars
-    assert.match(res.body.data.deployId, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    assert.match(
+      res.body.data.deployId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
   })
 
   it('defaults timestamp to now', async () => {
@@ -199,9 +202,7 @@ describe('GET /v1/deploys', () => {
   it('returns most recent first', async () => {
     const app = createTestApp(deploysQueryMap())
 
-    const res = await request(app)
-      .get('/v1/deploys')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/deploys').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.length, 2)
@@ -224,9 +225,7 @@ describe('GET /v1/deploys', () => {
     // Tenant B should get empty results (mock only has tenant A data)
     const app = createTestApp()
 
-    const res = await request(app)
-      .get('/v1/deploys')
-      .set('Authorization', `Bearer ${KEY_B}`)
+    const res = await request(app).get('/v1/deploys').set('Authorization', `Bearer ${KEY_B}`)
 
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data, [])

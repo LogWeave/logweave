@@ -474,13 +474,15 @@ describe('AnomalyScorer', () => {
       steadyThreshold: 3,
       db: createBaselineMockDb([
         // Peaky template: huge baselines at every hour EXCEPT 3 AM.
-        ...Array.from({ length: 24 }, (_, h) => h).filter((h) => h !== 3).map((hourOfDay) => ({
-          tenantId: 't1' as const,
-          service: 'api' as const,
-          templateId: 'tmpl-1' as const,
-          avgCount: 1000,
-          hourOfDay,
-        })),
+        ...Array.from({ length: 24 }, (_, h) => h)
+          .filter((h) => h !== 3)
+          .map((hourOfDay) => ({
+            tenantId: 't1' as const,
+            service: 'api' as const,
+            templateId: 'tmpl-1' as const,
+            avgCount: 1000,
+            hourOfDay,
+          })),
       ]),
     })
     registerWarmup('t1', 'api', 2 * 3_600_000)
@@ -556,8 +558,10 @@ describe('AnomalyScorer', () => {
     for (let i = 0; i < 25; i++) {
       scoreAfterClear = scorer2.recordAndScore('t1', 'api', 'tmpl-1')
     }
-    assert.ok(Math.abs(scoreAfterClear - 25 / 20) < 0.01,
-      `expected new-template path after stale clear, got ${scoreAfterClear}`)
+    assert.ok(
+      Math.abs(scoreAfterClear - 25 / 20) < 0.01,
+      `expected new-template path after stale clear, got ${scoreAfterClear}`,
+    )
   })
 
   it('hour-of-day fallback: no baseline at all → new-template absolute threshold path', async () => {

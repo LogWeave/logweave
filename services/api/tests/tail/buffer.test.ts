@@ -113,7 +113,7 @@ describe('TailBuffer', () => {
 
     const result = buf.recent('t1', { service: 'payments' })
     assert.equal(result.events.length, 2)
-    assert.ok(result.events.every(e => e.service === 'payments'))
+    assert.ok(result.events.every((e) => e.service === 'payments'))
   })
 
   it('filters by level', () => {
@@ -176,7 +176,9 @@ describe('TailBuffer', () => {
   it('subscriber error does not crash push', () => {
     const buf = new TailBuffer({ bufferSize: 100 })
 
-    buf.subscribe('t1', () => { throw new Error('subscriber boom') })
+    buf.subscribe('t1', () => {
+      throw new Error('subscriber boom')
+    })
     // Should not throw
     buf.push('t1', makeEvent())
 

@@ -29,13 +29,12 @@ export async function queryTemplateEvents(
   const hours = clamp(options.hours ?? DEFAULT_HOURS, MAX_HOURS)
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100)
 
-  const timeFilter = options.since && options.until
-    ? 'AND timestamp >= parseDateTimeBestEffort({since:String}) AND timestamp <= parseDateTimeBestEffort({until:String})'
-    : 'AND timestamp > now64(3) - toIntervalHour({hours:UInt32})'
+  const timeFilter =
+    options.since && options.until
+      ? 'AND timestamp >= parseDateTimeBestEffort({since:String}) AND timestamp <= parseDateTimeBestEffort({until:String})'
+      : 'AND timestamp > now64(3) - toIntervalHour({hours:UInt32})'
 
-  const statusCodeFilter = options.statusCode
-    ? 'AND status_code = {status_code:UInt16}'
-    : ''
+  const statusCodeFilter = options.statusCode ? 'AND status_code = {status_code:UInt16}' : ''
 
   const query = `
 /* @query: templateEvents */

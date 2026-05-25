@@ -353,10 +353,12 @@ describe('GET /v1/services/:name/outlier', () => {
   })
 
   it('returns elevated verdict when z between 1.5 and 2', async () => {
-    const app = createTestApp(outlierQueryMap({
-      ...mockOutlierRow,
-      current_rate: '8.0',
-    }))
+    const app = createTestApp(
+      outlierQueryMap({
+        ...mockOutlierRow,
+        current_rate: '8.0',
+      }),
+    )
 
     const res = await request(app)
       .get('/v1/services/api-gateway/outlier')
@@ -367,10 +369,12 @@ describe('GET /v1/services/:name/outlier', () => {
   })
 
   it('returns normal verdict when z below 1.5', async () => {
-    const app = createTestApp(outlierQueryMap({
-      ...mockOutlierRow,
-      current_rate: '5.5',
-    }))
+    const app = createTestApp(
+      outlierQueryMap({
+        ...mockOutlierRow,
+        current_rate: '5.5',
+      }),
+    )
 
     const res = await request(app)
       .get('/v1/services/api-gateway/outlier')
@@ -381,10 +385,12 @@ describe('GET /v1/services/:name/outlier', () => {
   })
 
   it('adds warning when insufficient data points', async () => {
-    const app = createTestApp(outlierQueryMap({
-      ...mockOutlierRow,
-      data_points: '48',
-    }))
+    const app = createTestApp(
+      outlierQueryMap({
+        ...mockOutlierRow,
+        data_points: '48',
+      }),
+    )
 
     const res = await request(app)
       .get('/v1/services/payment-service/outlier')
@@ -397,10 +403,12 @@ describe('GET /v1/services/:name/outlier', () => {
   })
 
   it('handles zero stddev gracefully', async () => {
-    const app = createTestApp(outlierQueryMap({
-      ...mockOutlierRow,
-      baseline_stddev: '0',
-    }))
+    const app = createTestApp(
+      outlierQueryMap({
+        ...mockOutlierRow,
+        baseline_stddev: '0',
+      }),
+    )
 
     const res = await request(app)
       .get('/v1/services/payment-service/outlier')

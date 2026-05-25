@@ -3,9 +3,10 @@ import { describe, it } from 'node:test'
 import type { DbClient } from '../../src/db/client.js'
 import { queryTemplateTrend } from '../../src/db/dashboard/template-trend.js'
 
-function createCapturingDb(
-  mockData: unknown = [],
-): { db: DbClient; captured: Array<{ query: string; query_params: Record<string, unknown> }> } {
+function createCapturingDb(mockData: unknown = []): {
+  db: DbClient
+  captured: Array<{ query: string; query_params: Record<string, unknown> }>
+} {
   const captured: Array<{ query: string; query_params: Record<string, unknown> }> = []
   const db = {
     query: async (params: { query: string; query_params: Record<string, unknown> }) => {
@@ -21,9 +22,27 @@ function createCapturingDb(
 }
 
 const MOCK_TREND_DATA = [
-  { day: '2026-03-20', occurrence_count: '100', error_count: '5', avg_duration_ms: '200.0', max_anomaly_score: '0.8' },
-  { day: '2026-03-21', occurrence_count: '150', error_count: '10', avg_duration_ms: '250.0', max_anomaly_score: '1.2' },
-  { day: '2026-03-22', occurrence_count: '80', error_count: '2', avg_duration_ms: '180.0', max_anomaly_score: '0.3' },
+  {
+    day: '2026-03-20',
+    occurrence_count: '100',
+    error_count: '5',
+    avg_duration_ms: '200.0',
+    max_anomaly_score: '0.8',
+  },
+  {
+    day: '2026-03-21',
+    occurrence_count: '150',
+    error_count: '10',
+    avg_duration_ms: '250.0',
+    max_anomaly_score: '1.2',
+  },
+  {
+    day: '2026-03-22',
+    occurrence_count: '80',
+    error_count: '2',
+    avg_duration_ms: '180.0',
+    max_anomaly_score: '0.3',
+  },
 ]
 
 describe('queryTemplateTrend', () => {

@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
 import type { DbClient } from '../../src/db/client.js'
-import { AlertDispatcher, type AlertEvent, type ThresholdAlertEvent } from '../../src/watches/alert-observer.js'
+import {
+  AlertDispatcher,
+  type AlertEvent,
+  type ThresholdAlertEvent,
+} from '../../src/watches/alert-observer.js'
 import { RuleStore, type ThresholdConfig } from '../../src/watches/rule-store.js'
 import { ThresholdEvaluator } from '../../src/watches/threshold-evaluator.js'
 
@@ -238,7 +242,7 @@ describe('ThresholdEvaluator', () => {
 
   it('disabled rules are skipped', async () => {
     const { ruleStore, evaluator, alerts, queryCalls, setQueryResult } = createTestSetup()
-    const result = await ruleStore.add({
+    const _result = await ruleStore.add({
       tenantId: 't1',
       name: 'Disabled rule',
       ruleType: 'threshold',
@@ -258,7 +262,11 @@ describe('ThresholdEvaluator', () => {
     const ruleStore = new RuleStore()
     const alerts: AlertEvent[] = []
     const dispatcher = new AlertDispatcher(silentLogger)
-    dispatcher.register({ notify: async (alert) => { alerts.push(alert) } })
+    dispatcher.register({
+      notify: async (alert) => {
+        alerts.push(alert)
+      },
+    })
 
     const failingDb = {
       query: async () => {
@@ -328,7 +336,10 @@ describe('ThresholdEvaluator', () => {
       channels: [],
     })
     // Mock returns matching service for each tenant's query
-    setQueryResult([{ service: 'api', value: 15 }, { service: 'web', value: 15 }])
+    setQueryResult([
+      { service: 'api', value: 15 },
+      { service: 'web', value: 15 },
+    ])
 
     const count = await evaluator.evaluate()
     assert.equal(count, 2)
@@ -402,7 +413,10 @@ describe('ThresholdEvaluator', () => {
       config: makeThresholdConfig({ value: 5, service: 'web' }),
       channels: [],
     })
-    setQueryResult([{ service: 'api', value: 10 }, { service: 'web', value: 10 }])
+    setQueryResult([
+      { service: 'api', value: 10 },
+      { service: 'web', value: 10 },
+    ])
 
     await evaluator.evaluate()
     // Batched query — one query for all services in the group
@@ -496,7 +510,11 @@ describe('ThresholdEvaluator', () => {
     const ruleStore = new RuleStore()
     const alerts: AlertEvent[] = []
     const dispatcher = new AlertDispatcher(silentLogger)
-    dispatcher.register({ notify: async (alert) => { alerts.push(alert) } })
+    dispatcher.register({
+      notify: async (alert) => {
+        alerts.push(alert)
+      },
+    })
 
     const mockDb = {
       query: async () => [],
@@ -519,7 +537,13 @@ describe('ThresholdEvaluator', () => {
       name: 'CPU rule',
       ruleType: 'threshold',
       enabled: true,
-      config: { metric: 'cpu_usage' as 'error_count', service: 'api', operator: '>', value: 90, windowMinutes: 5 },
+      config: {
+        metric: 'cpu_usage' as 'error_count',
+        service: 'api',
+        operator: '>',
+        value: 90,
+        windowMinutes: 5,
+      },
       channels: [],
     })
 

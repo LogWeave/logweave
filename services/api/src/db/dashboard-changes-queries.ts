@@ -305,7 +305,13 @@ WHERE p.cnt >= greatest({min_baseline:UInt32}, 1)
 ORDER BY spike_ratio DESC
 LIMIT {limit:UInt32}`
 
-  const params: Record<string, unknown> = { hours, limit, threshold, min_baseline: minBaseline, window }
+  const params: Record<string, unknown> = {
+    hours,
+    limit,
+    threshold,
+    min_baseline: minBaseline,
+    window,
+  }
   addFilterParams(params, service, levels)
   return db.query<TemplateSpikeRow>(tenantQuery(query, tenantId, params))
 }

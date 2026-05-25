@@ -3,17 +3,11 @@
  * Requires Docker Compose running: docker compose up --build -d
  */
 import assert from 'node:assert/strict'
-import { describe, it, before, after } from 'node:test'
-import { createClient } from '@clickhouse/client'
+import { after, before, describe, it } from 'node:test'
 import type { ClickHouseClient } from '@clickhouse/client'
+import { createClient } from '@clickhouse/client'
+import { countRowsSince, getClickhouseNow, ingestBatch, isReachable, pollUntil } from './helpers.js'
 import { generateEvents } from './log-generator.js'
-import {
-  isReachable,
-  ingestBatch,
-  getClickhouseNow,
-  countRowsSince,
-  pollUntil,
-} from './helpers.js'
 
 const CLICKHOUSE_URL = 'http://default:logweave@localhost:8123'
 const API_URL = 'http://localhost:3000'
@@ -50,7 +44,10 @@ describe('E2E concurrency tests (Docker Compose)', () => {
   // -- C1: Multi-tenant concurrent ingest --
 
   it('10 concurrent requests from 2 tenants — isolation holds', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const batchSize = 100
 
@@ -133,7 +130,10 @@ describe('E2E concurrency tests (Docker Compose)', () => {
   // -- C2: Same-tenant concurrent ingest --
 
   it('10 concurrent requests from same tenant — no data corruption', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     // Fresh baseline after C1
     const c2Start = await getClickhouseNow(clickhouse)
@@ -161,10 +161,7 @@ describe('E2E concurrency tests (Docker Compose)', () => {
     )
 
     const count = await countRowsSince(clickhouse, TENANT_A, c2Start)
-    assert.ok(
-      count >= expectedTotal,
-      `Expected >= ${expectedTotal} rows, got ${count}`,
-    )
+    assert.ok(count >= expectedTotal, `Expected >= ${expectedTotal} rows, got ${count}`)
 
     // Verify all rows have correct tenant_id
     const wrongTenant = await clickhouse.query({

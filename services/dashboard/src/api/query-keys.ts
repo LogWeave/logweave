@@ -29,7 +29,8 @@ export const queryKeys = {
   tagSettings: () => ['settings', 'tags'] as const,
   connectors: () => ['connectors'] as const,
   onboardingStatus: () => ['settings', 'onboarding'] as const,
-  costAnalysis: (hours: number, service: string | null, levels: string) => ['cost', 'analysis', hours, service, levels] as const,
+  costAnalysis: (hours: number, service: string | null, levels: string) =>
+    ['cost', 'analysis', hours, service, levels] as const,
   costThresholds: () => ['settings', 'cost-thresholds'] as const,
   spikeBaseline: () => ['settings', 'spike-baseline'] as const,
 } as const

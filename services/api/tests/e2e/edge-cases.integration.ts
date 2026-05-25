@@ -3,15 +3,10 @@
  * Requires Docker Compose running: docker compose up --build -d
  */
 import assert from 'node:assert/strict'
-import { describe, it, before, after } from 'node:test'
-import { createClient } from '@clickhouse/client'
+import { after, before, describe, it } from 'node:test'
 import type { ClickHouseClient } from '@clickhouse/client'
-import {
-  isReachable,
-  ingestBatch,
-  getClickhouseNow,
-  countRowsSince,
-} from './helpers.js'
+import { createClient } from '@clickhouse/client'
+import { countRowsSince, getClickhouseNow, ingestBatch, isReachable } from './helpers.js'
 
 const CLICKHOUSE_URL = 'http://default:logweave@localhost:8123'
 const API_URL = 'http://localhost:3000'
@@ -46,7 +41,10 @@ describe('E2E edge cases (Docker Compose)', () => {
   // -- E1: All optional fields missing --
 
   it('events with all optional fields missing are accepted', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const events = Array.from({ length: 10 }, (_, i) => ({
       message: `Minimal event ${i}`,
@@ -65,7 +63,10 @@ describe('E2E edge cases (Docker Compose)', () => {
   // -- E2: Maximum-length field values --
 
   it('events with maximum-length field values are accepted', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const longStr = 'x'.repeat(10_000)
     const events = [
@@ -86,7 +87,10 @@ describe('E2E edge cases (Docker Compose)', () => {
   // -- E3: Unicode, emoji, multi-byte characters --
 
   it('unicode, emoji, and multi-byte characters accepted and persisted', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const e3Start = await getClickhouseNow(clickhouse)
 
@@ -116,7 +120,10 @@ describe('E2E edge cases (Docker Compose)', () => {
   // -- E4: Timestamps in past and future --
 
   it('timestamps far in past and future are accepted and persisted', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const e4Start = await getClickhouseNow(clickhouse)
 
@@ -149,7 +156,10 @@ describe('E2E edge cases (Docker Compose)', () => {
   // -- E5: Mixed valid/invalid events — partial success --
 
   it('mixed valid and invalid events — partial success', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const events: unknown[] = [
       // 5 valid events
@@ -176,7 +186,10 @@ describe('E2E edge cases (Docker Compose)', () => {
   // -- E6: Empty batch rejected --
 
   it('empty batch rejected with 400', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const { status } = await ingestBatch(KEY_A, [])
 

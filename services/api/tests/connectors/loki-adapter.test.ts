@@ -9,8 +9,10 @@ import type { FetchRawLogsParams, LokiConnectorConfig } from '../../src/connecto
 
 const originalFetch = globalThis.fetch
 
-function mockFetchWith(handler: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): void {
-  (globalThis as Record<string, unknown>).fetch = handler as typeof fetch
+function mockFetchWith(
+  handler: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
+): void {
+  ;(globalThis as Record<string, unknown>).fetch = handler as typeof fetch
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

@@ -120,7 +120,11 @@ export function TemplateTable({ className }: { className?: string }) {
               <BellRing size={12} className="text-brand-400 shrink-0" />
             )}
             <span className="font-mono text-xs text-text-primary truncate">{info.getValue()}</span>
-            {info.row.original.isNewToday && <Badge variant="new" className="shrink-0">new</Badge>}
+            {info.row.original.isNewToday && (
+              <Badge variant="new" className="shrink-0">
+                new
+              </Badge>
+            )}
           </div>
         ),
       }),
@@ -325,136 +329,142 @@ export function TemplateTable({ className }: { className?: string }) {
             </p>
           )}
           {rows.slice(0, 50).map((row) => (
-            <div
+            <button
               key={row.id}
+              type="button"
               className={cn(
-                'p-3 rounded-lg bg-surface-base hover:bg-surface-elevated transition-colors cursor-pointer',
-                selectedTemplateId === row.original.templateId && 'bg-brand-500/10 border-l-2 border-l-brand-500',
+                'w-full text-left p-3 rounded-lg bg-surface-base hover:bg-surface-elevated transition-colors cursor-pointer',
+                selectedTemplateId === row.original.templateId &&
+                  'bg-brand-500/10 border-l-2 border-l-brand-500',
               )}
               onClick={() => setSelectedTemplateId(row.original.templateId)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setSelectedTemplateId(row.original.templateId)
-              }}
-              tabIndex={0}
             >
               <div className="flex items-start gap-2">
-                <code className="text-xs font-mono text-text-primary flex-1 leading-relaxed line-clamp-2">{row.original.templateText}</code>
-                {row.original.isNewToday && <Badge variant="new" className="shrink-0">NEW</Badge>}
+                <code className="text-xs font-mono text-text-primary flex-1 leading-relaxed line-clamp-2">
+                  {row.original.templateText}
+                </code>
+                {row.original.isNewToday && (
+                  <Badge variant="new" className="shrink-0">
+                    NEW
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-3 mt-2 text-[10px] text-text-muted">
                 <span className="text-brand-400">{row.original.service}</span>
                 <span>{row.original.occurrenceCount.toLocaleString()} events</span>
-                {row.original.errorCount > 0 && <span className="text-danger">{row.original.errorCount} errors</span>}
+                {row.original.errorCount > 0 && (
+                  <span className="text-danger">{row.original.errorCount} errors</span>
+                )}
               </div>
-            </div>
+            </button>
           ))}
         </div>
 
         {/* Table view for large screens */}
         <div className="hidden xl:block overflow-x-auto">
-        {/* Table header */}
-        <div className="flex items-center border-b border-border-subtle pb-2 mb-1">
-          {table.getHeaderGroups().map((headerGroup) =>
-            headerGroup.headers.map((header) => {
-              const sorted = header.column.getIsSorted()
-              const ariaSortValue =
-                sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'
-              return (
-                <div
-                  key={header.id}
-                  style={{ width: header.getSize() }}
-                  className={cn(
-                    'shrink-0 text-[11px] font-medium text-text-muted uppercase tracking-wider',
-                    header.column.getCanSort() &&
-                      'cursor-pointer select-none hover:text-text-secondary',
-                  )}
-                >
-                  {header.column.getCanSort() ? (
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 uppercase tracking-wider"
-                      aria-label={`Sort by ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.id}, currently ${ariaSortValue}`}
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      {sorted === 'asc' && '\u2191'}
-                      {sorted === 'desc' && '\u2193'}
-                    </button>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                    </span>
-                  )}
-                </div>
-              )
-            }),
-          )}
-        </div>
-
-        {/* Virtual scrolling body */}
-        <div ref={parentRef} className="overflow-auto" style={{ maxHeight: '500px' }}>
-          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const row = rows[virtualRow.index]
-              if (!row) return null
-              const isSelected = row.original.templateId === selectedTemplateId
-              return (
-                <div
-                  key={row.id}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                >
-                  {/* biome-ignore lint/a11y/useSemanticElements: can't use <button> — contains nested interactive hide button */}
+          {/* Table header */}
+          <div className="flex items-center border-b border-border-subtle pb-2 mb-1">
+            {table.getHeaderGroups().map((headerGroup) =>
+              headerGroup.headers.map((header) => {
+                const sorted = header.column.getIsSorted()
+                const ariaSortValue =
+                  sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'
+                return (
                   <div
-                    role="button"
+                    key={header.id}
+                    style={{ width: header.getSize() }}
                     className={cn(
-                      'group/row flex items-center w-full py-2 border-b border-border-subtle/50 cursor-pointer transition-colors text-left',
-                      isSelected
-                        ? 'bg-brand-500/10 border-l-2 border-l-brand-500'
-                        : 'hover:bg-surface-elevated/50',
-                      showHidden &&
-                        hiddenTemplateIds.includes(row.original.templateId) &&
-                        'opacity-50',
+                      'shrink-0 text-[11px] font-medium text-text-muted uppercase tracking-wider',
+                      header.column.getCanSort() &&
+                        'cursor-pointer select-none hover:text-text-secondary',
                     )}
-                    tabIndex={0}
-                    onClick={() => setSelectedTemplateId(row.original.templateId)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setSelectedTemplateId(row.original.templateId)
-                      }
+                  >
+                    {header.column.getCanSort() ? (
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 uppercase tracking-wider"
+                        aria-label={`Sort by ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.id}, currently ${ariaSortValue}`}
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {sorted === 'asc' && '\u2191'}
+                        {sorted === 'desc' && '\u2193'}
+                      </button>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </span>
+                    )}
+                  </div>
+                )
+              }),
+            )}
+          </div>
+
+          {/* Virtual scrolling body */}
+          <div ref={parentRef} className="overflow-auto" style={{ maxHeight: '500px' }}>
+            <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const row = rows[virtualRow.index]
+                if (!row) return null
+                const isSelected = row.original.templateId === selectedTemplateId
+                return (
+                  <div
+                    key={row.id}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${virtualRow.start}px)`,
                     }}
                   >
-                    {row.getVisibleCells().map((cell) => (
-                      <div
-                        key={cell.id}
-                        style={{ width: cell.column.getSize() }}
-                        className="shrink-0 px-1"
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </div>
-                    ))}
+                    {/* biome-ignore lint/a11y/useSemanticElements: can't use <button> — contains nested interactive hide button */}
+                    <div
+                      role="button"
+                      className={cn(
+                        'group/row flex items-center w-full py-2 border-b border-border-subtle/50 cursor-pointer transition-colors text-left',
+                        isSelected
+                          ? 'bg-brand-500/10 border-l-2 border-l-brand-500'
+                          : 'hover:bg-surface-elevated/50',
+                        showHidden &&
+                          hiddenTemplateIds.includes(row.original.templateId) &&
+                          'opacity-50',
+                      )}
+                      tabIndex={0}
+                      onClick={() => setSelectedTemplateId(row.original.templateId)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedTemplateId(row.original.templateId)
+                        }
+                      }}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <div
+                          key={cell.id}
+                          style={{ width: cell.column.getSize() }}
+                          className="shrink-0 px-1"
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
-        </div>
 
-        {rows.length === 0 && (
-          <div className="py-12 text-center text-text-muted text-sm">
-            {globalFilter
-              ? 'No patterns match your search.'
-              : hiddenCount > 0 && hiddenCount >= templates.length
-                ? `All ${hiddenCount} patterns are hidden. Click "hidden" above to reveal them.`
-                : 'No pattern data yet. Install the @logweave/transport SDK and send some logs to get started.'}
-          </div>
-        )}
+          {rows.length === 0 && (
+            <div className="py-12 text-center text-text-muted text-sm">
+              {globalFilter
+                ? 'No patterns match your search.'
+                : hiddenCount > 0 && hiddenCount >= templates.length
+                  ? `All ${hiddenCount} patterns are hidden. Click "hidden" above to reveal them.`
+                  : 'No pattern data yet. Install the @logweave/transport SDK and send some logs to get started.'}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

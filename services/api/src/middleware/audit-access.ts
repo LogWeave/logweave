@@ -1,8 +1,8 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import type pino from 'pino'
-import type { DbClient } from '../db/client.js'
 import { insertAuditEvent } from '../db/audit-queries.js'
-import { getTenantId, getKeyId } from './auth.js'
+import type { DbClient } from '../db/client.js'
+import { getKeyId, getTenantId } from './auth.js'
 
 /**
  * Middleware that audits data access operations (not just auth events).

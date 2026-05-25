@@ -1,7 +1,7 @@
 import { Bell, LayoutDashboard, Radio, Rocket, Settings } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
+import { useOnboardingRemaining, useOnboardingStatus } from '../features/onboarding/use-onboarding'
 import { cn } from '../lib/cn'
-import { useOnboardingStatus, useOnboardingRemaining } from '../features/onboarding/use-onboarding'
 import { useDashboardStore } from '../stores/dashboard-store'
 
 const navItems = [

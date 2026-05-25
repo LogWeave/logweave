@@ -95,7 +95,14 @@ const MIN_DATA_POINTS = 168
 
 function computeOutlier(
   service: string,
-  row: { data_points: string; baseline_mean: string; baseline_stddev: string; current_rate: string; current_errors: string; current_logs: string },
+  row: {
+    data_points: string
+    baseline_mean: string
+    baseline_stddev: string
+    current_rate: string
+    current_errors: string
+    current_logs: string
+  },
 ): ServiceOutlier {
   const dataPoints = Number(row.data_points) || 0
   const baselineMean = Number(row.baseline_mean) || 0
@@ -176,91 +183,103 @@ export function correlationRoutes(deps: CorrelationDeps): Router {
   })
 
   // GET /templates/:id/related — co-occurring templates in same traces
-  router.get('/templates/:id/related', validateQuery(relatedQuerySchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const templateId = req.params.id as string
-      const { hours, limit } = getQuery<z.infer<typeof relatedQuerySchema>>(req)
+  router.get(
+    '/templates/:id/related',
+    validateQuery(relatedQuerySchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const templateId = req.params.id as string
+        const { hours, limit } = getQuery<z.infer<typeof relatedQuerySchema>>(req)
 
-      const rows = await queryRelatedPatterns(deps.db, tenantId, {
-        templateId,
-        hours,
-        limit,
-      })
+        const rows = await queryRelatedPatterns(deps.db, tenantId, {
+          templateId,
+          hours,
+          limit,
+        })
 
-      const data: RelatedPattern[] = rows.map((r) => ({
-        templateId: r.template_id,
-        templateText: r.template_text,
-        service: r.service,
-        coOccurrenceCount: Number(r.co_occurrence_count) || 0,
-      }))
-
-      respond(res, data, { hours, limit, count: data.length })
-    } catch (err) {
-      next(err)
-    }
-  })
-
-  // GET /templates/:id/correlations — Pearson correlation with top templates
-  router.get('/templates/:id/correlations', validateQuery(correlationQuerySchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const templateId = req.params.id as string
-      const { hours, limit } = getQuery<z.infer<typeof correlationQuerySchema>>(req)
-
-      const rows = await queryCorrelations(deps.db, tenantId, {
-        templateId,
-        hours,
-        limit,
-      })
-
-      const data: Correlation[] = rows.map((r) => {
-        const coefficient = Number(r.coefficient) || 0
-        return {
+        const data: RelatedPattern[] = rows.map((r) => ({
           templateId: r.template_id,
           templateText: r.template_text,
-          coefficient: Math.round(coefficient * 1000) / 1000,
-          direction: coefficient >= 0 ? 'positive' : 'negative',
-          occurrenceCount: Number(r.occurrence_count) || 0,
-        }
-      })
+          service: r.service,
+          coOccurrenceCount: Number(r.co_occurrence_count) || 0,
+        }))
 
-      respond(res, data, { hours, limit, count: data.length })
-    } catch (err) {
-      next(err)
-    }
-  })
+        respond(res, data, { hours, limit, count: data.length })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
+
+  // GET /templates/:id/correlations — Pearson correlation with top templates
+  router.get(
+    '/templates/:id/correlations',
+    validateQuery(correlationQuerySchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const templateId = req.params.id as string
+        const { hours, limit } = getQuery<z.infer<typeof correlationQuerySchema>>(req)
+
+        const rows = await queryCorrelations(deps.db, tenantId, {
+          templateId,
+          hours,
+          limit,
+        })
+
+        const data: Correlation[] = rows.map((r) => {
+          const coefficient = Number(r.coefficient) || 0
+          return {
+            templateId: r.template_id,
+            templateText: r.template_text,
+            coefficient: Math.round(coefficient * 1000) / 1000,
+            direction: coefficient >= 0 ? 'positive' : 'negative',
+            occurrenceCount: Number(r.occurrence_count) || 0,
+          }
+        })
+
+        respond(res, data, { hours, limit, count: data.length })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   // GET /services/:name/outlier — z-score of current error rate vs baseline
-  router.get('/services/:name/outlier', validateQuery(outlierQuerySchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const service = req.params.name as string
-      const { hours } = getQuery<z.infer<typeof outlierQuerySchema>>(req)
+  router.get(
+    '/services/:name/outlier',
+    validateQuery(outlierQuerySchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const service = req.params.name as string
+        const { hours } = getQuery<z.infer<typeof outlierQuerySchema>>(req)
 
-      const rows = await queryServiceOutlier(deps.db, tenantId, { service, hours })
+        const rows = await queryServiceOutlier(deps.db, tenantId, { service, hours })
 
-      const row = rows[0]
-      const data: ServiceOutlier = row
-        ? computeOutlier(service, row)
-        : {
-            service,
-            currentRate: 0,
-            currentErrors: 0,
-            currentLogs: 0,
-            baselineMean: 0,
-            baselineStddev: 0,
-            zScore: 0,
-            verdict: 'insufficient_data',
-            dataPoints: 0,
-            warning: `Only 0 hourly data points available (${MIN_DATA_POINTS} recommended for reliable z-score)`,
-          }
+        const row = rows[0]
+        const data: ServiceOutlier = row
+          ? computeOutlier(service, row)
+          : {
+              service,
+              currentRate: 0,
+              currentErrors: 0,
+              currentLogs: 0,
+              baselineMean: 0,
+              baselineStddev: 0,
+              zScore: 0,
+              verdict: 'insufficient_data',
+              dataPoints: 0,
+              warning: `Only 0 hourly data points available (${MIN_DATA_POINTS} recommended for reliable z-score)`,
+            }
 
-      respond(res, data, { hours, count: 1 })
-    } catch (err) {
-      next(err)
-    }
-  })
+        respond(res, data, { hours, count: 1 })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   return router
 }

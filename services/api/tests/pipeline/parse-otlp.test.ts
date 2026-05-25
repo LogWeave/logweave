@@ -113,9 +113,7 @@ describe('otlpToEvents', () => {
           resource: { attributes: [] },
           scopeLogs: [
             {
-              logRecords: [
-                { body: { stringValue: 'msg' }, severityNumber: 17 },
-              ],
+              logRecords: [{ body: { stringValue: 'msg' }, severityNumber: 17 }],
             },
           ],
         },

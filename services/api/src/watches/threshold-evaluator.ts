@@ -1,8 +1,7 @@
 import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
 import type { AlertDispatcher, ThresholdOperator } from './alert-observer.js'
-import type { AlertRule, ThresholdConfig } from './rule-store.js'
-import type { RuleStore } from './rule-store.js'
+import type { AlertRule, RuleStore, ThresholdConfig } from './rule-store.js'
 import type { TenantSettingsStore } from './tenant-settings.js'
 
 const DEFAULT_EVALUATION_INTERVAL_MS = 60_000
@@ -226,7 +225,9 @@ export class ThresholdEvaluator {
       return new Map()
     }
 
-    const envFilter = environment ? '\n                  AND environment = {environment:String}' : ''
+    const envFilter = environment
+      ? '\n                  AND environment = {environment:String}'
+      : ''
 
     // Single query for all services using Array param
     const results = new Map<string, number>()

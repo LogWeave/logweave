@@ -2,8 +2,12 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
 import { AnomalyScorer, WARMUP_SENTINEL_TEMPLATE_ID } from '../../src/pipeline/anomaly-scorer.js'
-import { AlertDispatcher, type AlertEvent, type TemplateAlertEvent } from '../../src/watches/alert-observer.js'
 import { AlertEvaluator } from '../../src/watches/alert-evaluator.js'
+import {
+  AlertDispatcher,
+  type AlertEvent,
+  type TemplateAlertEvent,
+} from '../../src/watches/alert-observer.js'
 import { WatchStore } from '../../src/watches/watch-store.js'
 import { type BaselineSpec, createBaselineMockDb, createMockDb } from '../helpers/mock-db.js'
 
@@ -37,7 +41,11 @@ function createTestSetup(options: SetupOptions = {}): Setup {
   })
   const alerts: AlertEvent[] = []
   const dispatcher = new AlertDispatcher(silentLogger)
-  dispatcher.register({ notify: async (alert) => { alerts.push(alert) } })
+  dispatcher.register({
+    notify: async (alert) => {
+      alerts.push(alert)
+    },
+  })
 
   const evaluator = new AlertEvaluator({
     watchStore,
@@ -162,11 +170,23 @@ describe('AlertEvaluator', () => {
 
     const receivedAlerts: AlertEvent[] = []
     const dispatcher = new AlertDispatcher(silentLogger)
-    dispatcher.register({ notify: async () => { throw new Error('observer 1 failed') } })
-    dispatcher.register({ notify: async (alert) => { receivedAlerts.push(alert) } })
+    dispatcher.register({
+      notify: async () => {
+        throw new Error('observer 1 failed')
+      },
+    })
+    dispatcher.register({
+      notify: async (alert) => {
+        receivedAlerts.push(alert)
+      },
+    })
 
     const evaluator = new AlertEvaluator({
-      watchStore, anomalyScorer: scorer, dispatcher, logger: silentLogger, now: () => clock.t,
+      watchStore,
+      anomalyScorer: scorer,
+      dispatcher,
+      logger: silentLogger,
+      now: () => clock.t,
     })
 
     // Register warmup via the public record path
@@ -197,12 +217,18 @@ describe('AlertEvaluator', () => {
     const now = Date.now()
     const watchStore = new WatchStore()
     const brokenScorer = {
-      getWatchedScores: () => { throw new Error('scorer exploded') },
+      getWatchedScores: () => {
+        throw new Error('scorer exploded')
+      },
     } as unknown as AnomalyScorer
 
     const alerts: AlertEvent[] = []
     const dispatcher = new AlertDispatcher(silentLogger)
-    dispatcher.register({ notify: async (alert) => { alerts.push(alert) } })
+    dispatcher.register({
+      notify: async (alert) => {
+        alerts.push(alert)
+      },
+    })
 
     const evaluator = new AlertEvaluator({
       watchStore,

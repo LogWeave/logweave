@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
+import type { ClustererHealthChecker } from '../../src/clients/clusterer.js'
+import type { DbClient } from '../../src/db/client.js'
 import { ClusterClient } from '../../src/pipeline/cluster-client.js'
 import { RecoverySweep } from '../../src/recovery/reconcile.js'
-import type { DbClient } from '../../src/db/client.js'
-import type { ClustererHealthChecker } from '../../src/clients/clusterer.js'
 import type { LogMetadataRow } from '../../src/types.js'
 
 const logger = pino({ level: 'silent' })
@@ -76,7 +76,8 @@ interface MockDbOptions {
 /** Create a mock DbClient that returns paginated results, captures commands and inserts. */
 function mockDb(options: MockDbOptions) {
   let queryCallCount = 0
-  const commandCalls: Array<{ query: string; query_params?: Record<string, unknown> }> = options.commandCalls ?? []
+  const commandCalls: Array<{ query: string; query_params?: Record<string, unknown> }> =
+    options.commandCalls ?? []
   const queryCalls: Array<Record<string, unknown>> = []
   const insertedRows: LogMetadataRow[][] = []
 
@@ -93,7 +94,10 @@ function mockDb(options: MockDbOptions) {
     },
     insert: async (params: { values: LogMetadataRow[] }) => {
       if (options.insertError) throw options.insertError
-      if (options.insertErrorForTenant && params.values[0]?.tenant_id === options.insertErrorForTenant) {
+      if (
+        options.insertErrorForTenant &&
+        params.values[0]?.tenant_id === options.insertErrorForTenant
+      ) {
         throw new Error(`INSERT failed for tenant ${options.insertErrorForTenant}`)
       }
       insertedRows.push(params.values)
@@ -158,7 +162,7 @@ describe('RecoverySweep', () => {
     assert.equal(recovered, 10)
     // INSERT was called with 10 new rows
     assert.equal(insertedRows.length, 1)
-    assert.equal(insertedRows[0]!.length, 10)
+    assert.equal(insertedRows[0]?.length, 10)
     // All new rows have real template_ids
     for (const row of insertedRows[0]!) {
       assert.notEqual(row.template_id, '0')
@@ -166,11 +170,11 @@ describe('RecoverySweep', () => {
     }
     // DELETE was called with the 10 old IDs, scoped by tenant_id
     assert.equal(commandCalls.length, 1)
-    assert.ok(commandCalls[0]!.query.includes('DELETE FROM'))
-    assert.ok(commandCalls[0]!.query.includes('tenant_id'), 'DELETE must include tenant_id scope')
-    const deletedIds = commandCalls[0]!.query_params?.ids as string[]
+    assert.ok(commandCalls[0]?.query.includes('DELETE FROM'))
+    assert.ok(commandCalls[0]?.query.includes('tenant_id'), 'DELETE must include tenant_id scope')
+    const deletedIds = commandCalls[0]?.query_params?.ids as string[]
     assert.equal(deletedIds.length, 10)
-    assert.equal(commandCalls[0]!.query_params?.tenant_id, 'tenant-a')
+    assert.equal(commandCalls[0]?.query_params?.tenant_id, 'tenant-a')
   })
 
   it('startup skips when clusterer is unhealthy', async () => {
@@ -216,11 +220,15 @@ describe('RecoverySweep', () => {
 
     await sweep.runStartupReconciliation()
 
-    const newRow = insertedRows[0]![0]!
+    const newRow = insertedRows[0]?.[0]!
     // Template fields updated
     assert.equal(newRow.template_id, 'tpl-pay')
     assert.equal(newRow.template_text, 'Payment failed for user <*>')
-    assert.equal(newRow.is_new_template, 0, 'Recovery re-clustering should not count as new template')
+    assert.equal(
+      newRow.is_new_template,
+      0,
+      'Recovery re-clustering should not count as new template',
+    )
     assert.equal(newRow.pre_processed_message, null)
     // All other fields preserved
     assert.equal(newRow.tenant_id, 'tenant-x')
@@ -239,7 +247,7 @@ describe('RecoverySweep', () => {
     // No id field — let ClickHouse auto-generate new UUIDv7
     assert.equal('id' in newRow, false, 'New row should not have an id field')
     // DELETE used the old id
-    const deletedIds = commandCalls[0]!.query_params?.ids as string[]
+    const deletedIds = commandCalls[0]?.query_params?.ids as string[]
     assert.deepEqual(deletedIds, ['aaaaaaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa'])
   })
 
@@ -303,7 +311,9 @@ describe('RecoverySweep', () => {
     let queryResolve: (() => void) | null = null
     const slowDb = {
       query: async () => {
-        await new Promise<void>((resolve) => { queryResolve = resolve })
+        await new Promise<void>((resolve) => {
+          queryResolve = resolve
+        })
         return []
       },
       command: async () => {},
@@ -317,7 +327,13 @@ describe('RecoverySweep', () => {
 
     const sweep = new RecoverySweep(
       { db: slowDb, clusterClient, clustererHealth: healthChecker, logger },
-      { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300, lookbackHours: 24 },
+      {
+        sweepIntervalMs: 60_000,
+        sweepMaxRows: 1000,
+        batchSize: 500,
+        backpressureThresholdMs: 300,
+        lookbackHours: 24,
+      },
     )
 
     // Start first sweep (will block on query)
@@ -331,14 +347,12 @@ describe('RecoverySweep', () => {
     assert.equal(secondResult, 0, 'Second sweep should return 0 when mutex is held')
 
     // Unblock first sweep
-    queryResolve!()
+    queryResolve?.()
     await firstSweep
   })
 
   it('still-unclustered results are skipped — no INSERT/DELETE', async () => {
-    const rows = [
-      unclusteredRow({ id: 'id-1', pre_processed_message: 'msg1' }),
-    ]
+    const rows = [unclusteredRow({ id: 'id-1', pre_processed_message: 'msg1' })]
     // Clusterer returns template_id='0' (still failing)
     const failResults = [{ template_id: '0', template_text: '[unclustered]', is_new: false }]
     const fetchFn = mockFetch(failResults)
@@ -390,9 +404,7 @@ describe('RecoverySweep', () => {
   })
 
   it('DELETE failure still returns correct recovered count and logs warning', async () => {
-    const rows = [
-      unclusteredRow({ id: 'id-1', pre_processed_message: 'msg1' }),
-    ]
+    const rows = [unclusteredRow({ id: 'id-1', pre_processed_message: 'msg1' })]
     const fetchFn = mockFetch(clusterResults(1))
 
     // Build sweep with a logger that captures warn calls
@@ -404,13 +416,22 @@ describe('RecoverySweep', () => {
       origWarn(obj, msg)
     }) as typeof testLogger.warn
 
-    const { db, insertedRows } = mockDb({ pages: [rows, []], commandError: new Error('ClickHouse delete failed') })
+    const { db, insertedRows } = mockDb({
+      pages: [rows, []],
+      commandError: new Error('ClickHouse delete failed'),
+    })
     const healthChecker = mockHealthChecker(true)
     const clusterClient = new ClusterClient('http://localhost:8000', 500, testLogger, fetchFn)
 
     const sweep = new RecoverySweep(
       { db, clusterClient, clustererHealth: healthChecker, logger: testLogger },
-      { sweepIntervalMs: 60_000, sweepMaxRows: 1000, batchSize: 500, backpressureThresholdMs: 300, lookbackHours: 24 },
+      {
+        sweepIntervalMs: 60_000,
+        sweepMaxRows: 1000,
+        batchSize: 500,
+        backpressureThresholdMs: 300,
+        lookbackHours: 24,
+      },
     )
 
     const recovered = await sweep.runStartupReconciliation()
@@ -426,10 +447,16 @@ describe('RecoverySweep', () => {
   it('cursor pagination — multiple pages fetched with advancing cursor', async () => {
     // Page 1: 3 rows, Page 2: 2 rows, Page 3: empty
     const page1 = Array.from({ length: 3 }, (_, i) =>
-      unclusteredRow({ id: `00000000-0000-7000-0000-00000000000${i}`, pre_processed_message: `p1-msg${i}` }),
+      unclusteredRow({
+        id: `00000000-0000-7000-0000-00000000000${i}`,
+        pre_processed_message: `p1-msg${i}`,
+      }),
     )
     const page2 = Array.from({ length: 2 }, (_, i) =>
-      unclusteredRow({ id: `00000000-0000-7000-0000-00000000001${i}`, pre_processed_message: `p2-msg${i}` }),
+      unclusteredRow({
+        id: `00000000-0000-7000-0000-00000000001${i}`,
+        pre_processed_message: `p2-msg${i}`,
+      }),
     )
 
     const fetchFn: typeof globalThis.fetch = async (_url, init) => {
@@ -453,10 +480,18 @@ describe('RecoverySweep', () => {
     // 3 query calls (page1 + page2 + empty)
     assert.equal(queryCalls.length, 3)
     // Second query should use cursor from last row of page 1
-    const secondParams = queryCalls[1]!.query_params as Record<string, unknown>
-    assert.equal(secondParams.cursor, page1[2]!.id, 'Cursor should advance to last ID of previous page')
+    const secondParams = queryCalls[1]?.query_params as Record<string, unknown>
+    assert.equal(
+      secondParams.cursor,
+      page1[2]?.id,
+      'Cursor should advance to last ID of previous page',
+    )
     // Third query should use cursor from last row of page 2
-    const thirdParams = queryCalls[2]!.query_params as Record<string, unknown>
-    assert.equal(thirdParams.cursor, page2[1]!.id, 'Cursor should advance to last ID of previous page')
+    const thirdParams = queryCalls[2]?.query_params as Record<string, unknown>
+    assert.equal(
+      thirdParams.cursor,
+      page2[1]?.id,
+      'Cursor should advance to last ID of previous page',
+    )
   })
 })

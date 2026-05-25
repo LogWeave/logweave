@@ -80,7 +80,7 @@ export class HmacSessionProvider implements SessionProvider {
       if (!data.userId || !data.tenantId || !data.role) return null
 
       // Check idle timeout
-      if (data.lastActivity && (now - data.lastActivity) > IDLE_TIMEOUT_MS) return null
+      if (data.lastActivity && now - data.lastActivity > IDLE_TIMEOUT_MS) return null
 
       return data
     } catch {

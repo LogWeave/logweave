@@ -5,7 +5,10 @@ import type { TailBuffer } from '../../src/tail/buffer.js'
 import type { TailEvent } from '../../src/tail/types.js'
 import type { TenantSettingsStore } from '../../src/watches/tenant-settings.js'
 
-function createMockTailBuffer(): { buffer: TailBuffer; pushed: Array<{ tenantId: string; event: Omit<TailEvent, 'seq'> }> } {
+function createMockTailBuffer(): {
+  buffer: TailBuffer
+  pushed: Array<{ tenantId: string; event: Omit<TailEvent, 'seq'> }>
+} {
   const pushed: Array<{ tenantId: string; event: Omit<TailEvent, 'seq'> }> = []
   const buffer = {
     push(tenantId: string, event: Omit<TailEvent, 'seq'>) {

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { motion } from 'motion/react'
 import { Check } from 'lucide-react'
+import { motion } from 'motion/react'
+import { useEffect, useState } from 'react'
 import { useDismissOnboarding } from './use-onboarding'
 
 /** CSS-only confetti particles — 8 dots that burst outward from center. */
@@ -11,14 +11,16 @@ function ConfettiBurst() {
     const x = Math.cos(rad) * 40
     const y = Math.sin(rad) * 40
     const colors = ['bg-brand-400', 'bg-success-500', 'bg-warning-500', 'bg-info-500']
-    return { x, y, color: colors[i % colors.length], delay: i * 0.03 }
+    // The angle uniquely identifies each of the 8 particles and is stable
+    // for the lifetime of this burst — a better React key than the array index.
+    return { id: `p-${angle}`, x, y, color: colors[i % colors.length], delay: i * 0.03 }
   })
 
   return (
     <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-      {particles.map((p, i) => (
+      {particles.map((p) => (
         <motion.div
-          key={i}
+          key={p.id}
           initial={{ x: 0, y: 0, scale: 1, opacity: 1 }}
           animate={{ x: p.x, y: p.y, scale: 0, opacity: 0 }}
           transition={{ delay: 0.3 + p.delay, duration: 0.6, ease: 'easeOut' }}
@@ -33,14 +35,17 @@ export function CompletionCard() {
   const dismissMutation = useDismissOnboarding()
   const [visible, setVisible] = useState(true)
 
-  // Auto-dismiss after 5 seconds
+  // Auto-dismiss after 5 seconds — mount-once timer. We deliberately don't
+  // depend on `dismissMutation` because its identity changes every render
+  // and would restart the timer indefinitely.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once timer; see note above
   useEffect(() => {
     const timer = setTimeout(() => {
       setVisible(false)
       dismissMutation.mutate()
     }, 5000)
     return () => clearTimeout(timer)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   if (!visible) return null
 

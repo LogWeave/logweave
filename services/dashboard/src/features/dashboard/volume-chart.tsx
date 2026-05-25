@@ -2,11 +2,11 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { EChartsOption } from 'echarts'
 import { useMemo, useState } from 'react'
 import { pollUnlessError, useDeploys, useVolume } from '../../api/queries'
-import { QueryError } from '../../components/ui/query-error'
 import type { ApiResponse, VolumeData, VolumePoint } from '../../api/types'
 import { Chart } from '../../components/chart'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
+import { QueryError } from '../../components/ui/query-error'
 import { Skeleton } from '../../components/ui/skeleton'
 import { ToggleGroup } from '../../components/ui/toggle'
 import { config } from '../../config'
@@ -179,27 +179,26 @@ export function VolumeChart({ className }: { className?: string }) {
     // Deploy markers — vertical lines at deploy timestamps
     const deploys = deploysResponse?.data ?? []
     if (deploys.length > 0 && currentSeries.length > 0) {
-      const deployMarks = deploys
-        .map((d) => {
-          // Find the closest x-axis index for this deploy timestamp
-          const deployTime = new Date(d.timestamp).getTime()
-          let closestIdx = 0
-          let closestDiff = Number.POSITIVE_INFINITY
-          for (let i = 0; i < sortedTimestamps.length; i++) {
-            const ts = sortedTimestamps[i]
-            if (!ts) continue
-            const diff = Math.abs(new Date(ts).getTime() - deployTime)
-            if (diff < closestDiff) {
-              closestDiff = diff
-              closestIdx = i
-            }
+      const deployMarks = deploys.map((d) => {
+        // Find the closest x-axis index for this deploy timestamp
+        const deployTime = new Date(d.timestamp).getTime()
+        let closestIdx = 0
+        let closestDiff = Number.POSITIVE_INFINITY
+        for (let i = 0; i < sortedTimestamps.length; i++) {
+          const ts = sortedTimestamps[i]
+          if (!ts) continue
+          const diff = Math.abs(new Date(ts).getTime() - deployTime)
+          if (diff < closestDiff) {
+            closestDiff = diff
+            closestIdx = i
           }
-          return {
-            xAxis: closestIdx,
-            label: { formatter: d.version ?? d.service, fontSize: 9, color: '#818cf8' },
-            lineStyle: { color: '#818cf8', type: 'dashed' as const, width: 1 },
-          }
-        })
+        }
+        return {
+          xAxis: closestIdx,
+          label: { formatter: d.version ?? d.service, fontSize: 9, color: '#818cf8' },
+          lineStyle: { color: '#818cf8', type: 'dashed' as const, width: 1 },
+        }
+      })
       const first = currentSeries[0]
       if (first) {
         currentSeries[0] = {
@@ -263,7 +262,15 @@ export function VolumeChart({ className }: { className?: string }) {
       animationEasing: 'cubicOut',
       series: allSeries,
     }
-  }, [volumeData, compareData, chartType, unfilteredResponse, isLevelFiltered, timeRange, deploysResponse])
+  }, [
+    volumeData,
+    compareData,
+    chartType,
+    unfilteredResponse,
+    isLevelFiltered,
+    timeRange,
+    deploysResponse,
+  ])
 
   if (isLoading) {
     return (

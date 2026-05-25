@@ -1,16 +1,16 @@
 import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
 import { batchInsert } from '../db/insert.js'
-import * as metrics from '../metrics.js'
 import type { EventBus } from '../events/event-bus.js'
+import * as metrics from '../metrics.js'
 import type { TailBuffer } from '../tail/buffer.js'
+import { levelMeetsSeverity } from '../tail/types.js'
 import type { LogMetadataRow } from '../types.js'
 import { uuidv7 } from '../uuid.js'
 import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 import type { AnomalyScorer } from './anomaly-scorer.js'
 import type { ClusterClient, ClusterResult } from './cluster-client.js'
-import { parseEvent, processEvent, PREPROCESSING_VERSION } from './index.js'
-import { levelMeetsSeverity } from '../tail/types.js'
+import { PREPROCESSING_VERSION, parseEvent, processEvent } from './index.js'
 import type { ParseOptions, ProcessedEvent } from './types.js'
 
 export interface IngestDependencies {
@@ -88,8 +88,7 @@ function toMetadataRow(
     route: item.processed.route ?? '',
     source_type: options.sourceType ?? 'transport',
     source_ref: options.sourceRef ?? '',
-    pre_processed_message:
-      cluster.templateId === '0' ? item.processed.preProcessedMessage : null,
+    pre_processed_message: cluster.templateId === '0' ? item.processed.preProcessedMessage : null,
     preprocessing_version: PREPROCESSING_VERSION,
   }
 }
@@ -118,10 +117,7 @@ export async function ingestBatch(
     const result = parseEvent(events[i], i, options, parser)
     if (!result.ok) {
       parseErrors++
-      deps.logger.debug(
-        { index: i, error: result.error, tenantId },
-        'Skipping unparseable event',
-      )
+      deps.logger.debug({ index: i, error: result.error, tenantId }, 'Skipping unparseable event')
       continue
     }
     const timestamp = extractTimestamp(events[i]) ?? ingestTime
@@ -157,8 +153,14 @@ export async function ingestBatch(
   let newTemplates = 0
 
   for (let i = 0; i < items.length; i++) {
-    const item = items[i]!
-    const cluster = clusterResults[i]!
+    const item = items[i]
+    const cluster = clusterResults[i]
+    if (!item || !cluster) {
+      // Parallel-array invariant: clusterResults is built one-to-one from
+      // items earlier in this function. If either is missing here, we've
+      // hit a programming bug — skip the row rather than crash the batch.
+      continue
+    }
     const anomalyScore = deps.anomalyScorer.recordAndScore(
       tenantId,
       item.processed.service,
@@ -213,7 +215,10 @@ export async function ingestBatch(
       const rawEvent = items[i]?.raw
       if (!row || typeof rawEvent !== 'object' || rawEvent === null) continue
       const obj = rawEvent as Record<string, unknown>
-      const fields = (typeof obj.fields === 'object' && obj.fields !== null) ? obj.fields as Record<string, unknown> : undefined
+      const fields =
+        typeof obj.fields === 'object' && obj.fields !== null
+          ? (obj.fields as Record<string, unknown>)
+          : undefined
 
       for (const tagKey of extractTags) {
         const value = obj[tagKey] ?? fields?.[tagKey]
@@ -235,14 +240,21 @@ export async function ingestBatch(
     }
     if (tagRows.length > 0) {
       try {
-        await deps.db.insert({ table: 'logweave.event_tags', values: tagRows, format: 'JSONEachRow' })
+        await deps.db.insert({
+          table: 'logweave.event_tags',
+          values: tagRows,
+          format: 'JSONEachRow',
+        })
       } catch (err) {
         // Tags become permanently desynced from log_metadata. We don't fail the
         // ingest because metadata write already succeeded, but operators need
         // visibility — bump a counter that's exposed via /metrics so this can
         // be alerted on if the failure rate is non-trivial.
         metrics.increment(metrics.TAG_INSERT_FAILED, tagRows.length)
-        deps.logger.error({ err, tenantId, tagCount: tagRows.length }, 'Failed to insert event tags — metadata kept, tags dropped')
+        deps.logger.error(
+          { err, tenantId, tagCount: tagRows.length },
+          'Failed to insert event tags — metadata kept, tags dropped',
+        )
       }
     }
   }

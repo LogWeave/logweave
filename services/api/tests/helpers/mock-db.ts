@@ -46,7 +46,8 @@ export function createBaselineMockDb(baselines: BaselineSpec[]): DbClient {
       }> = []
       for (const b of baselines) {
         if (b.tenantId !== tenantId) continue
-        const hours = b.hourOfDay === undefined ? Array.from({ length: 24 }, (_, h) => h) : [b.hourOfDay]
+        const hours =
+          b.hourOfDay === undefined ? Array.from({ length: 24 }, (_, h) => h) : [b.hourOfDay]
         for (const hour of hours) {
           rows.push({
             template_id: b.templateId,
@@ -105,9 +106,10 @@ export function createQueryNameMockDb(queryResults?: Map<string, unknown>): DbCl
  * Create a mock DbClient that captures queries for assertion.
  * Returns `{ db, queries }` where `queries` is an array of captured query strings.
  */
-export function createCapturingDb(
-  mockResponses?: Map<string, unknown[]>,
-): { db: DbClient; queries: string[] } {
+export function createCapturingDb(mockResponses?: Map<string, unknown[]>): {
+  db: DbClient
+  queries: string[]
+} {
   const queries: string[] = []
   const db = {
     query: async (params: { query: string }) => {

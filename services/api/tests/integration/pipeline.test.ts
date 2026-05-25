@@ -10,16 +10,20 @@
  */
 import assert from 'node:assert/strict'
 import { after, before, describe, it } from 'node:test'
+import type express from 'express'
 import pino from 'pino'
 import request from 'supertest'
-import type express from 'express'
 import { createApp } from '../../src/app.js'
 import type { ClustererHealthChecker } from '../../src/clients/clusterer.js'
 import { initSchema } from '../../src/db/schema.js'
 import { AnomalyScorer } from '../../src/pipeline/anomaly-scorer.js'
 import type { ClusterClient, ClusterResult } from '../../src/pipeline/cluster-client.js'
-import { AlertDispatcher, type AlertEvent, type AlertObserver } from '../../src/watches/alert-observer.js'
 import { AlertEvaluator } from '../../src/watches/alert-evaluator.js'
+import {
+  AlertDispatcher,
+  type AlertEvent,
+  type AlertObserver,
+} from '../../src/watches/alert-observer.js'
 import { TenantSettingsStore } from '../../src/watches/tenant-settings.js'
 import { WatchStore } from '../../src/watches/watch-store.js'
 import { closeTestClient, getTestClient, getTestDb, testTenantId } from '../db/helpers.js'
@@ -206,10 +210,7 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
       (sum: number, t: { occurrenceCount: number }) => sum + t.occurrenceCount,
       0,
     )
-    assert.ok(
-      totalOccurrences >= 15,
-      `expected total occurrences >= 15, got ${totalOccurrences}`,
-    )
+    assert.ok(totalOccurrences >= 15, `expected total occurrences >= 15, got ${totalOccurrences}`)
 
     // Verify template fields have expected shapes
     const firstTemplate = templates[0]
@@ -233,7 +234,10 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
 
     const overview = overviewRes.body.data
     assert.ok(overview.totalEvents >= 15, `expected totalEvents >= 15, got ${overview.totalEvents}`)
-    assert.ok(overview.serviceCount >= 1, `expected serviceCount >= 1, got ${overview.serviceCount}`)
+    assert.ok(
+      overview.serviceCount >= 1,
+      `expected serviceCount >= 1, got ${overview.serviceCount}`,
+    )
     assert.ok(typeof overview.totalTemplates === 'number')
     assert.ok(typeof overview.errorRate === 'number')
     assert.ok(typeof overview.unclusteredCount === 'number')
@@ -251,7 +255,10 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
 
     const volume = volumeRes.body.data
     assert.ok(Array.isArray(volume.current), 'volume.current should be an array')
-    assert.ok(volume.current.length >= 1, `expected at least 1 volume point, got ${volume.current.length}`)
+    assert.ok(
+      volume.current.length >= 1,
+      `expected at least 1 volume point, got ${volume.current.length}`,
+    )
 
     const totalVolume = volume.current.reduce(
       (sum: number, p: { logCount: number }) => sum + p.logCount,
@@ -387,9 +394,7 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
     const templates = templatesRes.body.data
     assert.ok(templates.length >= 1, 'should have at least 1 template for payments service')
 
-    const scoredTemplate = templates.find(
-      (t: { maxAnomalyScore: number }) => t.maxAnomalyScore > 0,
-    )
+    const scoredTemplate = templates.find((t: { maxAnomalyScore: number }) => t.maxAnomalyScore > 0)
     assert.ok(
       scoredTemplate,
       `expected at least one template with maxAnomalyScore > 0, got scores: ${JSON.stringify(templates.map((t: { templateId: string; maxAnomalyScore: number }) => ({ id: t.templateId, score: t.maxAnomalyScore })))}`,
@@ -426,7 +431,8 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
         latestAlert.type === 'spike' || latestAlert.type === 'new_burst',
         `expected spike or new_burst, got ${latestAlert.type}`,
       )
-      const score = latestAlert.type === 'spike' || latestAlert.type === 'new_burst' ? latestAlert.score : 0
+      const score =
+        latestAlert.type === 'spike' || latestAlert.type === 'new_burst' ? latestAlert.score : 0
       assert.ok(score > 0, `expected score > 0, got ${score}`)
       assert.ok(typeof latestAlert.triggeredAt === 'string')
     } else {
@@ -477,9 +483,7 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
   })
 
   it('rejects requests with no authorization header', async () => {
-    await request(app)
-      .get('/v1/dashboard/overview?hours=1')
-      .expect(401)
+    await request(app).get('/v1/dashboard/overview?hours=1').expect(401)
   })
 
   // -------------------------------------------------------------------------

@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion } from 'motion/react'
 import { Check } from 'lucide-react'
+import { motion } from 'motion/react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { queryKeys } from '../../api/query-keys'
 import { Button } from '../../components/ui/button'
@@ -42,8 +42,7 @@ export function StepClustering({ complete }: StepClusteringProps) {
   const queryClient = useQueryClient()
 
   const saveMutation = useMutation({
-    mutationFn: (sensitivity: number) =>
-      api.put('/v1/settings/clustering', { sensitivity }),
+    mutationFn: (sensitivity: number) => api.put('/v1/settings/clustering', { sensitivity }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.onboardingStatus() })
       toast.success('Clustering sensitivity saved')
@@ -79,9 +78,7 @@ export function StepClustering({ complete }: StepClusteringProps) {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-text-secondary">
-        How should LogWeave group your log patterns?
-      </p>
+      <p className="text-xs text-text-secondary">How should LogWeave group your log patterns?</p>
 
       <div className="space-y-2">
         {presets.map((preset) => (
@@ -115,18 +112,15 @@ export function StepClustering({ complete }: StepClusteringProps) {
               )}
             </div>
             <p className="text-xs text-text-muted ml-5.5 pl-0.5">{preset.description}</p>
-            <p className="text-xs text-text-disabled ml-5.5 pl-0.5 font-mono mt-0.5">{preset.example}</p>
+            <p className="text-xs text-text-disabled ml-5.5 pl-0.5 font-mono mt-0.5">
+              {preset.example}
+            </p>
           </button>
         ))}
       </div>
 
       <div className="flex items-center gap-3">
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleApply}
-          disabled={saveMutation.isPending}
-        >
+        <Button variant="primary" size="sm" onClick={handleApply} disabled={saveMutation.isPending}>
           {saveMutation.isPending ? 'Applying...' : 'Apply'}
         </Button>
         <button
@@ -141,9 +135,7 @@ export function StepClustering({ complete }: StepClusteringProps) {
         </button>
       </div>
 
-      <p className="text-[10px] text-text-disabled">
-        You can change this anytime in Settings.
-      </p>
+      <p className="text-[10px] text-text-disabled">You can change this anytime in Settings.</p>
     </div>
   )
 }

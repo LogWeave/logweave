@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAuth } from '../../auth/auth-provider'
 import { Button } from '../../components/ui/button'
@@ -37,8 +37,12 @@ export function TeamSettings() {
   const users = usersResponse?.data ?? []
 
   const createMutation = useMutation({
-    mutationFn: (input: { username: string; password: string; tenantId: string; role: 'admin' | 'viewer' }) =>
-      api.post('/v1/auth/users', input),
+    mutationFn: (input: {
+      username: string
+      password: string
+      tenantId: string
+      role: 'admin' | 'viewer'
+    }) => api.post('/v1/auth/users', input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['auth', 'users'] })
       toast.success(`User "${newUsername}" created`)
@@ -123,7 +127,11 @@ export function TeamSettings() {
                   )}
                   {u.userId !== user.userId && (
                     <>
-                      <ResetPasswordButton userId={u.userId} username={u.username} onReset={resetPasswordMutation.mutate} />
+                      <ResetPasswordButton
+                        userId={u.userId}
+                        username={u.username}
+                        onReset={resetPasswordMutation.mutate}
+                      />
                       <Button
                         size="sm"
                         variant="ghost"
@@ -167,8 +175,15 @@ export function TeamSettings() {
                   <option value="admin">Admin</option>
                 </select>
                 <div className="flex-1" />
-                <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>Cancel</Button>
-                <Button size="sm" variant="primary" onClick={handleCreate} disabled={createMutation.isPending}>
+                <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={handleCreate}
+                  disabled={createMutation.isPending}
+                >
                   {createMutation.isPending ? 'Creating...' : 'Create User'}
                 </Button>
               </div>
@@ -184,7 +199,14 @@ export function TeamSettings() {
   )
 }
 
-function ResetPasswordButton({ userId, onReset }: { userId: string; username: string; onReset: (args: { userId: string; newPassword: string }) => void }) {
+function ResetPasswordButton({
+  userId,
+  onReset,
+}: {
+  userId: string
+  username: string
+  onReset: (args: { userId: string; newPassword: string }) => void
+}) {
   const [show, setShow] = useState(false)
   const [newPassword, setNewPassword] = useState('')
 

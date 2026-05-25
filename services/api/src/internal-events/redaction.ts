@@ -60,9 +60,7 @@ function redactedPlaceholder(value: unknown): string {
  * Apply universal forbidden-key scrubbing to any fields payload. Values for
  * forbidden keys become a redacted placeholder.
  */
-export function redactFields(
-  fields: Record<string, unknown>,
-): Record<string, unknown> {
+export function redactFields(fields: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(fields)) {
     if (isForbiddenKey(key)) {
@@ -91,9 +89,7 @@ export function redactFields(
  *
  * Input may be any record; nested objects are summarized one level deep.
  */
-export function summarizeConfig(
-  config: Record<string, unknown>,
-): Record<string, unknown> {
+export function summarizeConfig(config: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(config)) {
     if (CONFIG_VALUE_ALLOWLIST.has(key)) {
@@ -139,9 +135,7 @@ function stripOneLevel(value: unknown): unknown {
   return inner
 }
 
-export function stripStackTraces(
-  fields: Record<string, unknown>,
-): Record<string, unknown> {
+export function stripStackTraces(fields: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(fields)) {
     if (STACK_KEY_NAMES.has(key)) continue
@@ -160,6 +154,6 @@ export function stripStackTraces(
  * and strip anything that looks like a long opaque token.
  */
 export function sanitizeMessage(message: string): string {
-  const TOKEN_PATTERN = /\b[a-zA-Z0-9_\-]{24,}\b/g
+  const TOKEN_PATTERN = /\b[a-zA-Z0-9_-]{24,}\b/g
   return message.replace(TOKEN_PATTERN, '<redacted:token>').slice(0, 240)
 }

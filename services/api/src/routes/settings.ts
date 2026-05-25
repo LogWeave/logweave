@@ -96,7 +96,10 @@ export function settingsRoutes(deps: SettingsDeps): Router {
           .min(1)
           .max(64)
           .regex(/^[a-zA-Z0-9_.-]+$/, 'Tag keys must be alphanumeric with _ . -')
-          .refine((k) => !BLOCKED_TAG_KEYS.has(k.toLowerCase()), 'This field name is reserved and cannot be used as a tag key'),
+          .refine(
+            (k) => !BLOCKED_TAG_KEYS.has(k.toLowerCase()),
+            'This field name is reserved and cannot be used as a tag key',
+          ),
       )
       .max(20, 'Maximum 20 tag keys'),
   })
@@ -107,7 +110,10 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const body = req.body as z.infer<typeof extractTagsSchema>
 
       await deps.settingsStore.set(tenantId, { extractTags: body.extractTags })
-      deps.logger.info({ tenantId, tagCount: body.extractTags.length }, 'Tag extraction keys updated')
+      deps.logger.info(
+        { tenantId, tagCount: body.extractTags.length },
+        'Tag extraction keys updated',
+      )
 
       respond(res, { extractTags: body.extractTags })
     } catch (err) {
@@ -177,7 +183,10 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       const body = req.body as z.infer<typeof clusteringSchema>
 
       await deps.settingsStore.set(tenantId, { clusteringSensitivity: body.sensitivity })
-      deps.logger.info({ tenantId, sensitivity: body.sensitivity }, 'Clustering sensitivity updated')
+      deps.logger.info(
+        { tenantId, sensitivity: body.sensitivity },
+        'Clustering sensitivity updated',
+      )
 
       respond(res, { sensitivity: body.sensitivity })
     } catch (err) {
@@ -202,53 +211,69 @@ export function settingsRoutes(deps: SettingsDeps): Router {
     sensitivity: z.number().min(0.2).max(0.8),
   })
 
-  router.post('/settings/clustering/preview', validateBody(previewSchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const body = req.body as z.infer<typeof previewSchema>
+  router.post(
+    '/settings/clustering/preview',
+    validateBody(previewSchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const body = req.body as z.infer<typeof previewSchema>
 
-      if (!deps.clusterClient || !deps.db) {
-        respond(res, { patternCount: 0, compressionRatio: 0, sampleTemplates: [] }, {
-          message: 'Preview unavailable — clusterer not connected',
-        })
-        return
-      }
+        if (!deps.clusterClient || !deps.db) {
+          respond(
+            res,
+            { patternCount: 0, compressionRatio: 0, sampleTemplates: [] },
+            {
+              message: 'Preview unavailable — clusterer not connected',
+            },
+          )
+          return
+        }
 
-      // Fetch recent pre-processed messages from ClickHouse. Bound to last 7
-      // days so the ORDER BY DESC doesn't pay to sort the full 30-day partition.
-      const rows = await deps.db.query<{ pre_processed_message: string }>({
-        query: `SELECT pre_processed_message
+        // Fetch recent pre-processed messages from ClickHouse. Bound to last 7
+        // days so the ORDER BY DESC doesn't pay to sort the full 30-day partition.
+        const rows = await deps.db.query<{ pre_processed_message: string }>({
+          query: `SELECT pre_processed_message
                 FROM logweave.log_metadata
                 WHERE tenant_id = {tenantId:String}
                   AND pre_processed_message != ''
                   AND timestamp > now64(3) - toIntervalDay(7)
                 ORDER BY timestamp DESC
                 LIMIT 1000`,
-        query_params: { tenantId },
-      })
-
-      if (rows.length === 0) {
-        respond(res, { patternCount: 0, compressionRatio: 0, sampleTemplates: [] }, {
-          message: 'No log data to preview — send some logs first',
+          query_params: { tenantId },
         })
-        return
+
+        if (rows.length === 0) {
+          respond(
+            res,
+            { patternCount: 0, compressionRatio: 0, sampleTemplates: [] },
+            {
+              message: 'No log data to preview — send some logs first',
+            },
+          )
+          return
+        }
+
+        const messages = rows.map((r) => r.pre_processed_message)
+        const result = await deps.clusterClient.preview(messages, body.sensitivity)
+
+        if (!result) {
+          respond(
+            res,
+            { patternCount: 0, compressionRatio: 0, sampleTemplates: [] },
+            {
+              message: 'Clusterer preview failed — try again later',
+            },
+          )
+          return
+        }
+
+        respond(res, result, { sampleSize: messages.length })
+      } catch (err) {
+        next(err)
       }
-
-      const messages = rows.map((r) => r.pre_processed_message)
-      const result = await deps.clusterClient.preview(messages, body.sensitivity)
-
-      if (!result) {
-        respond(res, { patternCount: 0, compressionRatio: 0, sampleTemplates: [] }, {
-          message: 'Clusterer preview failed — try again later',
-        })
-        return
-      }
-
-      respond(res, result, { sampleSize: messages.length })
-    } catch (err) {
-      next(err)
-    }
-  })
+    },
+  )
 
   // POST /settings/clustering/reset -- clear tenant's Drain3 miner and update sensitivity
   const resetSchema = z.object({
@@ -302,30 +327,34 @@ export function settingsRoutes(deps: SettingsDeps): Router {
     reviewWarnPct: z.number().min(0).max(100).optional(),
   })
 
-  router.put('/settings/cost-thresholds', validateBody(costThresholdsSchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const body = req.body as z.infer<typeof costThresholdsSchema>
+  router.put(
+    '/settings/cost-thresholds',
+    validateBody(costThresholdsSchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const body = req.body as z.infer<typeof costThresholdsSchema>
 
-      const updates: Partial<TenantSettings> = {}
-      if (body.noiseDebugPct !== undefined) updates.costNoiseDebugPct = body.noiseDebugPct
-      if (body.reviewInfoPct !== undefined) updates.costReviewInfoPct = body.reviewInfoPct
-      if (body.reviewWarnPct !== undefined) updates.costReviewWarnPct = body.reviewWarnPct
+        const updates: Partial<TenantSettings> = {}
+        if (body.noiseDebugPct !== undefined) updates.costNoiseDebugPct = body.noiseDebugPct
+        if (body.reviewInfoPct !== undefined) updates.costReviewInfoPct = body.reviewInfoPct
+        if (body.reviewWarnPct !== undefined) updates.costReviewWarnPct = body.reviewWarnPct
 
-      await deps.settingsStore.set(tenantId, updates)
-      deps.logger.info({ tenantId, ...updates }, 'Cost optimizer thresholds updated')
+        await deps.settingsStore.set(tenantId, updates)
+        deps.logger.info({ tenantId, ...updates }, 'Cost optimizer thresholds updated')
 
-      const settings = deps.settingsStore.get(tenantId)
-      respond(res, {
-        noiseDebugPct: settings.costNoiseDebugPct ?? 5,
-        reviewInfoPct: settings.costReviewInfoPct ?? 10,
-        reviewWarnPct: settings.costReviewWarnPct ?? 20,
-        isCustom: true,
-      })
-    } catch (err) {
-      next(err)
-    }
-  })
+        const settings = deps.settingsStore.get(tenantId)
+        respond(res, {
+          noiseDebugPct: settings.costNoiseDebugPct ?? 5,
+          reviewInfoPct: settings.costReviewInfoPct ?? 10,
+          reviewWarnPct: settings.costReviewWarnPct ?? 20,
+          isCustom: true,
+        })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   // POST /settings/slack/test -- send test message
   router.post('/settings/slack/test', async (_req, res, next) => {
@@ -376,17 +405,24 @@ export function settingsRoutes(deps: SettingsDeps): Router {
     minBaseline: z.number().int().min(0).max(10_000),
   })
 
-  router.put('/settings/spike-baseline', validateBody(spikeBaselineSchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const body = req.body as z.infer<typeof spikeBaselineSchema>
-      await deps.settingsStore.set(tenantId, { spikeMinBaseline: body.minBaseline })
-      deps.logger.info({ tenantId, spikeMinBaseline: body.minBaseline }, 'Spike min baseline updated')
-      respond(res, { minBaseline: body.minBaseline, isCustom: true })
-    } catch (err) {
-      next(err)
-    }
-  })
+  router.put(
+    '/settings/spike-baseline',
+    validateBody(spikeBaselineSchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const body = req.body as z.infer<typeof spikeBaselineSchema>
+        await deps.settingsStore.set(tenantId, { spikeMinBaseline: body.minBaseline })
+        deps.logger.info(
+          { tenantId, spikeMinBaseline: body.minBaseline },
+          'Spike min baseline updated',
+        )
+        respond(res, { minBaseline: body.minBaseline, isCustom: true })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   return router
 }

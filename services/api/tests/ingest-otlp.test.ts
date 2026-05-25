@@ -80,9 +80,7 @@ describe('POST /v1/otlp/logs', () => {
   // but `rejected` counts any drop reason (level filter, throttle, dedupe).
   it('uses neutral "could not be ingested" wording when level filter drops events', async () => {
     const app = await createApp({
-      clusterResults: [
-        { template_id: 'tpl-1', template_text: 'hi <*>', is_new: false },
-      ],
+      clusterResults: [{ template_id: 'tpl-1', template_text: 'hi <*>', is_new: false }],
       minIngestLevel: 'WARN',
     })
 
@@ -101,10 +99,7 @@ describe('POST /v1/otlp/logs', () => {
     assert.equal(res.status, 200)
     assert.equal(res.body.partialSuccess.rejectedLogRecords, 1)
     const msg = res.body.partialSuccess.errorMessage as string
-    assert.ok(
-      msg.includes('could not be ingested'),
-      `expected neutral wording, got: ${msg}`,
-    )
+    assert.ok(msg.includes('could not be ingested'), `expected neutral wording, got: ${msg}`)
     assert.ok(!msg.toLowerCase().includes('parsed'), 'must not say "parsed"')
   })
 

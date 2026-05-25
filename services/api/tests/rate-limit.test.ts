@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import express, { Router } from 'express'
+import pino from 'pino'
 import request from 'supertest'
 import { createAuthMiddleware } from '../src/middleware/auth.js'
 import { createConcurrentQueryGuard } from '../src/middleware/concurrent-query-guard.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
 import { createRateLimiter } from '../src/middleware/rate-limit.js'
-import pino from 'pino'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -128,7 +128,9 @@ describe('rate limiter', () => {
     assert.equal(readRes.status, 429, 'read endpoint should be rate limited')
 
     // Ingest should still work (separate bucket)
-    const ingestRes = await request(app).post('/v1/ingest/batch').set('Authorization', `Bearer ${KEY_A}`)
+    const ingestRes = await request(app)
+      .post('/v1/ingest/batch')
+      .set('Authorization', `Bearer ${KEY_A}`)
     assert.equal(ingestRes.status, 200, 'ingest endpoint should use separate bucket')
   })
 
@@ -184,7 +186,7 @@ describe('concurrent query guard', () => {
       // 3rd request should be rejected
       const r3 = await fetch(`${base}/v1/hold`, { headers: { authorization: `Bearer ${KEY_A}` } })
       assert.equal(r3.status, 429)
-      const body = await r3.json() as { error: { message: string } }
+      const body = (await r3.json()) as { error: { message: string } }
       assert.ok(body.error.message.includes('concurrent'))
 
       // Release held requests

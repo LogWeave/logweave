@@ -24,10 +24,7 @@ describe('GenericLogParser', () => {
     })
 
     it('prefers message over msg over log over body', () => {
-      assert.equal(
-        parser.extractMessage({ message: 'a', msg: 'b', log: 'c', body: 'd' }),
-        'a',
-      )
+      assert.equal(parser.extractMessage({ message: 'a', msg: 'b', log: 'c', body: 'd' }), 'a')
       assert.equal(parser.extractMessage({ msg: 'b', log: 'c' }), 'b')
       assert.equal(parser.extractMessage({ log: 'c', body: 'd' }), 'c')
     })
@@ -53,21 +50,12 @@ describe('GenericLogParser', () => {
     })
 
     it('extracts trace_id and traceId', () => {
-      assert.equal(
-        parser.extractFields({ trace_id: 'abc123' }, noExtract).traceId,
-        'abc123',
-      )
-      assert.equal(
-        parser.extractFields({ traceId: 'def456' }, noExtract).traceId,
-        'def456',
-      )
+      assert.equal(parser.extractFields({ trace_id: 'abc123' }, noExtract).traceId, 'abc123')
+      assert.equal(parser.extractFields({ traceId: 'def456' }, noExtract).traceId, 'def456')
     })
 
     it('respects neverExtract', () => {
-      const fields = parser.extractFields(
-        { service: 'api', level: 'ERROR' },
-        new Set(['service']),
-      )
+      const fields = parser.extractFields({ service: 'api', level: 'ERROR' }, new Set(['service']))
       assert.equal(fields.service, undefined)
       assert.equal(fields.level, 'ERROR')
     })

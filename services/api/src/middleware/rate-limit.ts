@@ -22,7 +22,11 @@ interface WindowEntry {
 const WINDOW_MS = 60_000
 const CLEANUP_INTERVAL_MS = 60_000
 
-function getOrResetWindow(windows: Map<string, WindowEntry>, key: string, now: number): WindowEntry {
+function getOrResetWindow(
+  windows: Map<string, WindowEntry>,
+  key: string,
+  now: number,
+): WindowEntry {
   let entry = windows.get(key)
   if (!entry || now >= entry.resetAt) {
     entry = { count: 0, resetAt: now + WINDOW_MS }
@@ -78,12 +82,13 @@ export function createRateLimiter(options: RateLimitOptions): RequestHandler {
     const effectiveLimit = Math.min(keyRpm, options.tenantRpm)
 
     // Pick the stricter reset time
-    const resetEpochSeconds = Math.ceil(
-      Math.min(keyWindow.resetAt, tenantWindow.resetAt) / 1000,
-    )
+    const resetEpochSeconds = Math.ceil(Math.min(keyWindow.resetAt, tenantWindow.resetAt) / 1000)
 
     if (keyOver || tenantOver) {
-      const retryAfterSeconds = Math.max(1, Math.ceil((Math.min(keyWindow.resetAt, tenantWindow.resetAt) - now) / 1000))
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((Math.min(keyWindow.resetAt, tenantWindow.resetAt) - now) / 1000),
+      )
       res.setHeader('X-RateLimit-Limit', effectiveLimit)
       res.setHeader('X-RateLimit-Remaining', 0)
       res.setHeader('X-RateLimit-Reset', resetEpochSeconds)
@@ -103,7 +108,9 @@ export function createRateLimiter(options: RateLimitOptions): RequestHandler {
           retry_after_seconds: retryAfterSeconds,
         },
       })
-      next(rateLimited(`Rate limit exceeded (${source}). Retry after ${retryAfterSeconds} seconds.`))
+      next(
+        rateLimited(`Rate limit exceeded (${source}). Retry after ${retryAfterSeconds} seconds.`),
+      )
       return
     }
 

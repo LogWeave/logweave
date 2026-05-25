@@ -1,16 +1,6 @@
 import type { DbClient } from '../db/client.js'
-import {
-  redactFields,
-  sanitizeMessage,
-  stripStackTraces,
-  summarizeConfig,
-} from './redaction.js'
-import {
-  type EventName,
-  type InternalEvent,
-  type Severity,
-  isKnownEvent,
-} from './types.js'
+import { redactFields, sanitizeMessage, stripStackTraces, summarizeConfig } from './redaction.js'
+import { type EventName, type InternalEvent, isKnownEvent, type Severity } from './types.js'
 
 export interface EmitInput {
   event: EventName
@@ -29,10 +19,7 @@ export interface EmitterDeps {
 }
 
 const SAMPLE_INTERVAL_MS = 10_000
-const SAMPLED_EVENTS: ReadonlySet<EventName> = new Set([
-  'auth.key_invalid',
-  'ratelimit.exceeded',
-])
+const SAMPLED_EVENTS: ReadonlySet<EventName> = new Set(['auth.key_invalid', 'ratelimit.exceeded'])
 
 /**
  * Internal event emitter. Single sanctioned path to the operator event feed.
@@ -55,7 +42,7 @@ export class InternalEventEmitter {
   constructor(deps: EmitterDeps) {
     this.service = deps.service
     this.db = deps.db
-    this.stdout = deps.stdout ?? ((line) => process.stdout.write(line + '\n'))
+    this.stdout = deps.stdout ?? ((line) => process.stdout.write(`${line}\n`))
     this.now = deps.now ?? (() => new Date())
     this.isProd = deps.isProd ?? process.env.NODE_ENV === 'production'
   }
@@ -121,13 +108,15 @@ export class InternalEventEmitter {
       fields: JSON.stringify(event.fields),
     }
     // fire-and-forget — never await on a hot path, never re-emit on failure
-    this.db.insert({
-      table: 'logweave.internal_events',
-      values: [row],
-      format: 'JSONEachRow',
-    }).catch(() => {
-      // stdout already has it; do not call emit() here or we recurse
-    })
+    this.db
+      .insert({
+        table: 'logweave.internal_events',
+        values: [row],
+        format: 'JSONEachRow',
+      })
+      .catch(() => {
+        // stdout already has it; do not call emit() here or we recurse
+      })
   }
 
   private shouldSample(input: EmitInput): boolean {

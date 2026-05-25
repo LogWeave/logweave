@@ -6,7 +6,14 @@ export const costAnalysisSchema = z.object({
   level: z
     .string()
     .optional()
-    .transform((v) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : undefined)),
+    .transform((v) =>
+      v
+        ? v
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined,
+    ),
 })
 
 export type CostAnalysisQuery = z.infer<typeof costAnalysisSchema>

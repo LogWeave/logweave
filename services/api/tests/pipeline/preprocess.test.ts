@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  PREPROCESSING_VERSION,
   preprocessMessage,
   processEvent,
-  PREPROCESSING_VERSION,
 } from '../../src/pipeline/preprocess.js'
 import type { ParsedEvent } from '../../src/pipeline/types.js'
 
@@ -70,10 +70,7 @@ describe('preprocessMessage', () => {
   it('replaces multiple patterns in one message', () => {
     const input =
       'Request 550e8400-e29b-41d4-a716-446655440000 from 10.0.0.1 at 2026-03-14T12:00:00Z took 123456 ms'
-    assert.equal(
-      preprocessMessage(input),
-      'Request <UUID> from <IP> at <TS> took <ID> ms',
-    )
+    assert.equal(preprocessMessage(input), 'Request <UUID> from <IP> at <TS> took <ID> ms')
   })
 
   it('preserves partial/truncated UUID', () => {
@@ -99,7 +96,10 @@ describe('preprocessMessage', () => {
 
   it('preserves unicode and emoji characters', () => {
     const input = 'Error in \u6D4B\u8BD5\u670D\u52A1 \uD83D\uDE80 module at 192.168.1.1'
-    assert.equal(preprocessMessage(input), 'Error in \u6D4B\u8BD5\u670D\u52A1 \uD83D\uDE80 module at <IP>')
+    assert.equal(
+      preprocessMessage(input),
+      'Error in \u6D4B\u8BD5\u670D\u52A1 \uD83D\uDE80 module at <IP>',
+    )
   })
 
   it('handles very long messages without catastrophic backtracking', () => {

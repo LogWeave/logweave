@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import express from 'express'
-import request from 'supertest'
 import pino from 'pino'
+import request from 'supertest'
 import type { DbClient } from '../../src/db/client.js'
-import { queryTemplateSearch, querySemanticSearch } from '../../src/db/dashboard/search.js'
+import { querySemanticSearch, queryTemplateSearch } from '../../src/db/dashboard/search.js'
 import { createAuthMiddleware } from '../../src/middleware/auth.js'
 import { createErrorHandler } from '../../src/middleware/error-handler.js'
 import { dashboardRoutes } from '../../src/routes/dashboard.js'
@@ -50,9 +50,10 @@ const mockSearchResults = [
 // Mock DbClient
 // ---------------------------------------------------------------------------
 
-function createCapturingDb(
-  mockData: unknown = [],
-): { db: DbClient; captured: Array<{ query: string; query_params: Record<string, unknown> }> } {
+function createCapturingDb(mockData: unknown = []): {
+  db: DbClient
+  captured: Array<{ query: string; query_params: Record<string, unknown> }>
+} {
   const captured: Array<{ query: string; query_params: Record<string, unknown> }> = []
   const db = {
     query: async (params: { query: string; query_params: Record<string, unknown> }) => {
@@ -157,7 +158,10 @@ describe('queryTemplateSearch', () => {
     // Verify tenant filter appears in BOTH the registry CTE and the stats join
     const sql = captured[0].query
     const tenantMatches = sql.match(/tenant_id = \{tenant_id:String\}/g)
-    assert.ok(tenantMatches && tenantMatches.length >= 2, 'tenant filter in both registry and stats')
+    assert.ok(
+      tenantMatches && tenantMatches.length >= 2,
+      'tenant filter in both registry and stats',
+    )
   })
 
   it('returns empty array for no matches', async () => {
@@ -328,7 +332,10 @@ describe('querySemanticSearch', () => {
     assert.equal(captured[0].query_params.tenant_id, 'tenant-xyz')
     const sql = captured[0].query
     const tenantMatches = sql.match(/tenant_id = \{tenant_id:String\}/g)
-    assert.ok(tenantMatches && tenantMatches.length >= 2, 'tenant filter in both registry and stats')
+    assert.ok(
+      tenantMatches && tenantMatches.length >= 2,
+      'tenant filter in both registry and stats',
+    )
   })
 
   it('passes threshold parameter', async () => {

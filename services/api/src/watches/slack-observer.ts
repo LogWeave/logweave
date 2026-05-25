@@ -3,11 +3,11 @@ import { getInternalEvents } from '../internal-events/emitter.js'
 import {
   type AlertEvent,
   type AlertObserver,
-  type TemplateAlertEvent,
-  type ThresholdAlertEvent,
   isResolvedAlert,
   isTemplateAlert,
   isThresholdBreach,
+  type TemplateAlertEvent,
+  type ThresholdAlertEvent,
 } from './alert-observer.js'
 import type { TenantSettingsStore } from './tenant-settings.js'
 
@@ -170,7 +170,9 @@ export class SlackObserver implements AlertObserver {
       // Rate limited — retry with Retry-After
       if (resp.status === 429) {
         const rawRetryAfter = Number(resp.headers.get('Retry-After') ?? 5)
-        const retryAfter = Number.isFinite(rawRetryAfter) ? Math.min(Math.max(rawRetryAfter, 1), 60) : 5
+        const retryAfter = Number.isFinite(rawRetryAfter)
+          ? Math.min(Math.max(rawRetryAfter, 1), 60)
+          : 5
         if (attempt < MAX_RETRIES) {
           this.logger.debug({ ...ctx, retryAfterSec: retryAfter }, 'Slack: rate limited, retrying')
           await sleep(retryAfter * 1000)
@@ -210,7 +212,10 @@ export class SlackObserver implements AlertObserver {
         severity: 'warn',
         code: 'SLACK_NETWORK_ERROR',
         summary: 'slack webhook network error after retries',
-        fields: { tenant_id: alert?.tenantId ?? '_unknown', error_name: (err as { name?: string } | undefined)?.name ?? 'unknown' },
+        fields: {
+          tenant_id: alert?.tenantId ?? '_unknown',
+          error_name: (err as { name?: string } | undefined)?.name ?? 'unknown',
+        },
       })
     }
   }
@@ -267,7 +272,12 @@ export class SlackObserver implements AlertObserver {
           : []),
         {
           type: 'context',
-          elements: [{ type: 'mrkdwn', text: `LogWeave Alert \u2022 ${alert.tenantId} \u2022 ${alert.triggeredAt}` }],
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `LogWeave Alert \u2022 ${alert.tenantId} \u2022 ${alert.triggeredAt}`,
+            },
+          ],
         },
       ],
     }
@@ -291,8 +301,13 @@ export class SlackObserver implements AlertObserver {
           fields: [
             { type: 'mrkdwn', text: `*Rule*\n${truncate(alert.ruleName, 150)}` },
             { type: 'mrkdwn', text: `*Service*\n${alert.service}` },
-            ...(alert.environment ? [{ type: 'mrkdwn', text: `*Environment*\n${alert.environment}` }] : []),
-            { type: 'mrkdwn', text: `*Metric*\n${alert.metric} ${alert.operator} ${alert.thresholdValue}` },
+            ...(alert.environment
+              ? [{ type: 'mrkdwn', text: `*Environment*\n${alert.environment}` }]
+              : []),
+            {
+              type: 'mrkdwn',
+              text: `*Metric*\n${alert.metric} ${alert.operator} ${alert.thresholdValue}`,
+            },
             { type: 'mrkdwn', text: `*Actual Value*\n${alert.metricValue.toLocaleString()}` },
             { type: 'mrkdwn', text: `*Window*\n${alert.windowMinutes}min` },
             { type: 'mrkdwn', text: `*Triggered*\n${new Date(alert.triggeredAt).toUTCString()}` },
@@ -314,7 +329,12 @@ export class SlackObserver implements AlertObserver {
           : []),
         {
           type: 'context',
-          elements: [{ type: 'mrkdwn', text: `LogWeave Alert \u2022 ${alert.tenantId} \u2022 ${alert.triggeredAt}` }],
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `LogWeave Alert \u2022 ${alert.tenantId} \u2022 ${alert.triggeredAt}`,
+            },
+          ],
         },
       ],
     }

@@ -77,4 +77,5 @@ export const TAIL_DEFAULTS: TailBufferConfig = {
 
 /** Estimated bytes per TailEvent in V8 heap */
 const ESTIMATED_EVENT_BYTES = 700
+
 export { ESTIMATED_EVENT_BYTES }

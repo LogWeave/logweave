@@ -204,7 +204,10 @@ describe('materialized views', () => {
     const tenant = testTenantId('mv-5m')
     // Use a recent timestamp — service_stats_5m has 7-day TTL, so OPTIMIZE would
     // drop rows older than 7 days during the merge.
-    const recentTs = new Date(Date.now() - 3600_000).toISOString().replace('T', ' ').replace('Z', '')
+    const recentTs = new Date(Date.now() - 3600_000)
+      .toISOString()
+      .replace('T', ' ')
+      .replace('Z', '')
 
     await batchInsert(db, [
       makeRow(tenant, { template_id: 'real-1', level: 'ERROR', timestamp: recentTs }),

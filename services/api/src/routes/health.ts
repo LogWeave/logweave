@@ -13,7 +13,11 @@ interface HealthDeps {
 }
 
 const READY_CACHE_TTL_MS = 5_000
-let readyCache: { ok: boolean; clustererOk: boolean; ts: number } = { ok: false, clustererOk: false, ts: 0 }
+let readyCache: { ok: boolean; clustererOk: boolean; ts: number } = {
+  ok: false,
+  clustererOk: false,
+  ts: 0,
+}
 
 export function healthRoutes(deps: HealthDeps): Router {
   const router = Router()

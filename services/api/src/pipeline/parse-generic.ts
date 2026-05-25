@@ -56,7 +56,8 @@ export class GenericLogParser implements LogParser {
     const sub = isRecord(event.fields) ? event.fields : undefined
 
     for (const { output, inputs, coerce } of FIELD_MAP) {
-      if (inputs.some((name) => neverExtract.has(name) || neverExtract.has(`fields.${name}`))) continue
+      if (inputs.some((name) => neverExtract.has(name) || neverExtract.has(`fields.${name}`)))
+        continue
       let raw = readField(event, inputs)
       if (raw === undefined && sub) {
         raw = readField(sub, inputs)

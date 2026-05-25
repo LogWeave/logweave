@@ -1,5 +1,5 @@
-import { motion } from 'motion/react'
 import { X } from 'lucide-react'
+import { motion } from 'motion/react'
 
 interface DashboardPreviewProps {
   onDismiss: () => void
@@ -51,7 +51,14 @@ export function DashboardPreview({ onDismiss }: DashboardPreviewProps) {
         className="rounded-[var(--radius-sm)] bg-surface-card border border-border-subtle p-2 mb-3"
       >
         <div className="text-[9px] text-text-muted mb-1">Volume (24h)</div>
-        <svg viewBox="0 0 200 40" className="w-full h-8" preserveAspectRatio="none">
+        <svg
+          viewBox="0 0 200 40"
+          className="w-full h-8"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label="24-hour log volume sparkline"
+        >
+          <title>24-hour log volume sparkline</title>
           <motion.path
             d="M0,35 L15,30 L30,32 L45,25 L60,28 L75,18 L90,22 L105,15 L120,12 L135,16 L150,10 L165,8 L180,12 L195,6 L200,8"
             fill="none"

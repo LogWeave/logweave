@@ -2,15 +2,6 @@ import { Router } from 'express'
 import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
 import {
-  queryNewTemplates,
-  queryResolvedTemplates,
-  queryTemplateSpikes,
-} from '../db/dashboard-changes-queries.js'
-import { queryDeployById } from '../db/deploy-queries.js'
-import { notFound } from '../errors.js'
-import { truncateTemplateText } from '../format.js'
-import { isoTimestamp, respond } from '../lib/respond.js'
-import {
   type ClusteringHealthSnapshotRow,
   queryClusteringHealthSnapshot,
   queryClusteringHealthTrend,
@@ -33,6 +24,15 @@ import {
   queryTemplateSparklines,
 } from '../db/dashboard/templates.js'
 import { queryDashboardVolume } from '../db/dashboard/volume.js'
+import {
+  queryNewTemplates,
+  queryResolvedTemplates,
+  queryTemplateSpikes,
+} from '../db/dashboard-changes-queries.js'
+import { queryDeployById } from '../db/deploy-queries.js'
+import { notFound } from '../errors.js'
+import { truncateTemplateText } from '../format.js'
+import { isoTimestamp, respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import {
@@ -40,12 +40,11 @@ import {
   type ChangesQuery,
   type ClusteringHealthData,
   type ClusteringHealthQuery,
-  type LevelCount,
-  type LevelsQuery,
-  type StatusCodeCount,
-  type TemplateStatusCodesQuery,
+  type CrossServiceTemplate,
   changesQuerySchema,
   clusteringHealthQuerySchema,
+  type LevelCount,
+  type LevelsQuery,
   levelsQuerySchema,
   type OverviewData,
   type OverviewQuery,
@@ -54,19 +53,20 @@ import {
   type ServicesQuery,
   type SparklineData,
   type SparklineQuery,
+  type StatusCodeCount,
   servicesQuerySchema,
   sparklineQuerySchema,
-  type CrossServiceTemplate,
-  type TemplateRow,
   type TemplateEventsQuery,
+  type TemplateRow,
   type TemplateSearchQuery,
-  type TemplateTrendQuery,
+  type TemplateStatusCodesQuery,
   type TemplatesQuery,
+  type TemplateTrendQuery,
   templateEventsSchema,
   templateSearchSchema,
-  templateTrendSchema,
   templateStatusCodesQuerySchema,
   templatesQuerySchema,
+  templateTrendSchema,
   type VolumeData,
   type VolumePoint,
   type VolumeQuery,
@@ -302,10 +302,16 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         queryDashboardOverviewAggregates(deps.db, tenantId, queryOpts),
         queryDashboardOverviewCounts(deps.db, tenantId, queryOpts),
         params.compare
-          ? queryDashboardOverviewAggregates(deps.db, tenantId, { ...queryOpts, offsetHours: params.hours })
+          ? queryDashboardOverviewAggregates(deps.db, tenantId, {
+              ...queryOpts,
+              offsetHours: params.hours,
+            })
           : (Promise.resolve(undefined) as Promise<OverviewAggregatesRow | undefined>),
         params.compare
-          ? queryDashboardOverviewCounts(deps.db, tenantId, { ...queryOpts, offsetHours: params.hours })
+          ? queryDashboardOverviewCounts(deps.db, tenantId, {
+              ...queryOpts,
+              offsetHours: params.hours,
+            })
           : (Promise.resolve(undefined) as Promise<OverviewCountsRow | undefined>),
       ])
 
@@ -330,7 +336,10 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
           totalTemplates: Number(prevCounts.unique_templates),
           newTemplatesToday: Number(prevAgg.new_template_count),
           unclusteredCount: Number(prevCounts.unclustered_count),
-          errorRate: prevTotalEvents > 0 ? Math.round((prevErrorCount / prevTotalEvents) * 10000) / 10000 : 0,
+          errorRate:
+            prevTotalEvents > 0
+              ? Math.round((prevErrorCount / prevTotalEvents) * 10000) / 10000
+              : 0,
           serviceCount: Number(prevCounts.service_count),
         }
       }
@@ -373,8 +382,14 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         const params = getQuery<ClusteringHealthQuery>(req)
 
         const [snapshot, trendRows]: [ClusteringHealthSnapshotRow, unknown[]] = await Promise.all([
-          queryClusteringHealthSnapshot(deps.db, tenantId, { hours: params.hours, level: params.level }),
-          queryClusteringHealthTrend(deps.db, tenantId, { hours: params.hours, level: params.level }),
+          queryClusteringHealthSnapshot(deps.db, tenantId, {
+            hours: params.hours,
+            level: params.level,
+          }),
+          queryClusteringHealthTrend(deps.db, tenantId, {
+            hours: params.hours,
+            level: params.level,
+          }),
         ])
 
         const totalEvents = Number(snapshot.total_events)
@@ -438,16 +453,20 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       const spikeEvents = mapSpikeEvents(toRawRows(spikeRows))
       const resolvedEvents = mapResolvedEvents(toRawRows(resolvedRows))
 
-      respond(res, {
-        new: newEvents,
-        spike: spikeEvents,
-        resolved: resolvedEvents,
-      }, {
-        hours,
-        limit: params.limit,
-        count: newEvents.length + spikeEvents.length + resolvedEvents.length,
-        ...(since ? { since } : {}),
-      })
+      respond(
+        res,
+        {
+          new: newEvents,
+          spike: spikeEvents,
+          resolved: resolvedEvents,
+        },
+        {
+          hours,
+          limit: params.limit,
+          count: newEvents.length + spikeEvents.length + resolvedEvents.length,
+          ...(since ? { since } : {}),
+        },
+      )
     } catch (err) {
       next(err)
     }
@@ -508,7 +527,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
 
       if (params.mode === 'semantic' && deps.clusterClient) {
         const embeddings = await deps.clusterClient.embed([params.q])
-        if (embeddings && embeddings[0]) {
+        if (embeddings?.[0]) {
           rows = await querySemanticSearch(deps.db, tenantId, {
             embedding: embeddings[0],
             hours: params.hours,
@@ -516,14 +535,23 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
             level: params.level,
           })
         } else {
-          deps.logger.warn({ query: params.q }, 'Semantic search fell back to substring (embed failed)')
+          deps.logger.warn(
+            { query: params.q },
+            'Semantic search fell back to substring (embed failed)',
+          )
           rows = await queryTemplateSearch(deps.db, tenantId, {
-            q: params.q, hours: params.hours, limit: params.limit, level: params.level,
+            q: params.q,
+            hours: params.hours,
+            limit: params.limit,
+            level: params.level,
           })
         }
       } else {
         rows = await queryTemplateSearch(deps.db, tenantId, {
-          q: params.q, hours: params.hours, limit: params.limit, level: params.level,
+          q: params.q,
+          hours: params.hours,
+          limit: params.limit,
+          level: params.level,
         })
       }
 
@@ -572,36 +600,40 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
   })
 
   // 10c. GET /templates/:id/events — individual log events for drill-down
-  router.get('/templates/:id/events', validateQuery(templateEventsSchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const params = getQuery<TemplateEventsQuery>(req)
-      const templateId = req.params.id as string
+  router.get(
+    '/templates/:id/events',
+    validateQuery(templateEventsSchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const params = getQuery<TemplateEventsQuery>(req)
+        const templateId = req.params.id as string
 
-      const rows = await queryTemplateEvents(deps.db, tenantId, {
-        templateId,
-        statusCode: params.statusCode,
-        since: params.since,
-        until: params.until,
-        hours: params.hours,
-        limit: params.limit,
-      })
+        const rows = await queryTemplateEvents(deps.db, tenantId, {
+          templateId,
+          statusCode: params.statusCode,
+          since: params.since,
+          until: params.until,
+          hours: params.hours,
+          limit: params.limit,
+        })
 
-      const data = rows.map((r) => ({
-        timestamp: isoTimestamp(r.timestamp) ?? r.timestamp,
-        traceId: r.trace_id,
-        route: r.route,
-        durationMs: Number(r.duration_ms),
-        level: r.level,
-        service: r.service,
-        statusCode: Number(r.status_code),
-      }))
+        const data = rows.map((r) => ({
+          timestamp: isoTimestamp(r.timestamp) ?? r.timestamp,
+          traceId: r.trace_id,
+          route: r.route,
+          durationMs: Number(r.duration_ms),
+          level: r.level,
+          service: r.service,
+          statusCode: Number(r.status_code),
+        }))
 
-      respond(res, data, { hours: params.hours, count: data.length })
-    } catch (err) {
-      next(err)
-    }
-  })
+        respond(res, data, { hours: params.hours, count: data.length })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   return router
 }

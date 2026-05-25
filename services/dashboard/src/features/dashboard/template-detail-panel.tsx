@@ -373,9 +373,9 @@ function DetailContent({ template }: { template: TemplateRow }) {
             Recent Events ({templateEvents.length})
           </h4>
           <div className="space-y-1 max-h-48 overflow-y-auto">
-            {templateEvents.map((evt, i) => (
+            {templateEvents.map((evt) => (
               <div
-                key={`${evt.timestamp}-${i}`}
+                key={`${evt.timestamp}-${evt.traceId}`}
                 className="flex items-center gap-2 text-[10px] py-1 px-2 rounded bg-surface-base"
               >
                 <span className="font-mono text-text-muted shrink-0">
@@ -513,8 +513,6 @@ export function TemplateDetailPanel() {
       {selectedTemplateId && template && (
         <>
           {/* Backdrop on mobile */}
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop overlay dismisses panel */}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: escape key handled separately */}
           <motion.div
             className="fixed inset-0 bg-black/30 z-40 md:hidden"
             onClick={() => setSelectedTemplateId(null)}

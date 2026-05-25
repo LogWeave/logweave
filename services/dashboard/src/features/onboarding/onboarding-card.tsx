@@ -1,13 +1,22 @@
-import { useState } from 'react'
+import {
+  Check,
+  ChevronDown,
+  CircleDot,
+  Rocket,
+  Send,
+  SlidersHorizontal,
+  Sparkles,
+  X,
+} from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Check, ChevronDown, CircleDot, Rocket, Send, SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { useState } from 'react'
 import { cn } from '../../lib/cn'
-import { useDismissOnboarding, useOnboardingStatus } from './use-onboarding'
-import { StepSendLogs } from './step-send-logs'
-import { StepConnectAi } from './step-connect-ai'
-import { StepClustering } from './step-clustering'
 import { CompletionCard } from './completion-card'
 import { DashboardPreview } from './dashboard-preview'
+import { StepClustering } from './step-clustering'
+import { StepConnectAi } from './step-connect-ai'
+import { StepSendLogs } from './step-send-logs'
+import { useDismissOnboarding, useOnboardingStatus } from './use-onboarding'
 
 type StepId = 'send-logs' | 'connect-ai' | 'clustering'
 
@@ -34,9 +43,27 @@ export function OnboardingCard() {
   if (allDone) return <CompletionCard />
 
   const steps: StepDef[] = [
-    { id: 'send-logs', label: 'Send your first logs', time: '~2 min', icon: Send, complete: status.hasEvents },
-    { id: 'connect-ai', label: 'Connect your AI assistant', time: '~1 min', icon: Sparkles, complete: status.mcpConnected },
-    { id: 'clustering', label: 'Tune clustering sensitivity', time: '~1 min', icon: SlidersHorizontal, complete: status.clusteringConfigured },
+    {
+      id: 'send-logs',
+      label: 'Send your first logs',
+      time: '~2 min',
+      icon: Send,
+      complete: status.hasEvents,
+    },
+    {
+      id: 'connect-ai',
+      label: 'Connect your AI assistant',
+      time: '~1 min',
+      icon: Sparkles,
+      complete: status.mcpConnected,
+    },
+    {
+      id: 'clustering',
+      label: 'Tune clustering sensitivity',
+      time: '~1 min',
+      icon: SlidersHorizontal,
+      complete: status.clusteringConfigured,
+    },
   ]
 
   const completedCount = steps.filter((s) => s.complete).length
@@ -124,7 +151,9 @@ export function OnboardingCard() {
                 <span
                   className={cn(
                     'text-sm flex-1',
-                    step.complete ? 'text-text-muted line-through' : 'text-text-primary font-medium',
+                    step.complete
+                      ? 'text-text-muted line-through'
+                      : 'text-text-primary font-medium',
                   )}
                 >
                   {step.label}

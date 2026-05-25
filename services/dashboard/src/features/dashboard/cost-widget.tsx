@@ -15,7 +15,8 @@ const levelColors: Record<string, string> = {
 }
 
 function LevelBadge({ level }: { level: string }) {
-  const style = levelColors[level.toUpperCase()] ?? 'bg-surface-elevated text-text-muted border-border-subtle'
+  const style =
+    levelColors[level.toUpperCase()] ?? 'bg-surface-elevated text-text-muted border-border-subtle'
   return (
     <span
       className={cn(
@@ -34,9 +35,7 @@ function PatternRow({ pattern }: { pattern: CostPattern }) {
     <div
       className={cn(
         'flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] border',
-        isNoise
-          ? 'border-red-500/20 bg-red-500/5'
-          : 'border-amber-500/20 bg-amber-500/5',
+        isNoise ? 'border-red-500/20 bg-red-500/5' : 'border-amber-500/20 bg-amber-500/5',
       )}
     >
       <LevelBadge level={pattern.level} />
@@ -118,7 +117,9 @@ export function CostWidget({ className }: { className?: string }) {
                 {', '}
                 <span className="text-amber-400 font-medium">{summary.reviewCount} review</span>
                 {' patterns — '}
-                <span className="text-text-primary font-medium">{summary.potentialReductionPct}%</span>
+                <span className="text-text-primary font-medium">
+                  {summary.potentialReductionPct}%
+                </span>
                 {' potential reduction'}
               </p>
             )}

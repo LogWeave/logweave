@@ -158,8 +158,6 @@ SELECT
 FROM logweave.log_metadata
 GROUP BY tenant_id, service, level, interval_start`,
 
-
-
   // ngram skip index on template_registry for text search (co-owned with clusterer)
   `ALTER TABLE logweave.template_registry ADD INDEX IF NOT EXISTS idx_template_text_ngram
    template_text TYPE ngrambf_v1(3, 512, 2, 0) GRANULARITY 1`,
@@ -408,10 +406,15 @@ export async function initSchema(client: ClickHouseClient, logger: pino.Logger):
           await client.command({ query: RESOURCE_GUARDRAILS })
           logger.info('ClickHouse resource guardrails applied')
         } else {
-          logger.info('Skipping ClickHouse resource guardrails — default user is in a read-only directory (e.g. users.xml). Rate limiting still protects at the API layer.')
+          logger.info(
+            'Skipping ClickHouse resource guardrails — default user is in a read-only directory (e.g. users.xml). Rate limiting still protects at the API layer.',
+          )
         }
       } catch (guardrailErr) {
-        logger.warn({ err: guardrailErr }, 'Could not apply resource guardrails (non-fatal). Rate limiting still protects at the API layer.')
+        logger.warn(
+          { err: guardrailErr },
+          'Could not apply resource guardrails (non-fatal). Rate limiting still protects at the API layer.',
+        )
       }
 
       logger.info('ClickHouse schema initialized successfully')

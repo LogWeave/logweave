@@ -106,10 +106,7 @@ export class RetentionSweep {
           result.deletesIssued++
         } catch (err) {
           result.errors++
-          this.logger.error(
-            { err, tenantId, table },
-            'Retention DELETE failed for table',
-          )
+          this.logger.error({ err, tenantId, table }, 'Retention DELETE failed for table')
         }
       }
     }

@@ -110,10 +110,14 @@ export function tailRoutes(deps: TailDeps): Router {
     const tailMode = deps.settingsStore.get(tenantId).tailMode
 
     if (!tailMode || tailMode === 'disabled') {
-      respond(res, { events: [], cursor: 0 }, {
-        count: 0,
-        message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.',
-      })
+      respond(
+        res,
+        { events: [], cursor: 0 },
+        {
+          count: 0,
+          message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.',
+        },
+      )
       return
     }
 
@@ -127,16 +131,21 @@ export function tailRoutes(deps: TailDeps): Router {
       limit: params.limit,
     }
 
-    const result = params.cursor !== undefined
-      ? deps.tailBuffer.since(tenantId, params.cursor, filterOpts)
-      : deps.tailBuffer.recent(tenantId, { ...filterOpts, seconds: params.seconds })
+    const result =
+      params.cursor !== undefined
+        ? deps.tailBuffer.since(tenantId, params.cursor, filterOpts)
+        : deps.tailBuffer.recent(tenantId, { ...filterOpts, seconds: params.seconds })
 
-    respond(res, {
-      events: result.events,
-      cursor: result.cursor,
-      gap: result.gap,
-      missedEstimate: result.missedEstimate,
-    }, { count: result.events.length })
+    respond(
+      res,
+      {
+        events: result.events,
+        cursor: result.cursor,
+        gap: result.gap,
+        missedEstimate: result.missedEstimate,
+      },
+      { count: result.events.length },
+    )
   })
 
   // GET /tail/stats — buffer utilization metrics
@@ -170,7 +179,7 @@ export function tailSseRoute(deps: TailDeps): Router {
   router.get('/tail', validateQuery(tailFilterSchema), (req: Request, res: Response, next) => {
     // Resolve tenant from token param (preferred) or api_key (legacy)
     let tenantId: string | undefined
-    let keyId = 'tail-token'
+    const keyId = 'tail-token'
 
     const tokenParam = req.query.token
     if (typeof tokenParam === 'string' && tokenParam.length > 0) {
@@ -192,13 +201,25 @@ export function tailSseRoute(deps: TailDeps): Router {
 
     // Check if tail is explicitly disabled
     if (tailMode === 'disabled') {
-      next(new AppError(HttpStatus.FORBIDDEN, 'TAIL_DISABLED', 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.'))
+      next(
+        new AppError(
+          HttpStatus.FORBIDDEN,
+          'TAIL_DISABLED',
+          'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.',
+        ),
+      )
       return
     }
 
     // Check connection limit
     if (getConnectionCount(resolvedTenantId) >= maxConn) {
-      next(new AppError(HttpStatus.TOO_MANY_REQUESTS, 'CONNECTION_LIMIT', `Maximum tail connections reached (${maxConn}). Close an existing connection first.`))
+      next(
+        new AppError(
+          HttpStatus.TOO_MANY_REQUESTS,
+          'CONNECTION_LIMIT',
+          `Maximum tail connections reached (${maxConn}). Close an existing connection first.`,
+        ),
+      )
       return
     }
 
@@ -208,7 +229,7 @@ export function tailSseRoute(deps: TailDeps): Router {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     })
 
@@ -230,7 +251,9 @@ export function tailSseRoute(deps: TailDeps): Router {
           limit: 200,
         })
         if (replay.gap) {
-          res.write(`event: gap\ndata: ${JSON.stringify({ missedEstimate: replay.missedEstimate })}\n\n`)
+          res.write(
+            `event: gap\ndata: ${JSON.stringify({ missedEstimate: replay.missedEstimate })}\n\n`,
+          )
         }
         for (const evt of replay.events) {
           writeSseEvent(res, evt)
@@ -280,7 +303,11 @@ export function tailSseRoute(deps: TailDeps): Router {
     // Cleanup on disconnect — guarded against double invocation (C1 fix)
     let cleaned = false
     const onShutdown = (): void => {
-      try { res.write('event: shutdown\ndata: {}\n\n') } catch { /* already closed */ }
+      try {
+        res.write('event: shutdown\ndata: {}\n\n')
+      } catch {
+        /* already closed */
+      }
       cleanup('shutdown')
     }
 
@@ -307,9 +334,15 @@ export function tailSseRoute(deps: TailDeps): Router {
         details: JSON.stringify({ reason }),
         durationMs,
         eventsStreamed,
-      }).catch(() => { /* audit write failure must not crash cleanup */ })
+      }).catch(() => {
+        /* audit write failure must not crash cleanup */
+      })
 
-      try { res.end() } catch { /* already ended */ }
+      try {
+        res.end()
+      } catch {
+        /* already ended */
+      }
     }
 
     req.on('close', () => cleanup('client'))
@@ -321,10 +354,7 @@ export function tailSseRoute(deps: TailDeps): Router {
       shutdownController.signal.addEventListener('abort', onShutdown, { once: true })
     }
 
-    deps.logger.info(
-      { tenantId: resolvedTenantId, keyId, filters },
-      'Tail SSE connection opened',
-    )
+    deps.logger.info({ tenantId: resolvedTenantId, keyId, filters }, 'Tail SSE connection opened')
 
     // Audit: tail.connect
     insertAuditEvent(deps.db, resolvedTenantId, {
@@ -332,7 +362,9 @@ export function tailSseRoute(deps: TailDeps): Router {
       action: 'tail.connect',
       sourceIp: req.ip ?? '',
       details: JSON.stringify(filters),
-    }).catch(() => { /* audit write failure must not crash the connection */ })
+    }).catch(() => {
+      /* audit write failure must not crash the connection */
+    })
   })
 
   return router
@@ -344,7 +376,13 @@ export function tailSseRoute(deps: TailDeps): Router {
 
 function matchesFilter(
   event: TailEvent,
-  filters: { service?: string; level?: string; minLevel?: string; templateId?: string; minAnomaly?: number },
+  filters: {
+    service?: string
+    level?: string
+    minLevel?: string
+    templateId?: string
+    minAnomaly?: number
+  },
 ): boolean {
   if (filters.service && event.service !== filters.service) return false
   if (filters.level && event.level !== filters.level) return false

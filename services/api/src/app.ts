@@ -5,29 +5,29 @@ import express, { Router } from 'express'
 import helmet from 'helmet'
 import type pino from 'pino'
 import { type Options as PinoHttpOptions, pinoHttp } from 'pino-http'
+import type { SessionProvider } from './auth/session.js'
+import { SessionValidationCache } from './auth/session-cache.js'
+import type { UserStore } from './auth/user-store.js'
 import type { ClustererHealthChecker } from './clients/clusterer.js'
 import type { Config } from './config.js'
 import type { DbClient } from './db/client.js'
 import { notFound } from './errors.js'
 import type { EventBus } from './events/event-bus.js'
 import { requestContext } from './logger.js'
-import { SessionValidationCache } from './auth/session-cache.js'
-import { KeyStore, createAuthMiddleware } from './middleware/auth.js'
-import { createConcurrentQueryGuard } from './middleware/concurrent-query-guard.js'
-import { createErrorHandler } from './middleware/error-handler.js'
 import { createAccessAuditMiddleware } from './middleware/audit-access.js'
+import { createAuthMiddleware, KeyStore } from './middleware/auth.js'
+import { createConcurrentQueryGuard } from './middleware/concurrent-query-guard.js'
 import { createCsrfMiddleware } from './middleware/csrf.js'
+import { createErrorHandler } from './middleware/error-handler.js'
 import { createMcpDetectMiddleware } from './middleware/mcp-detect.js'
 import { createRateLimiter } from './middleware/rate-limit.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
-import type { SessionProvider } from './auth/session.js'
-import type { UserStore } from './auth/user-store.js'
 import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
 import { authRoutes } from './routes/auth.js'
+import { compositeRoutes } from './routes/composite.js'
 import { connectorRoutes } from './routes/connectors.js'
 import { correlationRoutes } from './routes/correlation.js'
-import { compositeRoutes } from './routes/composite.js'
 import { costRoutes } from './routes/cost.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { deployRoutes } from './routes/deploys.js'
@@ -163,7 +163,13 @@ export function createApp(deps: AppDependencies): CreatedApp {
   // Routes — API (authenticated, rate-limited)
   const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys)
   const sessionCache = new SessionValidationCache()
-  const auth = createAuthMiddleware(keyStore, deps.sessionProvider, sessionCache, deps.userStore, deps.logger)
+  const auth = createAuthMiddleware(
+    keyStore,
+    deps.sessionProvider,
+    sessionCache,
+    deps.userStore,
+    deps.logger,
+  )
 
   const rateLimiter = createRateLimiter({
     keyRpm: deps.config.rateLimitRpm,
@@ -182,7 +188,9 @@ export function createApp(deps: AppDependencies): CreatedApp {
   const v1 = Router()
   v1.use(auth)
   if (deps.csrfTokenKey) {
-    const csrf = createCsrfMiddleware(deps.csrfTokenKey, { isProduction: process.env.NODE_ENV === 'production' })
+    const csrf = createCsrfMiddleware(deps.csrfTokenKey, {
+      isProduction: process.env.NODE_ENV === 'production',
+    })
     v1.use(csrf.tokenSetter)
     v1.use(csrf.tokenValidator)
   }

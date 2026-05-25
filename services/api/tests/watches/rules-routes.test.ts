@@ -633,7 +633,11 @@ describe('GET /v1/alerts', () => {
     assert.equal(res.status, 200)
     assert.equal(res.body.data.length, 1)
     assert.equal(res.body.data[0].details, null, 'details falls back to null on parse failure')
-    assert.deepEqual(res.body.data[0].channelsNotified, [], 'channelsNotified falls back to [] on parse failure')
+    assert.deepEqual(
+      res.body.data[0].channelsNotified,
+      [],
+      'channelsNotified falls back to [] on parse failure',
+    )
   })
 
   it('falls back when JSON parses to wrong shape (array as details, object as channels)', async () => {
@@ -645,6 +649,10 @@ describe('GET /v1/alerts', () => {
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data[0].details, null, 'array is not a valid details object')
-    assert.deepEqual(res.body.data[0].channelsNotified, [], 'object is not a valid channels_notified array')
+    assert.deepEqual(
+      res.body.data[0].channelsNotified,
+      [],
+      'object is not a valid channels_notified array',
+    )
   })
 })

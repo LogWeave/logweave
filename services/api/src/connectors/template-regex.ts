@@ -34,9 +34,12 @@ export function templateToRegex(templateText: string): RegExp {
   const placeholderPattern = /<UUID>|<IP>|<ID>|<EMAIL>|<TS>|<HEX>|<\*>/g
   const parts: string[] = []
   let lastIndex = 0
-  let match: RegExpExecArray | null
 
-  while ((match = placeholderPattern.exec(templateText)) !== null) {
+  for (
+    let match = placeholderPattern.exec(templateText);
+    match !== null;
+    match = placeholderPattern.exec(templateText)
+  ) {
     // Add escaped literal text before this placeholder
     if (match.index > lastIndex) {
       parts.push(escapeRegExp(templateText.slice(lastIndex, match.index)))

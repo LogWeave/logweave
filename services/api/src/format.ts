@@ -7,7 +7,7 @@ export function truncateTemplateText(text: string): { text: string; truncated: b
   if (text.length <= MAX_TEMPLATE_TEXT_LENGTH) {
     return { text, truncated: false }
   }
-  return { text: text.slice(0, MAX_TEMPLATE_TEXT_LENGTH) + '...', truncated: true }
+  return { text: `${text.slice(0, MAX_TEMPLATE_TEXT_LENGTH)}...`, truncated: true }
 }
 
 /**

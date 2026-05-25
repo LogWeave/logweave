@@ -1,5 +1,5 @@
-import type { DbClient } from './client.js'
 import type { LogMetadataRow } from '../types.js'
+import type { DbClient } from './client.js'
 
 /**
  * Batch insert log metadata rows into ClickHouse.

@@ -1,23 +1,29 @@
 import { Router } from 'express'
+import { Secret, TOTP } from 'otpauth'
 import type pino from 'pino'
-import { TOTP, Secret } from 'otpauth'
 import QRCode from 'qrcode'
 import { z } from 'zod'
-import { encrypt, decrypt } from '../crypto.js'
-import type { DbClient } from '../db/client.js'
-import { insertAuditEvent } from '../db/audit-queries.js'
-import { AppError, notFound } from '../errors.js'
-import { HttpStatus } from '../http-status.js'
-import { validateBody } from '../middleware/validate.js'
-import { createIpRateLimiter } from '../middleware/ip-rate-limit.js'
 import { LockoutTracker } from '../auth/lockout.js'
-import { dummyVerify, generateRecoveryCodes, hashPassword, validatePasswordPolicy, verifyPassword } from '../auth/passwords.js'
 import {
-  type SessionProvider,
+  dummyVerify,
+  generateRecoveryCodes,
+  hashPassword,
+  validatePasswordPolicy,
+  verifyPassword,
+} from '../auth/passwords.js'
+import {
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_OPTIONS,
+  type SessionProvider,
 } from '../auth/session.js'
 import type { UserStore } from '../auth/user-store.js'
+import { decrypt, encrypt } from '../crypto.js'
+import { insertAuditEvent } from '../db/audit-queries.js'
+import type { DbClient } from '../db/client.js'
+import { AppError, notFound } from '../errors.js'
+import { HttpStatus } from '../http-status.js'
+import { createIpRateLimiter } from '../middleware/ip-rate-limit.js'
+import { validateBody } from '../middleware/validate.js'
 
 export interface AuthDeps {
   userStore: UserStore
@@ -42,7 +48,11 @@ const changePasswordSchema = z.object({
 })
 
 const createUserSchema = z.object({
-  username: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_.-]+$/),
+  username: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[a-zA-Z0-9_.-]+$/),
   password: z.string().min(12),
   tenantId: z.string().min(1).max(128),
   role: z.enum(['admin', 'viewer']),
@@ -70,9 +80,12 @@ export function authRoutes(deps: AuthDeps): Router {
     // Check lockout (keyed on username+sourceIp — see LockoutTracker)
     if (lockout.isLocked(username, sourceIp)) {
       const retryAfter = lockout.lockoutSecondsRemaining(username, sourceIp)
-      res.status(HttpStatus.TOO_MANY_REQUESTS)
+      res
+        .status(HttpStatus.TOO_MANY_REQUESTS)
         .set('Retry-After', String(retryAfter))
-        .json({ error: { code: 'LOCKED_OUT', message: 'Too many failed attempts. Try again later.' } })
+        .json({
+          error: { code: 'LOCKED_OUT', message: 'Too many failed attempts. Try again later.' },
+        })
       return
     }
 
@@ -141,18 +154,23 @@ export function authRoutes(deps: AuthDeps): Router {
             const storedHashes = JSON.parse(user.recoveryCodes) as string[]
             for (let i = 0; i < storedHashes.length; i++) {
               const hash = storedHashes[i]
-              if (hash && await verifyPassword(stripped, hash)) {
+              if (hash && (await verifyPassword(stripped, hash))) {
                 // Consume the code — remove from list
                 storedHashes.splice(i, 1)
                 await deps.userStore.updateTotp(
-                  user.userId, user.totpSecret, JSON.stringify(storedHashes), true,
+                  user.userId,
+                  user.totpSecret,
+                  JSON.stringify(storedHashes),
+                  true,
                 )
                 recoveryUsed = true
                 auditAuth(deps, user.tenantId, username, 'auth.recovery_code.used')
                 break
               }
             }
-          } catch { /* malformed recovery codes — ignore */ }
+          } catch {
+            /* malformed recovery codes — ignore */
+          }
         }
 
         if (!recoveryUsed) {
@@ -342,13 +360,21 @@ export function authRoutes(deps: AuthDeps): Router {
 
     const { code } = req.body as z.infer<typeof confirmTotpSchema>
     const user = await deps.userStore.findById(session.userId)
-    if (!user || !user.totpSecret) {
-      throw new AppError(HttpStatus.BAD_REQUEST, 'NO_TOTP_PENDING', 'Call POST /v1/auth/totp/setup first')
+    if (!user?.totpSecret) {
+      throw new AppError(
+        HttpStatus.BAD_REQUEST,
+        'NO_TOTP_PENDING',
+        'Call POST /v1/auth/totp/setup first',
+      )
     }
 
     const valid = await verifyTotp(user.totpSecret, code, deps.totpEncryptionKey)
     if (!valid) {
-      throw new AppError(HttpStatus.BAD_REQUEST, 'INVALID_CODE', 'Invalid TOTP code — check your authenticator app')
+      throw new AppError(
+        HttpStatus.BAD_REQUEST,
+        'INVALID_CODE',
+        'Invalid TOTP code — check your authenticator app',
+      )
     }
 
     // Generate recovery codes
@@ -473,7 +499,11 @@ export function authRoutes(deps: AuthDeps): Router {
 
     const targetId = req.params.id as string
     if (targetId === session.userId) {
-      throw new AppError(HttpStatus.BAD_REQUEST, 'CANNOT_DELETE_SELF', 'Cannot delete your own account')
+      throw new AppError(
+        HttpStatus.BAD_REQUEST,
+        'CANNOT_DELETE_SELF',
+        'Cannot delete your own account',
+      )
     }
 
     const target = await deps.userStore.findById(targetId)
@@ -525,7 +555,11 @@ function getSessionFromCookie(req: { cookies?: Record<string, string> }, deps: A
   return deps.sessionProvider.validateSession(cookie)
 }
 
-async function verifyTotp(encryptedSecret: string, code: string, encryptionKey: Buffer): Promise<boolean> {
+async function verifyTotp(
+  encryptedSecret: string,
+  code: string,
+  encryptionKey: Buffer,
+): Promise<boolean> {
   try {
     const secret = await decrypt(encryptedSecret, encryptionKey.toString('hex'))
     const totp = new TOTP({
@@ -545,7 +579,14 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function auditLogin(deps: AuthDeps, tenantId: string, username: string, sourceIp: string, success: boolean, reason?: string): void {
+function auditLogin(
+  deps: AuthDeps,
+  tenantId: string,
+  username: string,
+  sourceIp: string,
+  success: boolean,
+  reason?: string,
+): void {
   const action = success ? 'auth.login.success' : 'auth.login.failure'
   insertAuditEvent(deps.db, tenantId || 'system', {
     keyId: username,
@@ -557,7 +598,13 @@ function auditLogin(deps: AuthDeps, tenantId: string, username: string, sourceIp
   })
 }
 
-function auditAuth(deps: AuthDeps, tenantId: string, actor: string, action: string, target?: string): void {
+function auditAuth(
+  deps: AuthDeps,
+  tenantId: string,
+  actor: string,
+  action: string,
+  target?: string,
+): void {
   insertAuditEvent(deps.db, tenantId, {
     keyId: actor,
     action,

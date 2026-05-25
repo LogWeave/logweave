@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import express from 'express'
 import cookieParser from 'cookie-parser'
+import express from 'express'
 import pino from 'pino'
 import request from 'supertest'
 import { LockoutTracker } from '../src/auth/lockout.js'
-import { deriveKeys, hashPassword, validatePasswordPolicy, verifyPassword } from '../src/auth/passwords.js'
+import {
+  deriveKeys,
+  hashPassword,
+  validatePasswordPolicy,
+  verifyPassword,
+} from '../src/auth/passwords.js'
 import { HmacSessionProvider } from '../src/auth/session.js'
+import type { DashboardUser, UserStore } from '../src/auth/user-store.js'
+import type { DbClient } from '../src/db/client.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
 import { authRoutes } from '../src/routes/auth.js'
-import type { UserStore, DashboardUser } from '../src/auth/user-store.js'
-import type { DbClient } from '../src/db/client.js'
 
 // ---------------------------------------------------------------------------
 // In-memory UserStore for tests (no ClickHouse dependency)
@@ -38,7 +43,12 @@ class InMemoryUserStore implements UserStore {
     return [...this.users.values()].filter((u) => u.tenantId === tenantId)
   }
 
-  async createUser(input: { username: string; password: string; tenantId: string; role: 'admin' | 'viewer' }): Promise<DashboardUser> {
+  async createUser(input: {
+    username: string
+    password: string
+    tenantId: string
+    role: 'admin' | 'viewer'
+  }): Promise<DashboardUser> {
     const userId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const passwordHash = await hashPassword(input.password)
     const user: DashboardUser = {
@@ -67,7 +77,12 @@ class InMemoryUserStore implements UserStore {
     }
   }
 
-  async updateTotp(userId: string, totpSecret: string, recoveryCodes: string, enabled: boolean): Promise<void> {
+  async updateTotp(
+    userId: string,
+    totpSecret: string,
+    recoveryCodes: string,
+    enabled: boolean,
+  ): Promise<void> {
     const user = this.users.get(userId)
     if (user) {
       user.totpSecret = totpSecret
@@ -205,7 +220,12 @@ describe('HmacSessionProvider', () => {
   it('rejects tampered cookie', async () => {
     const keys = await deriveKeys('test-key-at-least-16-chars')
     const provider = new HmacSessionProvider(keys.sessionSigningKey)
-    const cookie = provider.createSession({ userId: 'u1', tenantId: 't1', role: 'admin', sessionVersion: 1 })
+    const cookie = provider.createSession({
+      userId: 'u1',
+      tenantId: 't1',
+      role: 'admin',
+      sessionVersion: 1,
+    })
 
     const tampered = `x${cookie.slice(1)}`
     assert.equal(provider.validateSession(tampered), null)
@@ -217,7 +237,12 @@ describe('HmacSessionProvider', () => {
     const provider1 = new HmacSessionProvider(keys1.sessionSigningKey)
     const provider2 = new HmacSessionProvider(keys2.sessionSigningKey)
 
-    const cookie = provider1.createSession({ userId: 'u1', tenantId: 't1', role: 'admin', sessionVersion: 1 })
+    const cookie = provider1.createSession({
+      userId: 'u1',
+      tenantId: 't1',
+      role: 'admin',
+      sessionVersion: 1,
+    })
     assert.equal(provider2.validateSession(cookie), null)
   })
 
@@ -368,9 +393,7 @@ describe('GET /v1/auth/me', () => {
       .send({ username: 'admin', password: 'adminpassword1' })
     const cookies = loginRes.headers['set-cookie']
 
-    const meRes = await request(app)
-      .get('/v1/auth/me')
-      .set('Cookie', cookies)
+    const meRes = await request(app).get('/v1/auth/me').set('Cookie', cookies)
 
     assert.equal(meRes.status, 200)
     assert.equal(meRes.body.data.username, 'admin')
@@ -456,10 +479,12 @@ describe('admin user management', () => {
       .send({ username: 'admin', password: 'adminpassword1' })
     const cookies = loginRes.headers['set-cookie']
 
-    const createRes = await request(app)
-      .post('/v1/auth/users')
-      .set('Cookie', cookies)
-      .send({ username: 'bob', password: 'bobpassword1234', tenantId: 'test-tenant', role: 'viewer' })
+    const createRes = await request(app).post('/v1/auth/users').set('Cookie', cookies).send({
+      username: 'bob',
+      password: 'bobpassword1234',
+      tenantId: 'test-tenant',
+      role: 'viewer',
+    })
 
     assert.equal(createRes.status, 201)
     assert.equal(createRes.body.data.username, 'bob')
@@ -474,7 +499,12 @@ describe('admin user management', () => {
     const res = await request(app)
       .post('/v1/auth/users')
       .set('Cookie', loginRes.headers['set-cookie'])
-      .send({ username: 'bob', password: 'bobpassword1234', tenantId: 'other-tenant', role: 'viewer' })
+      .send({
+        username: 'bob',
+        password: 'bobpassword1234',
+        tenantId: 'other-tenant',
+        role: 'viewer',
+      })
 
     assert.equal(res.status, 403)
   })
@@ -502,9 +532,7 @@ describe('admin user management', () => {
     const cookies = loginRes.headers['set-cookie']
     const userId = loginRes.body.data.userId
 
-    const res = await request(app)
-      .delete(`/v1/auth/users/${userId}`)
-      .set('Cookie', cookies)
+    const res = await request(app).delete(`/v1/auth/users/${userId}`).set('Cookie', cookies)
 
     assert.equal(res.status, 400)
   })
@@ -530,9 +558,7 @@ describe('session invalidation', () => {
       .send({ currentPassword: 'adminpassword1', newPassword: 'newpassword12345' })
 
     // Old cookie should be rejected (sessionVersion mismatch)
-    const meRes = await request(app)
-      .get('/v1/auth/me')
-      .set('Cookie', oldCookies)
+    const meRes = await request(app).get('/v1/auth/me').set('Cookie', oldCookies)
 
     assert.equal(meRes.status, 401)
   })

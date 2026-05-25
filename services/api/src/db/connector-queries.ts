@@ -71,10 +71,7 @@ export async function insertConnector(
   )
 }
 
-export async function listConnectors(
-  db: DbClient,
-  tenantId: string,
-): Promise<ConnectorRow[]> {
+export async function listConnectors(db: DbClient, tenantId: string): Promise<ConnectorRow[]> {
   return db.query<ConnectorRow>(tenantQuery(LIST_CONNECTORS, tenantId))
 }
 

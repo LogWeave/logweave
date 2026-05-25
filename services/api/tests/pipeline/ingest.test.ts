@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
 import type { DbClient } from '../../src/db/client.js'
-import { ingestBatch } from '../../src/pipeline/ingest.js'
 import { AnomalyScorer } from '../../src/pipeline/anomaly-scorer.js'
 import type { ClusterClient, ClusterResult } from '../../src/pipeline/cluster-client.js'
+import { ingestBatch } from '../../src/pipeline/ingest.js'
 import { TenantSettingsStore } from '../../src/watches/tenant-settings.js'
 
 const logger = pino({ level: 'silent' })
@@ -71,7 +71,7 @@ describe('ingestBatch — Phase 4.5 tag extraction', () => {
     )
 
     assert.equal(tagInserts.length, 1)
-    const tagValues = tagInserts[0]!.values as Array<Record<string, unknown>>
+    const tagValues = tagInserts[0]?.values as Array<Record<string, unknown>>
     assert.equal(tagValues.length, 2)
     // The two extracted tags must be the two valid events' values, not duplicates
     // of the same event or the wrong pairing.
@@ -108,7 +108,7 @@ describe('ingestBatch — Phase 4.5 tag extraction', () => {
     )
 
     assert.equal(tagInserts.length, 1)
-    const tagValues = tagInserts[0]!.values as Array<Record<string, unknown>>
+    const tagValues = tagInserts[0]?.values as Array<Record<string, unknown>>
     const values = tagValues.map((t) => t.tag_value).sort()
     // Only WARN and ERROR survive the level filter; DEBUG and INFO are dropped.
     assert.deepEqual(values, ['cust-ERR', 'cust-WARN'])

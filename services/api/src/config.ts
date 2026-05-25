@@ -25,7 +25,10 @@ const apiKeysSchema = z
     }
     const entries = Object.entries(parsed as Record<string, unknown>)
     if (entries.length === 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'LOGWEAVE_API_KEYS must have at least one key' })
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'LOGWEAVE_API_KEYS must have at least one key',
+      })
       return z.NEVER
     }
     for (const [key, value] of entries) {
@@ -43,7 +46,8 @@ const apiKeysSchema = z
       if (value === '_internal') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'tenant_id "_internal" is reserved for internal operator events and cannot be assigned to an API key',
+          message:
+            'tenant_id "_internal" is reserved for internal operator events and cannot be assigned to an API key',
         })
         return z.NEVER
       }

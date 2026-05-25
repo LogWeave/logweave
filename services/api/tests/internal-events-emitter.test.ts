@@ -78,7 +78,7 @@ describe('InternalEventEmitter', () => {
     // fire-and-forget — wait a tick for the microtask queue
     await new Promise((r) => setImmediate(r))
     assert.equal(inserts.length, 1)
-    const row = (inserts[0]?.values[0] as CapturedRow)
+    const row = inserts[0]?.values[0] as CapturedRow
     assert.equal(row.table ?? inserts[0]?.table, 'logweave.internal_events')
     assert.equal(row.event, 'clickhouse.query_failed')
     const parsedFields = JSON.parse(row.fields)

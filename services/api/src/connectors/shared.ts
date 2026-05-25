@@ -1,8 +1,8 @@
-import type { LogSourceAdapter } from './types.js'
-import { S3Adapter } from './s3-adapter.js'
 import { ElasticsearchAdapter } from './elasticsearch-adapter.js'
-import { LokiAdapter } from './loki-adapter.js'
 import { FilesystemAdapter } from './filesystem-adapter.js'
+import { LokiAdapter } from './loki-adapter.js'
+import { S3Adapter } from './s3-adapter.js'
+import type { LogSourceAdapter } from './types.js'
 
 // ---------------------------------------------------------------------------
 // Adapter registry — stateless adapters, safe to share across routes

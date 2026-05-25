@@ -4,12 +4,11 @@ import { createGunzip } from 'node:zlib'
 import express, { Router } from 'express'
 import { AppError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { MAX_BATCH_SIZE } from '../lib/constants.js'
 import type { IngestDeps } from '../lib/ingest-deps.js'
 import { getTenantId } from '../middleware/auth.js'
 import { ingestBatch } from '../pipeline/ingest.js'
 import { otlpToEvents } from '../pipeline/parse-otlp.js'
-
-import { MAX_BATCH_SIZE } from '../lib/constants.js'
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024 // 5MB
 
@@ -54,7 +53,9 @@ async function decompressGzip(
     delete req.headers['content-encoding']
     next()
   } catch {
-    next(new AppError(HttpStatus.BAD_REQUEST, 'DECOMPRESSION_ERROR', 'Failed to decompress gzip body'))
+    next(
+      new AppError(HttpStatus.BAD_REQUEST, 'DECOMPRESSION_ERROR', 'Failed to decompress gzip body'),
+    )
   }
 }
 

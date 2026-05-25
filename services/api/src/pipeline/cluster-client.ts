@@ -126,19 +126,13 @@ export class ClusterClient {
       try {
         body = await response.json()
       } catch {
-        this.logger.warn(
-          { tenantId, url: this.url },
-          'Clusterer returned non-JSON response body',
-        )
+        this.logger.warn({ tenantId, url: this.url }, 'Clusterer returned non-JSON response body')
         this.onFailure()
         return this.fallback(messages.length)
       }
 
       if (!this.isValidResponse(body)) {
-        this.logger.warn(
-          { tenantId, url: this.url },
-          'Clusterer returned malformed response body',
-        )
+        this.logger.warn({ tenantId, url: this.url }, 'Clusterer returned malformed response body')
         this.onFailure()
         return this.fallback(messages.length)
       }
@@ -258,7 +252,10 @@ export class ClusterClient {
       })
 
       if (!response.ok) {
-        this.logger.warn({ tenantId, statusCode: response.status }, 'Clusterer /cluster/reset failed')
+        this.logger.warn(
+          { tenantId, statusCode: response.status },
+          'Clusterer /cluster/reset failed',
+        )
         return false
       }
 

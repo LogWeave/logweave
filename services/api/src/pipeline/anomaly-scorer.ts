@@ -1,6 +1,6 @@
 import type pino from 'pino'
-import type { DbClient } from '../db/client.js'
 import { BASELINE_ROW_WARN_THRESHOLD, queryAnomalyBaselines } from '../db/anomaly-queries.js'
+import type { DbClient } from '../db/client.js'
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000
 const TEN_MINUTES_MS = 10 * 60 * 1000
@@ -214,7 +214,13 @@ export class AnomalyScorer {
    * Pure scoring arithmetic — no side effects, no counter mutation.
    * Shared by recordAndScore (hot path) and getWatchedScores (evaluator).
    */
-  private computeScore(tenantId: string, service: string, templateId: string, count: number, age: number): number {
+  private computeScore(
+    tenantId: string,
+    service: string,
+    templateId: string,
+    count: number,
+    age: number,
+  ): number {
     const baseline = this.lookupBaseline(tenantId, service, templateId)
 
     // No baseline or baseline=0 → use absolute threshold for new templates
@@ -241,7 +247,11 @@ export class AnomalyScorer {
    * absolute-threshold path. See ADR-014 for why we deliberately do NOT fall
    * back to a cross-hour mean.
    */
-  private lookupBaseline(tenantId: string, service: string, templateId: string): number | undefined {
+  private lookupBaseline(
+    tenantId: string,
+    service: string,
+    templateId: string,
+  ): number | undefined {
     const hourOfDay = new Date(this.now()).getUTCHours()
     const hourKey = `${tenantId}${D}${service}${D}${templateId}${D}${hourOfDay}`
     return this.baselineByHour.get(hourKey)
@@ -320,5 +330,4 @@ export class AnomalyScorer {
       }
     }
   }
-
 }

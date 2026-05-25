@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 import { FilesystemAdapter, guardPath } from '../../src/connectors/filesystem-adapter.js'
 import type { FetchRawLogsParams, FilesystemConnectorConfig } from '../../src/connectors/types.js'
@@ -48,10 +48,7 @@ describe('guardPath', () => {
   })
 
   it('REJECTS path that resolves outside basePath', () => {
-    assert.throws(
-      () => guardPath('/var/logs', '/etc/shadow'),
-      /Path traversal rejected/,
-    )
+    assert.throws(() => guardPath('/var/logs', '/etc/shadow'), /Path traversal rejected/)
   })
 
   it('REJECTS relative traversal that escapes', () => {
@@ -72,56 +69,64 @@ describe('FilesystemAdapter.testConnection', () => {
   it('returns success when directory exists and files found', () => {
     writeFileSync(join(testDir, 'app.log'), 'test log line\n')
 
-    return adapter.testConnection({
-      type: 'filesystem',
-      basePath: testDir,
-      filePattern: '*.log',
-      logFormat: 'text',
-    }).then((result) => {
-      assert.equal(result.success, true)
-      assert.ok(result.message.includes('1 file'))
-    })
+    return adapter
+      .testConnection({
+        type: 'filesystem',
+        basePath: testDir,
+        filePattern: '*.log',
+        logFormat: 'text',
+      })
+      .then((result) => {
+        assert.equal(result.success, true)
+        assert.ok(result.message.includes('1 file'))
+      })
   })
 
   it('returns success with zero files when pattern does not match', () => {
     writeFileSync(join(testDir, 'app.txt'), 'test\n')
 
-    return adapter.testConnection({
-      type: 'filesystem',
-      basePath: testDir,
-      filePattern: '*.log',
-      logFormat: 'text',
-    }).then((result) => {
-      assert.equal(result.success, true)
-      assert.ok(result.message.includes('no files'))
-    })
+    return adapter
+      .testConnection({
+        type: 'filesystem',
+        basePath: testDir,
+        filePattern: '*.log',
+        logFormat: 'text',
+      })
+      .then((result) => {
+        assert.equal(result.success, true)
+        assert.ok(result.message.includes('no files'))
+      })
   })
 
   it('returns failure when directory does not exist', () => {
-    return adapter.testConnection({
-      type: 'filesystem',
-      basePath: join(testDir, 'nonexistent'),
-      filePattern: '*.log',
-      logFormat: 'text',
-    }).then((result) => {
-      assert.equal(result.success, false)
-      assert.ok(result.message.includes('does not exist'))
-    })
+    return adapter
+      .testConnection({
+        type: 'filesystem',
+        basePath: join(testDir, 'nonexistent'),
+        filePattern: '*.log',
+        logFormat: 'text',
+      })
+      .then((result) => {
+        assert.equal(result.success, false)
+        assert.ok(result.message.includes('does not exist'))
+      })
   })
 
   it('returns failure when path is a file, not a directory', () => {
     const filePath = join(testDir, 'not-a-dir.log')
     writeFileSync(filePath, 'content\n')
 
-    return adapter.testConnection({
-      type: 'filesystem',
-      basePath: filePath,
-      filePattern: '*.log',
-      logFormat: 'text',
-    }).then((result) => {
-      assert.equal(result.success, false)
-      assert.ok(result.message.includes('not a directory'))
-    })
+    return adapter
+      .testConnection({
+        type: 'filesystem',
+        basePath: filePath,
+        filePattern: '*.log',
+        logFormat: 'text',
+      })
+      .then((result) => {
+        assert.equal(result.success, false)
+        assert.ok(result.message.includes('not a directory'))
+      })
   })
 })
 
@@ -178,7 +183,10 @@ describe('FilesystemAdapter.fetchRawLogs', () => {
     writeFileSync(
       join(testDir, 'app.log'),
       [
-        JSON.stringify({ message: 'Connection from 10.0.0.1 timed out', timestamp: '2026-01-01T00:00:00Z' }),
+        JSON.stringify({
+          message: 'Connection from 10.0.0.1 timed out',
+          timestamp: '2026-01-01T00:00:00Z',
+        }),
         JSON.stringify({ message: 'healthy', timestamp: '2026-01-01T00:01:00Z' }),
       ].join('\n'),
     )
@@ -198,8 +206,9 @@ describe('FilesystemAdapter.fetchRawLogs', () => {
   })
 
   it('respects limit parameter', async () => {
-    const lines = Array.from({ length: 100 }, (_, i) =>
-      `Connection from 10.0.0.${i} timed out`,
+    const lines = Array.from(
+      { length: 100 },
+      (_, i) => `Connection from 10.0.0.${i} timed out`,
     ).join('\n')
     writeFileSync(join(testDir, 'app.log'), lines)
 

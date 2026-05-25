@@ -3,17 +3,11 @@
  * Requires Docker Compose running: docker compose up --build -d
  */
 import assert from 'node:assert/strict'
-import { describe, it, before, after } from 'node:test'
-import { createClient } from '@clickhouse/client'
+import { after, before, describe, it } from 'node:test'
 import type { ClickHouseClient } from '@clickhouse/client'
+import { createClient } from '@clickhouse/client'
+import { countRowsSince, getClickhouseNow, ingestBatch, isReachable, pollUntil } from './helpers.js'
 import { generateEvents } from './log-generator.js'
-import {
-  isReachable,
-  ingestBatch,
-  getClickhouseNow,
-  countRowsSince,
-  pollUntil,
-} from './helpers.js'
 
 const CLICKHOUSE_URL = 'http://default:logweave@localhost:8123'
 const API_URL = 'http://localhost:3000'
@@ -48,7 +42,10 @@ describe('E2E volume tests (Docker Compose)', () => {
   // -- V1: 1000-event max batch --
 
   it('1000-event max batch accepted and stored', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const events = generateEvents(1000)
     const { status, body } = await ingestBatch(KEY_A, events, {
@@ -59,17 +56,21 @@ describe('E2E volume tests (Docker Compose)', () => {
     assert.equal(body.accepted, 1000)
 
     // Poll ClickHouse for all 1000 rows
-    await pollUntil(
-      async () => (await countRowsSince(clickhouse, TENANT_A, startTime)) >= 1000,
-      { intervalMs: 1000, timeoutMs: 15_000, label: '1000-event batch stored' },
-    )
+    await pollUntil(async () => (await countRowsSince(clickhouse, TENANT_A, startTime)) >= 1000, {
+      intervalMs: 1000,
+      timeoutMs: 15_000,
+      label: '1000-event batch stored',
+    })
 
     const count = await countRowsSince(clickhouse, TENANT_A, startTime)
     assert.ok(count >= 1000, `Expected >= 1000 rows, got ${count}`)
   })
 
   it('1001-event batch rejected at boundary', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     const events = generateEvents(1001)
     const { status } = await ingestBatch(KEY_A, events)
@@ -80,7 +81,10 @@ describe('E2E volume tests (Docker Compose)', () => {
   // -- V2: Sequential batches with exact cumulative counts --
 
   it('3 sequential batches — exact cumulative counts', async (t) => {
-    if (!reachable) { t.skip('Docker Compose not running'); return }
+    if (!reachable) {
+      t.skip('Docker Compose not running')
+      return
+    }
 
     // Capture a fresh baseline after V1's events
     const seqStart = await getClickhouseNow(clickhouse)

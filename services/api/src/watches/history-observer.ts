@@ -4,10 +4,10 @@ import { uuidv7 } from '../uuid.js'
 import {
   type AlertEvent,
   type AlertObserver,
-  type TemplateAlertEvent,
-  type ThresholdAlertEvent,
   isResolvedAlert,
   isTemplateAlert,
+  type TemplateAlertEvent,
+  type ThresholdAlertEvent,
 } from './alert-observer.js'
 
 export interface HistoryObserverOptions {

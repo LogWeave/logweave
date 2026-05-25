@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { motion } from 'motion/react'
 import { Check, ClipboardCopy, MessageSquareText } from 'lucide-react'
+import { motion } from 'motion/react'
+import { useState } from 'react'
 import { config } from '../../config'
 import { cn } from '../../lib/cn'
 import { mcpSnippet } from './snippets'
@@ -97,7 +97,11 @@ export function StepConnectAi({ complete }: StepConnectAiProps) {
             className="absolute top-2 right-2 p-1.5 rounded-[var(--radius-sm)] bg-surface-elevated/80 hover:bg-surface-overlay text-text-muted hover:text-text-primary transition-colors"
             title="Copy to clipboard"
           >
-            {copied ? <Check size={14} className="text-success-500" /> : <ClipboardCopy size={14} />}
+            {copied ? (
+              <Check size={14} className="text-success-500" />
+            ) : (
+              <ClipboardCopy size={14} />
+            )}
           </button>
         </div>
       </div>
@@ -117,7 +121,8 @@ export function StepConnectAi({ complete }: StepConnectAiProps) {
         {showRest && (
           <div className="mt-2 text-xs text-text-muted bg-surface-base border border-border-subtle rounded-[var(--radius-md)] p-3">
             <p className="mb-1">
-              All MCP tools map directly to REST endpoints under <code className="text-brand-400">/v1/</code>:
+              All MCP tools map directly to REST endpoints under{' '}
+              <code className="text-brand-400">/v1/</code>:
             </p>
             <ul className="space-y-0.5 font-mono text-[11px]">
               <li>GET /v1/dashboard/overview</li>

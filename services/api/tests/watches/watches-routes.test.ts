@@ -87,9 +87,7 @@ describe('POST /v1/watches', () => {
 
   it('returns 401 without auth', async () => {
     const { app } = createTestApp()
-    const res = await request(app)
-      .post('/v1/watches')
-      .send({ templateId: 'tmpl-1' })
+    const res = await request(app).post('/v1/watches').send({ templateId: 'tmpl-1' })
 
     assert.equal(res.status, 401)
   })
@@ -118,14 +116,10 @@ describe('DELETE /v1/watches/:templateId', () => {
       .send({ templateId: 'tmpl-1' })
 
     // Tenant B tries to delete tenant A's watch
-    await request(app)
-      .delete('/v1/watches/tmpl-1')
-      .set('Authorization', 'Bearer key-b')
+    await request(app).delete('/v1/watches/tmpl-1').set('Authorization', 'Bearer key-b')
 
     // Tenant A's watch should still be there
-    const res = await request(app)
-      .get('/v1/watches')
-      .set('Authorization', `Bearer ${TEST_KEY}`)
+    const res = await request(app).get('/v1/watches').set('Authorization', `Bearer ${TEST_KEY}`)
     assert.deepEqual(res.body.data, [{ templateId: 'tmpl-1' }])
   })
 
@@ -151,9 +145,7 @@ describe('GET /v1/watches', () => {
       .set('Authorization', `Bearer ${TEST_KEY}`)
       .send({ templateId: 'tmpl-1' })
 
-    const res = await request(app)
-      .get('/v1/watches')
-      .set('Authorization', `Bearer ${TEST_KEY}`)
+    const res = await request(app).get('/v1/watches').set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data, [{ templateId: 'tmpl-1' }, { templateId: 'tmpl-2' }])
@@ -162,9 +154,7 @@ describe('GET /v1/watches', () => {
 
   it('returns empty array for no watches', async () => {
     const { app } = createTestApp()
-    const res = await request(app)
-      .get('/v1/watches')
-      .set('Authorization', `Bearer ${TEST_KEY}`)
+    const res = await request(app).get('/v1/watches').set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data, [])
@@ -182,12 +172,8 @@ describe('GET /v1/watches', () => {
       .set('Authorization', 'Bearer key-b')
       .send({ templateId: 'tmpl-b' })
 
-    const resA = await request(app)
-      .get('/v1/watches')
-      .set('Authorization', `Bearer ${TEST_KEY}`)
-    const resB = await request(app)
-      .get('/v1/watches')
-      .set('Authorization', 'Bearer key-b')
+    const resA = await request(app).get('/v1/watches').set('Authorization', `Bearer ${TEST_KEY}`)
+    const resB = await request(app).get('/v1/watches').set('Authorization', 'Bearer key-b')
 
     assert.deepEqual(resA.body.data, [{ templateId: 'tmpl-a' }])
     assert.deepEqual(resB.body.data, [{ templateId: 'tmpl-b' }])

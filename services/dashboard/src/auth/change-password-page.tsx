@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -61,7 +61,10 @@ export function ChangePasswordPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="currentPassword" className="block text-xs font-medium text-text-secondary mb-1">
+            <label
+              htmlFor="currentPassword"
+              className="block text-xs font-medium text-text-secondary mb-1"
+            >
               Current Password
             </label>
             <Input
@@ -75,7 +78,10 @@ export function ChangePasswordPage() {
           </div>
 
           <div>
-            <label htmlFor="newPassword" className="block text-xs font-medium text-text-secondary mb-1">
+            <label
+              htmlFor="newPassword"
+              className="block text-xs font-medium text-text-secondary mb-1"
+            >
               New Password <span className="text-text-muted">(min 12 characters)</span>
             </label>
             <Input
@@ -88,7 +94,10 @@ export function ChangePasswordPage() {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-xs font-medium text-text-secondary mb-1">
+            <label
+              htmlFor="confirmPassword"
+              className="block text-xs font-medium text-text-secondary mb-1"
+            >
               Confirm New Password
             </label>
             <Input
