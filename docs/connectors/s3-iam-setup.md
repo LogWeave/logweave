@@ -37,11 +37,10 @@ No other permissions. No data is written. The template lives at
 ## Step-by-step
 
 1. **Open LogWeave → Settings → Log Connectors → Add Connector.** Pick
-   "Amazon S3 / MinIO" as the type.
+   "Amazon S3" as the type.
 2. Fill in **Bucket** (e.g. `acme-app-logs`), **Region** (e.g.
    `us-east-1`), and **Prefix** if your logs live under a folder
-   (e.g. `production/`). Leave Endpoint / Access Key blank — those are
-   for MinIO/dev only.
+   (e.g. `production/`).
 3. Click **Quick-create IAM role.** LogWeave generates a per-connector
    `ExternalId`, pre-fills it into the External ID field, and opens
    the AWS CloudFormation console in a new tab with all parameters

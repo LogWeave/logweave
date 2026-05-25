@@ -28,10 +28,10 @@ export class Runner {
 
     if (options.s3Bucket) {
       this.s3Writer = new S3Writer({
-        endpoint: options.s3Endpoint ?? 'http://localhost:9002',
+        endpoint: options.s3Endpoint ?? 'http://localhost:4566',
         bucket: options.s3Bucket,
-        accessKeyId: 'minioadmin',
-        secretAccessKey: 'minioadmin',
+        accessKeyId: 'test',
+        secretAccessKey: 'test',
       })
     }
 

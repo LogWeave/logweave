@@ -3,7 +3,7 @@
  *
  * Used to encrypt S3 connector credentials at rest in ClickHouse.
  * If LOGWEAVE_ENCRYPTION_KEY is not set, values are stored in plaintext
- * (acceptable for local dev with MinIO, not for production with real AWS keys).
+ * (acceptable for local dev only, not for production with real AWS keys).
  *
  * Versioned format:
  *   - `enc2:` — current. Key derived via HKDF-SHA256 with domain-separation label
@@ -13,7 +13,13 @@
  *     decrypt and migrate forward on next write. Not used for new ciphertexts.
  */
 
-import { createCipheriv, createDecipheriv, createHash, hkdf as hkdfCb, randomBytes } from 'node:crypto'
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  hkdf as hkdfCb,
+  randomBytes,
+} from 'node:crypto'
 import { promisify } from 'node:util'
 
 const ALGORITHM = 'aes-256-gcm'
@@ -32,7 +38,13 @@ async function deriveKeyV2(secret: string): Promise<Buffer> {
   const cached = v2KeyCache.get(secret)
   if (cached) return cached
   const ikm = Buffer.from(secret, 'utf-8')
-  const derived = await hkdfAsync('sha256', ikm, Buffer.alloc(0), 'logweave-config-encryption', KEY_LENGTH)
+  const derived = await hkdfAsync(
+    'sha256',
+    ikm,
+    Buffer.alloc(0),
+    'logweave-config-encryption',
+    KEY_LENGTH,
+  )
   const key = Buffer.from(derived)
   v2KeyCache.set(secret, key)
   return key
@@ -46,7 +58,10 @@ function deriveKeyV1(secret: string): Buffer {
  * Encrypt plaintext. Returns base64-encoded string with `enc2:` prefix.
  * Returns the original string unchanged if no encryption key is provided.
  */
-export async function encrypt(plaintext: string, encryptionKey: string | undefined): Promise<string> {
+export async function encrypt(
+  plaintext: string,
+  encryptionKey: string | undefined,
+): Promise<string> {
   if (!encryptionKey) return plaintext
 
   const key = await deriveKeyV2(encryptionKey)

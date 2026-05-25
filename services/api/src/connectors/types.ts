@@ -19,13 +19,13 @@ export interface S3ConnectorConfig {
   roleArn?: string
   /** ExternalId attached to the trust policy (per-connector, confused-deputy protection). */
   externalId?: string
-  /** MinIO/dev-only: S3-compatible endpoint URL */
+  /** Dev-only: S3-compatible endpoint URL (e.g. Floci). Blocked in production. */
   endpoint?: string
-  /** MinIO/dev-only: required for path-style access */
+  /** Dev-only: required for path-style access against non-AWS endpoints. */
   forcePathStyle?: boolean
-  /** MinIO/dev-only: static access key */
+  /** Dev-only: static access key. Production uses AssumeRole. */
   accessKeyId?: string
-  /** MinIO/dev-only: static secret key */
+  /** Dev-only: static secret key. Production uses AssumeRole. */
   secretAccessKey?: string
 }
 

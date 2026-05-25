@@ -1,43 +1,48 @@
 services:
-  # Wire api to wait for local S3 bucket before starting
+  # Wire api to wait for the local S3 emulator before starting.
   api:
     depends_on:
-      minio-init:
+      floci-init:
         condition: service_completed_successfully
 
-  # MinIO — local S3-compatible store for S3 connector dev/testing
-  minio:
-    image: minio/minio
-    command: server /data --console-address ":9001"
+  # Floci — fast, MIT-licensed AWS emulator. Used as a local S3-compatible
+  # store for dev + as the IAM/STS/S3 backend for integration tests.
+  # See ADR-010 / docs/connectors/s3-iam-setup.md for the production
+  # AssumeRole flow this replaces in tests.
+  floci:
+    # Pinned by digest — Floci's :latest tag is unpinned; CI breaks silently
+    # on a Floci breaking change otherwise. Bump deliberately.
+    image: floci/floci@sha256:efa6922b024a875598347e7e4c347ca9cb61dc46a219b778a6510f20fb6f960d
     ports:
-      - "9002:9000"   # S3 API (9000 taken by ClickHouse native)
-      - "9001:9001"   # MinIO Console
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    volumes:
-      - minio_data:/data
+      - "4566:4566"   # AWS-compatible endpoint (S3, STS, IAM)
+    # Floci has no dedicated /health path; root returns S3 ListAllMyBuckets
+    # with HTTP 200 once the server is ready.
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/"]
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 5s
 
-  # Create default bucket on startup
-  minio-init:
-    image: minio/mc
+  # Create default bucket on startup using the official aws-cli image.
+  floci-init:
+    image: amazon/aws-cli:2.34.53
     depends_on:
-      minio:
+      floci:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 minioadmin minioadmin;
-      mc mb --ignore-existing local/logweave-logs;
-      echo 'Bucket logweave-logs ready';
-      "
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        aws --endpoint-url http://floci:4566 s3 mb s3://logweave-logs 2>/dev/null || true
+        echo 'Bucket logweave-logs ready'
 
-  # Log simulator — generates realistic multi-service events
-  # Primary mode: pnpm simulate (runs on host, targets localhost:3000)
+  # Log simulator — generates realistic multi-service events.
+  # Primary mode: pnpm simulate (runs on host, targets localhost:3000).
   simulator:
     image: node:24-alpine
     working_dir: /app
@@ -51,6 +56,3 @@ services:
     depends_on:
       api:
         condition: service_healthy
-
-volumes:
-  minio_data:

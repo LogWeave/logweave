@@ -4,8 +4,8 @@ import cookieParser from 'cookie-parser'
 import express, { Router } from 'express'
 import pino from 'pino'
 import request from 'supertest'
+import { HmacSessionProvider, SESSION_COOKIE_NAME } from '../src/auth/session.js'
 import type { DbClient } from '../src/db/client.js'
-import { SESSION_COOKIE_NAME, HmacSessionProvider } from '../src/auth/session.js'
 import { createAuthMiddleware } from '../src/middleware/auth.js'
 import { createConcurrentQueryGuard } from '../src/middleware/concurrent-query-guard.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
@@ -47,10 +47,10 @@ const mockConnectorRow = {
     prefix: 'logs/',
     pathPattern: '{prefix}{service}/{year}/{month}/{day}/{hour}/',
     region: 'us-east-1',
-    endpoint: 'http://minio:9002',
+    endpoint: 'http://floci:4566',
     forcePathStyle: true,
-    accessKeyId: 'minioadmin',
-    secretAccessKey: 'minioadmin',
+    accessKeyId: 'test',
+    secretAccessKey: 'test',
     logFormat: 'jsonl',
     compression: 'none',
   }),
@@ -125,10 +125,10 @@ describe('POST /v1/connectors', () => {
           prefix: 'logs/',
           pathPattern: '{prefix}{service}/{year}/{month}/{day}/{hour}/',
           region: 'us-east-1',
-          endpoint: 'http://minio:9002',
+          endpoint: 'http://floci:4566',
           forcePathStyle: true,
-          accessKeyId: 'minioadmin',
-          secretAccessKey: 'minioadmin',
+          accessKeyId: 'test',
+          secretAccessKey: 'test',
           logFormat: 'jsonl',
           compression: 'none',
         },
@@ -169,9 +169,7 @@ describe('POST /v1/connectors', () => {
 
   it('returns 401 without auth', async () => {
     const app = createTestApp()
-    const res = await request(app)
-      .post('/v1/connectors')
-      .send({ name: 'Test', config: {} })
+    const res = await request(app).post('/v1/connectors').send({ name: 'Test', config: {} })
     assert.equal(res.status, 401)
   })
 })
@@ -184,9 +182,7 @@ describe('GET /v1/connectors', () => {
   it('returns connectors with redacted secrets', async () => {
     const app = createTestApp(connectorQueryMap())
 
-    const res = await request(app)
-      .get('/v1/connectors')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/connectors').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.length, 1)
@@ -198,9 +194,7 @@ describe('GET /v1/connectors', () => {
   it('returns empty array when no connectors', async () => {
     const app = createTestApp()
 
-    const res = await request(app)
-      .get('/v1/connectors')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/connectors').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data, [])

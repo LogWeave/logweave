@@ -19,7 +19,7 @@ import { clearDraft, loadDraft, saveDraft } from './connector-draft'
 // ---------------------------------------------------------------------------
 
 const TYPE_OPTIONS: Array<{ value: ConnectorType; label: string }> = [
-  { value: 's3', label: 'Amazon S3 / MinIO' },
+  { value: 's3', label: 'Amazon S3' },
   { value: 'elasticsearch', label: 'Elasticsearch / OpenSearch' },
   { value: 'loki', label: 'Grafana Loki' },
   { value: 'filesystem', label: 'Local Filesystem' },
@@ -48,9 +48,9 @@ const S3_FIELDS: FieldDef[] = [
   { key: 'region', label: 'Region', placeholder: 'us-east-1', required: true },
   { key: 'roleArn', label: 'Role ARN (recommended)', placeholder: 'arn:aws:iam::123456789012:role/LogWeaveS3ConnectorRole' },
   { key: 'externalId', label: 'External ID', placeholder: 'paste from quick-create' },
-  { key: 'endpoint', label: 'Endpoint (MinIO/dev)', placeholder: 'http://minio:9002' },
-  { key: 'accessKeyId', label: 'Access Key ID', placeholder: 'minioadmin', type: 'password' },
-  { key: 'secretAccessKey', label: 'Secret Access Key', placeholder: '', type: 'password' },
+  { key: 'endpoint', label: 'Endpoint (dev only)', placeholder: 'http://localhost:4566' },
+  { key: 'accessKeyId', label: 'Access Key ID (dev only)', placeholder: 'test', type: 'password' },
+  { key: 'secretAccessKey', label: 'Secret Access Key (dev only)', placeholder: '', type: 'password' },
 ]
 
 const ES_FIELDS: FieldDef[] = [
