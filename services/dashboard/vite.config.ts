@@ -20,10 +20,21 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          echarts: ['echarts/core', 'echarts/charts', 'echarts/components', 'echarts/renderers'],
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          query: ['@tanstack/react-query', '@tanstack/react-table', '@tanstack/react-virtual'],
+        // vite 8 + rolldown requires the function form for manualChunks.
+        // The object-form `{ name: [modules] }` was dropped.
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('/echarts/') || id.includes('echarts-renderer')) return 'echarts'
+            if (
+              id.includes('/react/') ||
+              id.includes('/react-dom/') ||
+              id.includes('/react-router-dom/')
+            ) {
+              return 'vendor'
+            }
+            if (id.includes('/@tanstack/')) return 'query'
+          }
+          return undefined
         },
       },
     },
