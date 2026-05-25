@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -71,8 +71,12 @@ export function TotpSetupPage() {
           <div className="h-12 w-12 rounded-[var(--radius-lg)] bg-brand-500 flex items-center justify-center text-white font-bold text-lg mx-auto mb-3">
             LW
           </div>
-          <h1 className="text-lg font-semibold text-text-primary">Set Up Two-Factor Authentication</h1>
-          <p className="text-xs text-text-muted mt-1">Secure your account with an authenticator app</p>
+          <h1 className="text-lg font-semibold text-text-primary">
+            Set Up Two-Factor Authentication
+          </h1>
+          <p className="text-xs text-text-muted mt-1">
+            Secure your account with an authenticator app
+          </p>
         </div>
 
         {step === 'intro' && (
@@ -93,18 +97,27 @@ export function TotpSetupPage() {
             </p>
             {qrCodeDataUrl && (
               <div className="flex justify-center">
-                <img src={qrCodeDataUrl} alt="TOTP QR Code" className="w-48 h-48 rounded-[var(--radius-md)]" />
+                <img
+                  src={qrCodeDataUrl}
+                  alt="TOTP QR Code"
+                  className="w-48 h-48 rounded-[var(--radius-md)]"
+                />
               </div>
             )}
             <div className="text-center">
-              <p className="text-[10px] text-text-muted mb-1">Can't scan? Enter this key manually:</p>
+              <p className="text-[10px] text-text-muted mb-1">
+                Can't scan? Enter this key manually:
+              </p>
               <code className="text-xs text-brand-400 bg-surface-elevated px-2 py-1 rounded break-all select-all">
                 {secretKey}
               </code>
             </div>
             <form onSubmit={confirmCode} className="space-y-3">
               <div>
-                <label htmlFor="totpCode" className="block text-xs font-medium text-text-secondary mb-1">
+                <label
+                  htmlFor="totpCode"
+                  className="block text-xs font-medium text-text-secondary mb-1"
+                >
                   Enter the 6-digit code from your app
                 </label>
                 <Input
@@ -123,7 +136,12 @@ export function TotpSetupPage() {
                   <p className="text-xs text-danger-500">{error}</p>
                 </div>
               )}
-              <Button variant="primary" size="lg" className="w-full" disabled={loading || code.length !== 6}>
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                disabled={loading || code.length !== 6}
+              >
                 {loading ? 'Verifying...' : 'Verify'}
               </Button>
             </form>
@@ -140,7 +158,10 @@ export function TotpSetupPage() {
               </p>
               <div className="grid grid-cols-2 gap-1">
                 {recoveryCodes.map((code) => (
-                  <code key={code} className="text-xs font-mono text-text-secondary bg-surface-base px-2 py-1 rounded text-center">
+                  <code
+                    key={code}
+                    className="text-xs font-mono text-text-secondary bg-surface-base px-2 py-1 rounded text-center"
+                  >
                     {code}
                   </code>
                 ))}

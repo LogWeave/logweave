@@ -106,30 +106,49 @@ function serializeRule(rule: AlertRule) {
   }
 }
 
-function parseJsonObject(value: string, fallback: Record<string, unknown> | null, ctx: { logger: pino.Logger; alertId: string; field: string }): Record<string, unknown> | null {
+function parseJsonObject(
+  value: string,
+  fallback: Record<string, unknown> | null,
+  ctx: { logger: pino.Logger; alertId: string; field: string },
+): Record<string, unknown> | null {
   if (!value) return fallback
   try {
     const parsed = JSON.parse(value) as unknown
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>
     }
-    ctx.logger.warn({ alertId: ctx.alertId, field: ctx.field }, 'Alert row JSON not an object — using fallback')
+    ctx.logger.warn(
+      { alertId: ctx.alertId, field: ctx.field },
+      'Alert row JSON not an object — using fallback',
+    )
     return fallback
   } catch (err) {
-    ctx.logger.warn({ alertId: ctx.alertId, field: ctx.field, err }, 'Failed to parse alert row JSON — using fallback')
+    ctx.logger.warn(
+      { alertId: ctx.alertId, field: ctx.field, err },
+      'Failed to parse alert row JSON — using fallback',
+    )
     return fallback
   }
 }
 
-function parseJsonArray(value: string, ctx: { logger: pino.Logger; alertId: string; field: string }): unknown[] {
+function parseJsonArray(
+  value: string,
+  ctx: { logger: pino.Logger; alertId: string; field: string },
+): unknown[] {
   if (!value) return []
   try {
     const parsed = JSON.parse(value) as unknown
     if (Array.isArray(parsed)) return parsed
-    ctx.logger.warn({ alertId: ctx.alertId, field: ctx.field }, 'Alert row JSON not an array — using []')
+    ctx.logger.warn(
+      { alertId: ctx.alertId, field: ctx.field },
+      'Alert row JSON not an array — using []',
+    )
     return []
   } catch (err) {
-    ctx.logger.warn({ alertId: ctx.alertId, field: ctx.field, err }, 'Failed to parse alert row JSON — using []')
+    ctx.logger.warn(
+      { alertId: ctx.alertId, field: ctx.field, err },
+      'Failed to parse alert row JSON — using []',
+    )
     return []
   }
 }
@@ -179,7 +198,11 @@ export function ruleRoutes(deps: RuleDeps): Router {
       })
 
       if (result === 'limit_exceeded') {
-        throw new AppError(HttpStatus.BAD_REQUEST, 'RULE_LIMIT_EXCEEDED', 'Maximum rules per tenant exceeded')
+        throw new AppError(
+          HttpStatus.BAD_REQUEST,
+          'RULE_LIMIT_EXCEEDED',
+          'Maximum rules per tenant exceeded',
+        )
       }
 
       res.status(HttpStatus.CREATED).json({
@@ -219,10 +242,18 @@ export function ruleRoutes(deps: RuleDeps): Router {
         }
 
         if (existing.ruleType === 'threshold' && !isThresholdConfig(body.config)) {
-          throw new AppError(HttpStatus.BAD_REQUEST, 'CONFIG_TYPE_MISMATCH', 'Config does not match rule type threshold')
+          throw new AppError(
+            HttpStatus.BAD_REQUEST,
+            'CONFIG_TYPE_MISMATCH',
+            'Config does not match rule type threshold',
+          )
         }
         if (existing.ruleType === 'template_watch' && !isTemplateWatchConfig(body.config)) {
-          throw new AppError(HttpStatus.BAD_REQUEST, 'CONFIG_TYPE_MISMATCH', 'Config does not match rule type template_watch')
+          throw new AppError(
+            HttpStatus.BAD_REQUEST,
+            'CONFIG_TYPE_MISMATCH',
+            'Config does not match rule type template_watch',
+          )
         }
       }
 
@@ -270,8 +301,16 @@ export function ruleRoutes(deps: RuleDeps): Router {
         firedAt: r.fired_at,
         metricValue: r.metric_value,
         thresholdValue: r.threshold_value,
-        details: parseJsonObject(r.details, null, { logger: deps.logger, alertId: r.alert_id, field: 'details' }),
-        channelsNotified: parseJsonArray(r.channels_notified, { logger: deps.logger, alertId: r.alert_id, field: 'channels_notified' }),
+        details: parseJsonObject(r.details, null, {
+          logger: deps.logger,
+          alertId: r.alert_id,
+          field: 'details',
+        }),
+        channelsNotified: parseJsonArray(r.channels_notified, {
+          logger: deps.logger,
+          alertId: r.alert_id,
+          field: 'channels_notified',
+        }),
       }))
 
       respond(res, data, { count: data.length, hours: params.hours })

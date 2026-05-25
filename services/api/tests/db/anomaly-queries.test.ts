@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { DbClient } from '../../src/db/client.js'
 import {
   BASELINE_ROW_WARN_THRESHOLD,
   BASELINE_WINDOW_DAYS,
   queryAnomalyBaselines,
 } from '../../src/db/anomaly-queries.js'
+import type { DbClient } from '../../src/db/client.js'
 
 // Window length and row-cap warning threshold are product decisions recorded
 // in ADR-014. Lock them down so they can't silently drift on a refactor.

@@ -159,9 +159,7 @@ describe('PUT /v1/settings/cost-thresholds', () => {
   it('requires authentication', async () => {
     const { app } = createTestApp()
 
-    const res = await request(app)
-      .put('/v1/settings/cost-thresholds')
-      .send({ noiseDebugPct: 10 })
+    const res = await request(app).put('/v1/settings/cost-thresholds').send({ noiseDebugPct: 10 })
 
     assert.equal(res.status, 401)
   })
@@ -278,9 +276,7 @@ describe('PUT /v1/settings/spike-baseline', () => {
   it('requires authentication', async () => {
     const { app } = createTestApp()
 
-    const res = await request(app)
-      .put('/v1/settings/spike-baseline')
-      .send({ minBaseline: 10 })
+    const res = await request(app).put('/v1/settings/spike-baseline').send({ minBaseline: 10 })
 
     assert.equal(res.status, 401)
   })

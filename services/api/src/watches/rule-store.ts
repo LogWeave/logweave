@@ -128,7 +128,9 @@ export class RuleStore {
    * Add a rule. Generates UUIDv7 for ruleId if not provided.
    * Returns the created rule, or 'limit_exceeded' if the tenant has reached the limit.
    */
-  async add(rule: Omit<AlertRule, 'ruleId'> & { ruleId?: string }): Promise<AlertRule | 'limit_exceeded'> {
+  async add(
+    rule: Omit<AlertRule, 'ruleId'> & { ruleId?: string },
+  ): Promise<AlertRule | 'limit_exceeded'> {
     let tenantMap = this.rules.get(rule.tenantId)
     if (!tenantMap) {
       tenantMap = new Map()
@@ -159,7 +161,9 @@ export class RuleStore {
   async update(
     tenantId: string,
     ruleId: string,
-    updates: Partial<Pick<AlertRule, 'name' | 'enabled' | 'config' | 'channels' | 'cooldownMinutes'>>,
+    updates: Partial<
+      Pick<AlertRule, 'name' | 'enabled' | 'config' | 'channels' | 'cooldownMinutes'>
+    >,
   ): Promise<AlertRule | undefined> {
     const tenantMap = this.rules.get(tenantId)
     if (!tenantMap) return undefined

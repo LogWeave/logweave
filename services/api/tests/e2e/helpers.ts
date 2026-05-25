@@ -48,10 +48,11 @@ export function startClusterer(): void {
 }
 
 export async function waitForClusterer(maxWaitMs = 30_000): Promise<void> {
-  await pollUntil(
-    () => isReachable('http://localhost:8000/health'),
-    { intervalMs: 1000, timeoutMs: maxWaitMs, label: 'clusterer healthy' },
-  )
+  await pollUntil(() => isReachable('http://localhost:8000/health'), {
+    intervalMs: 1000,
+    timeoutMs: maxWaitMs,
+    label: 'clusterer healthy',
+  })
 }
 
 /** Direct HTTP ingest — bypasses transport SDK for precise request/response control. */
@@ -78,9 +79,7 @@ export async function ingestBatch(
 }
 
 /** Query ClickHouse for current server time — avoids clock skew with test host. */
-export async function getClickhouseNow(
-  clickhouse: ClickHouseClient,
-): Promise<string> {
+export async function getClickhouseNow(clickhouse: ClickHouseClient): Promise<string> {
   const result = await clickhouse.query({
     query: 'SELECT toString(now64(3)) AS now',
     format: 'JSONEachRow',

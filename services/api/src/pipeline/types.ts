@@ -35,10 +35,7 @@ export interface LogParser {
   /** Extract the log message string from a raw event. */
   extractMessage(event: Record<string, unknown>): string | undefined
   /** Extract structured fields, respecting neverExtract. */
-  extractFields(
-    event: Record<string, unknown>,
-    neverExtract: ReadonlySet<string>,
-  ): ExtractedFields
+  extractFields(event: Record<string, unknown>, neverExtract: ReadonlySet<string>): ExtractedFields
 }
 
 // -- Parse options & results --

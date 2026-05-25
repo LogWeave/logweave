@@ -48,9 +48,10 @@ const mockResolvedRows = [
 // Mock DbClient that captures queries
 // ---------------------------------------------------------------------------
 
-function createCapturingDb(
-  mockData: unknown = [],
-): { db: DbClient; captured: Array<{ query: string; query_params: Record<string, unknown> }> } {
+function createCapturingDb(mockData: unknown = []): {
+  db: DbClient
+  captured: Array<{ query: string; query_params: Record<string, unknown> }>
+} {
   const captured: Array<{ query: string; query_params: Record<string, unknown> }> = []
   const db = {
     query: async (params: { query: string; query_params: Record<string, unknown> }) => {
@@ -81,7 +82,10 @@ describe('computeTimeWindow', () => {
 
     // Current window: ~1 hour
     const currentDuration = currentEnd - currentStart
-    assert.ok(currentDuration > 3_500_000 && currentDuration < 3_700_000, `current window ~1h: ${currentDuration}ms`)
+    assert.ok(
+      currentDuration > 3_500_000 && currentDuration < 3_700_000,
+      `current window ~1h: ${currentDuration}ms`,
+    )
 
     // Previous window: same duration, ending at currentStart
     assert.equal(previousEnd, currentStart, 'previous ends where current starts')
@@ -104,7 +108,10 @@ describe('computeTimeWindow', () => {
 
     // Previous window starts ~24 hours ago (12h current + 12h previous)
     const totalSpan = new Date(tw.currentEnd).getTime() - previousStart
-    assert.ok(totalSpan > 23 * 3_600_000 && totalSpan < 25 * 3_600_000, `total span ~24h: ${totalSpan}ms`)
+    assert.ok(
+      totalSpan > 23 * 3_600_000 && totalSpan < 25 * 3_600_000,
+      `total span ~24h: ${totalSpan}ms`,
+    )
   })
 
   it('previous window extends before since', () => {
@@ -136,7 +143,10 @@ describe('queryNewTemplates with since', () => {
     const sql = captured[0].query
     assert.ok(sql.includes('current_active'), 'should use current_active CTE')
     assert.ok(sql.includes('previous_ids'), 'should use previous_ids CTE')
-    assert.ok(sql.includes('p.template_id IS NULL'), 'should use set-difference (LEFT JOIN WHERE NULL)')
+    assert.ok(
+      sql.includes('p.template_id IS NULL'),
+      'should use set-difference (LEFT JOIN WHERE NULL)',
+    )
   })
 
   it('SQL does NOT contain is_new_template', async () => {
@@ -243,7 +253,10 @@ describe('queryTemplateSpikes with since', () => {
 
     const sql = captured[0].query
     assert.ok(!sql.includes('999'), 'must not use 999 sentinel for missing previous')
-    assert.ok(sql.includes('INNER JOIN previous'), 'must INNER JOIN previous to drop zero-baseline rows')
+    assert.ok(
+      sql.includes('INNER JOIN previous'),
+      'must INNER JOIN previous to drop zero-baseline rows',
+    )
     assert.ok(
       sql.includes('p.cnt >= greatest({min_baseline:UInt32}, 1)'),
       'must enforce min_baseline of at least 1 even when caller passes 0',
@@ -259,7 +272,10 @@ describe('queryTemplateSpikes with hours', () => {
 
     const sql = captured[0].query
     assert.ok(!sql.includes('999'), 'must not use 999 sentinel for missing previous')
-    assert.ok(sql.includes('INNER JOIN previous'), 'must INNER JOIN previous to drop zero-baseline rows')
+    assert.ok(
+      sql.includes('INNER JOIN previous'),
+      'must INNER JOIN previous to drop zero-baseline rows',
+    )
     assert.ok(
       sql.includes('p.cnt >= greatest({min_baseline:UInt32}, 1)'),
       'must enforce min_baseline of at least 1 even when caller passes 0',
@@ -290,6 +306,9 @@ describe('queryResolvedTemplates with since', () => {
 
     await queryResolvedTemplates(db, 'tenant-a', { since })
 
-    assert.ok(captured[0].query.includes('HAVING prev_count >= 5'), 'should keep minimum count threshold')
+    assert.ok(
+      captured[0].query.includes('HAVING prev_count >= 5'),
+      'should keep minimum count threshold',
+    )
   })
 })

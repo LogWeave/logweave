@@ -4,8 +4,8 @@ import express from 'express'
 import pino from 'pino'
 import request from 'supertest'
 import { createAuthMiddleware } from '../src/middleware/auth.js'
-import { createMcpDetectMiddleware } from '../src/middleware/mcp-detect.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
+import { createMcpDetectMiddleware } from '../src/middleware/mcp-detect.js'
 import { settingsRoutes } from '../src/routes/settings.js'
 import { TenantSettingsStore } from '../src/watches/tenant-settings.js'
 
@@ -237,9 +237,7 @@ describe('PUT /v1/settings/clustering', () => {
 
   it('requires authentication', async () => {
     const { app } = createTestApp()
-    const res = await request(app)
-      .put('/v1/settings/clustering')
-      .send({ sensitivity: 0.4 })
+    const res = await request(app).put('/v1/settings/clustering').send({ sensitivity: 0.4 })
 
     assert.equal(res.status, 401)
   })

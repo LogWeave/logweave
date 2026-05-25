@@ -24,8 +24,7 @@ export function FilterPill({ label, value, onRemove, onClick, active }: FilterPi
         className="bg-transparent border-0 p-0 cursor-pointer"
         onClick={onClick}
       >
-        <span className="text-text-muted">{label}:</span>{' '}
-        <span>{value}</span>
+        <span className="text-text-muted">{label}:</span> <span>{value}</span>
       </button>
       <button
         type="button"

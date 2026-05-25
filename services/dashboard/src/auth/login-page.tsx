@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { type FormEvent, useState } from 'react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useAuth } from './auth-provider'
@@ -38,7 +38,10 @@ export function LoginPage() {
         {/* Login form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="username" className="block text-xs font-medium text-text-secondary mb-1">
+            <label
+              htmlFor="username"
+              className="block text-xs font-medium text-text-secondary mb-1"
+            >
               Username
             </label>
             <Input
@@ -52,7 +55,10 @@ export function LoginPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-xs font-medium text-text-secondary mb-1">
+            <label
+              htmlFor="password"
+              className="block text-xs font-medium text-text-secondary mb-1"
+            >
               Password
             </label>
             <Input
@@ -66,7 +72,10 @@ export function LoginPage() {
           </div>
 
           <div>
-            <label htmlFor="totpCode" className="block text-xs font-medium text-text-secondary mb-1">
+            <label
+              htmlFor="totpCode"
+              className="block text-xs font-medium text-text-secondary mb-1"
+            >
               2FA Code <span className="text-text-muted">(if enabled)</span>
             </label>
             <Input

@@ -79,7 +79,13 @@ function escapeLikePattern(input: string): string {
 export async function querySemanticSearch(
   db: DbClient,
   tenantId: string,
-  options: { embedding: number[]; hours?: number; limit?: number; level?: string[]; threshold?: number },
+  options: {
+    embedding: number[]
+    hours?: number
+    limit?: number
+    level?: string[]
+    threshold?: number
+  },
 ): Promise<CrossServiceTemplateRow[]> {
   const hours = clamp(options.hours ?? DEFAULT_HOURS, MAX_HOURS)
   const limit = clamp(options.limit ?? DEFAULT_STATS_LIMIT, MAX_STATS_LIMIT)

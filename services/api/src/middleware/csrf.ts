@@ -18,7 +18,10 @@ const TOKEN_BYTES = 32
  *
  * Swappable: replace this middleware for a synchronizer token pattern if needed.
  */
-export function createCsrfMiddleware(signingKey: Buffer, options: { isProduction: boolean } = { isProduction: false }): {
+export function createCsrfMiddleware(
+  signingKey: Buffer,
+  options: { isProduction: boolean } = { isProduction: false },
+): {
   tokenSetter: RequestHandler
   tokenValidator: RequestHandler
 } {
@@ -41,7 +44,11 @@ export function createCsrfMiddleware(signingKey: Buffer, options: { isProduction
   }
 
   /** Validate CSRF token on state-changing requests with session auth */
-  const tokenValidator: RequestHandler = (req: Request, res: Response, next: NextFunction): void => {
+  const tokenValidator: RequestHandler = (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): void => {
     // Safe methods don't need CSRF
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
       next()
@@ -86,8 +93,10 @@ export function createCsrfMiddleware(signingKey: Buffer, options: { isProduction
     const cookieSig = cookieValue.slice(dotIndex + 1)
     const expectedSig = signToken(cookieToken)
 
-    if (cookieSig.length !== expectedSig.length ||
-        !timingSafeEqual(Buffer.from(cookieSig), Buffer.from(expectedSig))) {
+    if (
+      cookieSig.length !== expectedSig.length ||
+      !timingSafeEqual(Buffer.from(cookieSig), Buffer.from(expectedSig))
+    ) {
       res.status(403).json({ error: { code: 'CSRF_INVALID', message: 'Invalid CSRF token' } })
       return
     }

@@ -23,7 +23,10 @@ export function useUrlSync() {
   const setLevelFilters = useDashboardStore((s) => s.setLevelFilters)
   const setSelectedTemplateId = useDashboardStore((s) => s.setSelectedTemplateId)
 
-  // On mount: read URL params and apply to store
+  // On mount: read URL params and apply to store. Mount-once read of the
+  // initial query string — we don't want the effect to re-fire when the
+  // store setters or searchParams change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once URL read
   useEffect(() => {
     if (initialized.current) return
     initialized.current = true
@@ -47,7 +50,6 @@ export function useUrlSync() {
     if (template) {
       setSelectedTemplateId(template)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // On store change: update URL params

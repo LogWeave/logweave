@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { parseEvent, parseBatch, JsonLogParser } from '../../src/pipeline/parse.js'
+import { JsonLogParser, parseBatch, parseEvent } from '../../src/pipeline/parse.js'
 
 describe('parseEvent', () => {
   // -- Core extraction --

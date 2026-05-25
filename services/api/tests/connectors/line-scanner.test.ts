@@ -72,11 +72,7 @@ describe('scanStream', () => {
   })
 
   it('respects remaining limit', async () => {
-    const stream = toReadable([
-      'match line 1',
-      'match line 2',
-      'match line 3',
-    ])
+    const stream = toReadable(['match line 1', 'match line 2', 'match line 3'])
 
     const result = await scanStream({
       stream,
@@ -90,7 +86,11 @@ describe('scanStream', () => {
 
   it('extracts message and timestamp from JSONL format', async () => {
     const stream = toReadable([
-      JSON.stringify({ message: 'error occurred', timestamp: '2026-01-01T12:00:00Z', level: 'error' }),
+      JSON.stringify({
+        message: 'error occurred',
+        timestamp: '2026-01-01T12:00:00Z',
+        level: 'error',
+      }),
       JSON.stringify({ message: 'info line', timestamp: '2026-01-01T12:01:00Z', level: 'info' }),
     ])
 
@@ -107,10 +107,7 @@ describe('scanStream', () => {
   })
 
   it('skips invalid JSON lines in JSONL mode', async () => {
-    const stream = toReadable([
-      'not json',
-      JSON.stringify({ message: 'valid line' }),
-    ])
+    const stream = toReadable(['not json', JSON.stringify({ message: 'valid line' })])
 
     const result = await scanStream({
       stream,

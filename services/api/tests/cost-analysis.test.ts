@@ -28,14 +28,16 @@ const keyMap = new Map([
 // Mock data — ClickHouse returns numbers as strings
 // ---------------------------------------------------------------------------
 
-function makeRow(overrides: Partial<{
-  template_id: string
-  template_text: string
-  service: string
-  level: string
-  count: string
-  service_total: string
-}>) {
+function makeRow(
+  overrides: Partial<{
+    template_id: string
+    template_text: string
+    service: string
+    level: string
+    count: string
+    service_total: string
+  }>,
+) {
   return {
     template_id: overrides.template_id ?? 'tmpl-1',
     template_text: overrides.template_text ?? 'Health check responded in <*> ms',
@@ -84,9 +86,7 @@ describe('GET /v1/cost/analysis', () => {
   it('returns 200 with empty patterns when no data', async () => {
     const { app } = createTestApp({ queryResults: [] })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data.patterns, [])
@@ -103,9 +103,7 @@ describe('GET /v1/cost/analysis', () => {
     ]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.patterns.length, 1)
@@ -121,9 +119,7 @@ describe('GET /v1/cost/analysis', () => {
     ]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.patterns[0].classification, 'noise')
@@ -135,9 +131,7 @@ describe('GET /v1/cost/analysis', () => {
     ]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.patterns[0].classification, 'review')
@@ -151,9 +145,7 @@ describe('GET /v1/cost/analysis', () => {
     ]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.patterns[0].classification, 'review')
@@ -166,9 +158,7 @@ describe('GET /v1/cost/analysis', () => {
     ]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data.patterns, [])
@@ -182,9 +172,7 @@ describe('GET /v1/cost/analysis', () => {
     ]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data.patterns, [])
@@ -193,16 +181,14 @@ describe('GET /v1/cost/analysis', () => {
 
   it('sorts noise before review, each by volumePct descending', async () => {
     const rows = [
-      makeRow({ template_id: 't1', level: 'INFO', count: '200', service_total: '1000' }),  // review 20%
-      makeRow({ template_id: 't2', level: 'DEBUG', count: '100', service_total: '1000' }),  // noise 10%
-      makeRow({ template_id: 't3', level: 'DEBUG', count: '300', service_total: '1000' }),  // noise 30%
-      makeRow({ template_id: 't4', level: 'INFO', count: '150', service_total: '1000' }),   // review 15%
+      makeRow({ template_id: 't1', level: 'INFO', count: '200', service_total: '1000' }), // review 20%
+      makeRow({ template_id: 't2', level: 'DEBUG', count: '100', service_total: '1000' }), // noise 10%
+      makeRow({ template_id: 't3', level: 'DEBUG', count: '300', service_total: '1000' }), // noise 30%
+      makeRow({ template_id: 't4', level: 'INFO', count: '150', service_total: '1000' }), // review 15%
     ]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.patterns.length, 4)
@@ -222,9 +208,7 @@ describe('GET /v1/cost/analysis', () => {
     await settingsStore.set(TENANT_A, { costNoiseDebugPct: 10 })
     const { app } = createTestApp({ queryResults: rows, settingsStore })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     // 8% < custom threshold 10%, so it should be keep (excluded)
@@ -236,9 +220,7 @@ describe('GET /v1/cost/analysis', () => {
   it('returns thresholds in response', async () => {
     const { app } = createTestApp({ queryResults: [] })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.thresholds.noiseDebugPct, 5)
@@ -288,14 +270,10 @@ describe('GET /v1/cost/analysis', () => {
   })
 
   it('handles division by zero gracefully (service_total = 0)', async () => {
-    const rows = [
-      makeRow({ level: 'DEBUG', count: '0', service_total: '0' }),
-    ]
+    const rows = [makeRow({ level: 'DEBUG', count: '0', service_total: '0' })]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     // volumePct = 0, below any threshold → keep
@@ -305,14 +283,12 @@ describe('GET /v1/cost/analysis', () => {
   it('computes potentialReductionPct from noise + review volumes', async () => {
     const rows = [
       makeRow({ template_id: 't1', level: 'DEBUG', count: '300', service_total: '1000' }), // noise 30%
-      makeRow({ template_id: 't2', level: 'INFO', count: '200', service_total: '1000' }),   // review 20%
-      makeRow({ template_id: 't3', level: 'ERROR', count: '500', service_total: '1000' }),   // keep
+      makeRow({ template_id: 't2', level: 'INFO', count: '200', service_total: '1000' }), // review 20%
+      makeRow({ template_id: 't3', level: 'ERROR', count: '500', service_total: '1000' }), // keep
     ]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.summary.potentialReductionPct, 50)
@@ -324,16 +300,38 @@ describe('GET /v1/cost/analysis', () => {
     // potentialReductionPct = (300 + 600) / (1000 + 2000) = 900/3000 = 30%
     // Old (buggy) code would sum per-service percentages: 30 + 30 = 60 — wrong
     const rows = [
-      makeRow({ template_id: 't1', service: 'svc-a', level: 'DEBUG', count: '300', service_total: '1000' }),
-      makeRow({ template_id: 't2', service: 'svc-a', level: 'ERROR', count: '700', service_total: '1000' }),
-      makeRow({ template_id: 't3', service: 'svc-b', level: 'INFO', count: '600', service_total: '2000' }),
-      makeRow({ template_id: 't4', service: 'svc-b', level: 'ERROR', count: '1400', service_total: '2000' }),
+      makeRow({
+        template_id: 't1',
+        service: 'svc-a',
+        level: 'DEBUG',
+        count: '300',
+        service_total: '1000',
+      }),
+      makeRow({
+        template_id: 't2',
+        service: 'svc-a',
+        level: 'ERROR',
+        count: '700',
+        service_total: '1000',
+      }),
+      makeRow({
+        template_id: 't3',
+        service: 'svc-b',
+        level: 'INFO',
+        count: '600',
+        service_total: '2000',
+      }),
+      makeRow({
+        template_id: 't4',
+        service: 'svc-b',
+        level: 'ERROR',
+        count: '1400',
+        service_total: '2000',
+      }),
     ]
     const { app } = createTestApp({ queryResults: rows })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.summary.potentialReductionPct, 30)
@@ -350,9 +348,7 @@ describe('GET /v1/cost/analysis', () => {
   })
 
   it('filters rows when level param is set — patterns from those rows are classified normally', async () => {
-    const rows = [
-      makeRow({ level: 'DEBUG', count: '600', service_total: '1000' }),
-    ]
+    const rows = [makeRow({ level: 'DEBUG', count: '600', service_total: '1000' })]
     const { app } = createTestApp({ queryResults: rows })
 
     const res = await request(app)
@@ -386,9 +382,7 @@ describe('GET /v1/cost/analysis', () => {
   it('returns meta with fetchedAt and timeRange', async () => {
     const { app } = createTestApp({ queryResults: [] })
 
-    const res = await request(app)
-      .get('/v1/cost/analysis')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/cost/analysis').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.ok(res.body.meta.fetchedAt)

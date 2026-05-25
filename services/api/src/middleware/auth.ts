@@ -1,11 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import type pino from 'pino'
-import type { SessionValidationCache } from '../auth/session-cache.js'
 import type { SessionProvider } from '../auth/session.js'
-import { SESSION_COOKIE_NAME } from '../auth/session.js'
+import { SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '../auth/session.js'
+import type { SessionValidationCache } from '../auth/session-cache.js'
 import type { UserStore } from '../auth/user-store.js'
-import { SESSION_COOKIE_OPTIONS } from '../auth/session.js'
 import { forbidden, unauthorized } from '../errors.js'
 import { getInternalEvents } from '../internal-events/emitter.js'
 
@@ -120,27 +119,28 @@ export function createAuthMiddleware(
 
     // 2. Session cookie (dashboard) — validates HMAC + checks session version
     if (sessionProvider) {
-      const cookieValue = (req as Request & { cookies?: Record<string, string> }).cookies?.[SESSION_COOKIE_NAME]
+      const cookieValue = (req as Request & { cookies?: Record<string, string> }).cookies?.[
+        SESSION_COOKIE_NAME
+      ]
       if (cookieValue) {
         const session = sessionProvider.validateSession(cookieValue)
         if (session) {
           // Check session version against cache/DB to catch deleted/changed users
           if (sessionCache && userStore) {
-            let cached = sessionCache.get(session.userId)
+            const cached = sessionCache.get(session.userId)
             if (!cached) {
               // Cache miss — query DB (async, but we need to await)
               // Fire-and-forget populate cache; for this request, trust the signed cookie
-              userStore.findById(session.userId).then((user) => {
-                sessionCache.set(
-                  session.userId,
-                  user?.sessionVersion ?? 0,
-                  !user,
-                )
-              }).catch((err) => {
-                // Silently swallowing this would mean every request takes the slow
-                // path with no signal in logs. Log it so DB outages are observable.
-                logger?.warn({ err, userId: session.userId }, 'Session cache populate failed')
-              })
+              userStore
+                .findById(session.userId)
+                .then((user) => {
+                  sessionCache.set(session.userId, user?.sessionVersion ?? 0, !user)
+                })
+                .catch((err) => {
+                  // Silently swallowing this would mean every request takes the slow
+                  // path with no signal in logs. Log it so DB outages are observable.
+                  logger?.warn({ err, userId: session.userId }, 'Session cache populate failed')
+                })
             } else if (cached.isDeleted || cached.sessionVersion !== session.sessionVersion) {
               // User deleted or session version mismatch — reject
               next(unauthorized('Session expired'))

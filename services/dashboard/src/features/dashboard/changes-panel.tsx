@@ -1,9 +1,9 @@
 import { memo } from 'react'
 import { useChanges, useOverview, useSpikeBaseline } from '../../api/queries'
 import type { ChangeEvent } from '../../api/types'
-import { QueryError } from '../../components/ui/query-error'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
+import { QueryError } from '../../components/ui/query-error'
 import { Skeleton } from '../../components/ui/skeleton'
 import { Tooltip } from '../../components/ui/tooltip'
 import { cn } from '../../lib/cn'
@@ -41,7 +41,10 @@ const ChangeEventRow = memo(function ChangeEventRow({
           <span className="text-[11px] text-text-muted">{event.service}</span>
           {event.firstSeen && (
             <span className="text-[11px] text-text-muted">
-              {new Date(event.firstSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {new Date(event.firstSeen).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
             </span>
           )}
           {event.type === 'spike' && (
@@ -49,7 +52,11 @@ const ChangeEventRow = memo(function ChangeEventRow({
               <span
                 className={cn(
                   'text-[11px] font-mono tabular-nums font-semibold',
-                  event.ratio >= 50 ? 'text-danger' : event.ratio >= 10 ? 'text-warning' : 'text-text-secondary',
+                  event.ratio >= 50
+                    ? 'text-danger'
+                    : event.ratio >= 10
+                      ? 'text-warning'
+                      : 'text-text-secondary',
                 )}
               >
                 {event.ratio.toFixed(1)}x
@@ -127,7 +134,11 @@ export function ChangesPanel({ className }: { className?: string }) {
                   Spikes ({spikes.length})
                 </p>
                 {spikes.map((event) => (
-                  <ChangeEventRow key={`${event.templateId}-${event.service}`} event={event} onSelect={setSelectedTemplateId} />
+                  <ChangeEventRow
+                    key={`${event.templateId}-${event.service}`}
+                    event={event}
+                    onSelect={setSelectedTemplateId}
+                  />
                 ))}
               </div>
             )}
@@ -137,7 +148,11 @@ export function ChangesPanel({ className }: { className?: string }) {
                   New Patterns ({newEvents.length})
                 </p>
                 {newEvents.map((event) => (
-                  <ChangeEventRow key={`${event.templateId}-${event.service}`} event={event} onSelect={setSelectedTemplateId} />
+                  <ChangeEventRow
+                    key={`${event.templateId}-${event.service}`}
+                    event={event}
+                    onSelect={setSelectedTemplateId}
+                  />
                 ))}
               </div>
             )}
@@ -147,7 +162,11 @@ export function ChangesPanel({ className }: { className?: string }) {
                   Resolved ({resolved.length})
                 </p>
                 {resolved.map((event) => (
-                  <ChangeEventRow key={`${event.templateId}-${event.service}`} event={event} onSelect={setSelectedTemplateId} />
+                  <ChangeEventRow
+                    key={`${event.templateId}-${event.service}`}
+                    event={event}
+                    onSelect={setSelectedTemplateId}
+                  />
                 ))}
               </div>
             )}

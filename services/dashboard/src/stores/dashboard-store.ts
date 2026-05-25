@@ -64,7 +64,8 @@ export const useDashboardStore = create<DashboardState>()(
       watchedOnly: false,
       toggleWatchedOnly: () => set((state) => ({ watchedOnly: !state.watchedOnly })),
       selectedTimeRange: null,
-      setSelectedTimeRange: (selectedTimeRange) => set({ selectedTimeRange, investigatingStatusCode: null }),
+      setSelectedTimeRange: (selectedTimeRange) =>
+        set({ selectedTimeRange, investigatingStatusCode: null }),
       investigatingStatusCode: null,
       setInvestigatingStatusCode: (investigatingStatusCode) => set({ investigatingStatusCode }),
     }),

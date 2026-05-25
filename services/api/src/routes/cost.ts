@@ -3,9 +3,9 @@ import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
 import type { CostAnalysisRow } from '../db/cost-queries.js'
 import { queryCostAnalysis } from '../db/cost-queries.js'
+import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
-import { respond } from '../lib/respond.js'
 import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 import type {
   Classification,
@@ -122,7 +122,14 @@ function buildPatterns(
   const potentialReductionPct =
     totalEvents > 0 ? Math.round((reducibleCount / totalEvents) * 1000) / 10 : 0
 
-  return { patterns, totalPatternsAnalyzed: rows.length, noiseCount, reviewCount, keepCount, potentialReductionPct }
+  return {
+    patterns,
+    totalPatternsAnalyzed: rows.length,
+    noiseCount,
+    reviewCount,
+    keepCount,
+    potentialReductionPct,
+  }
 }
 
 export function costRoutes(deps: CostDeps): Router {
@@ -148,8 +155,14 @@ export function costRoutes(deps: CostDeps): Router {
         level: params.level,
       })
 
-      const { patterns, totalPatternsAnalyzed, noiseCount, reviewCount, keepCount, potentialReductionPct } =
-        buildPatterns(rows, thresholds)
+      const {
+        patterns,
+        totalPatternsAnalyzed,
+        noiseCount,
+        reviewCount,
+        keepCount,
+        potentialReductionPct,
+      } = buildPatterns(rows, thresholds)
 
       const data: CostAnalysisData = {
         summary: {

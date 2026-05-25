@@ -1,17 +1,20 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, it, type mock } from 'node:test'
 import { ElasticsearchAdapter } from '../../src/connectors/elasticsearch-adapter.js'
-import type { ElasticsearchConnectorConfig, FetchRawLogsParams } from '../../src/connectors/types.js'
+import type {
+  ElasticsearchConnectorConfig,
+  FetchRawLogsParams,
+} from '../../src/connectors/types.js'
 
 // ---------------------------------------------------------------------------
 // Setup: mock global fetch
 // ---------------------------------------------------------------------------
 
 const originalFetch = globalThis.fetch
-let fetchMock: ReturnType<typeof mock.fn<typeof fetch>>
+let _fetchMock: ReturnType<typeof mock.fn<typeof fetch>>
 
 function mockFetchWith(handler: (input: string | URL | Request) => Promise<Response>): void {
-  fetchMock = (globalThis as Record<string, unknown>).fetch = handler as typeof fetch
+  _fetchMock = (globalThis as Record<string, unknown>).fetch = handler as typeof fetch
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

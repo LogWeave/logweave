@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { describe, it, beforeEach } from 'node:test'
+import { describe, it } from 'node:test'
 import pino from 'pino'
 import { ClusterClient } from '../../src/pipeline/cluster-client.js'
 
@@ -46,9 +46,7 @@ function mockFetchError(error: Error): typeof globalThis.fetch {
 }
 
 const CLUSTERER_RESPONSE = {
-  results: [
-    { template_id: 'abc-123', template_text: 'User <*> logged in', is_new: true },
-  ],
+  results: [{ template_id: 'abc-123', template_text: 'User <*> logged in', is_new: true }],
 }
 
 describe('ClusterClient', () => {
@@ -56,7 +54,12 @@ describe('ClusterClient', () => {
 
   it('returns mapped results on successful cluster call', async () => {
     const { logger } = createTestLogger()
-    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, CLUSTERER_RESPONSE))
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      mockFetch(200, CLUSTERER_RESPONSE),
+    )
 
     const results = await client.cluster('tenant-a', ['User alice logged in'])
 
@@ -75,7 +78,12 @@ describe('ClusterClient', () => {
       ],
     }
     const { logger } = createTestLogger()
-    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, multiResponse))
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      mockFetch(200, multiResponse),
+    )
 
     const results = await client.cluster('tenant-a', ['msg1', 'msg2', 'msg3'])
 
@@ -89,7 +97,7 @@ describe('ClusterClient', () => {
     const { logger } = createTestLogger()
     // First call fails
     let callCount = 0
-    const toggleFetch: typeof globalThis.fetch = async (url, init) => {
+    const toggleFetch: typeof globalThis.fetch = async (_url, _init) => {
       callCount++
       if (callCount === 1) {
         return new Response('', { status: 500 })
@@ -140,7 +148,12 @@ describe('ClusterClient', () => {
 
   it('returns fallback on HTTP 503', async () => {
     const { logger } = createTestLogger()
-    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(503, { detail: 'Server busy' }))
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      mockFetch(503, { detail: 'Server busy' }),
+    )
 
     const results = await client.cluster('tenant-a', ['msg'])
 
@@ -150,7 +163,12 @@ describe('ClusterClient', () => {
 
   it('returns fallback on HTTP 500', async () => {
     const { logger } = createTestLogger()
-    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(500, { detail: 'Internal error' }))
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      mockFetch(500, { detail: 'Internal error' }),
+    )
 
     const results = await client.cluster('tenant-a', ['msg'])
 
@@ -160,7 +178,12 @@ describe('ClusterClient', () => {
 
   it('returns fallback on HTTP 422 and logs at ERROR level', async () => {
     const { logger, calls } = createTestLogger()
-    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(422, { detail: 'Validation error' }))
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      mockFetch(422, { detail: 'Validation error' }),
+    )
 
     const results = await client.cluster('tenant-a', ['msg'])
 
@@ -175,7 +198,12 @@ describe('ClusterClient', () => {
 
   it('returns fallback on 200 with malformed body', async () => {
     const { logger } = createTestLogger()
-    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, { oops: 'no results' }))
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      mockFetch(200, { oops: 'no results' }),
+    )
 
     const results = await client.cluster('tenant-a', ['msg'])
 
@@ -213,9 +241,7 @@ describe('ClusterClient', () => {
   it('returns fallback on result count mismatch', async () => {
     const { logger } = createTestLogger()
     const mismatch = {
-      results: [
-        { template_id: 'id-1', template_text: 'tpl', is_new: false },
-      ],
+      results: [{ template_id: 'id-1', template_text: 'tpl', is_new: false }],
     }
     const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, mismatch))
 
@@ -231,10 +257,12 @@ describe('ClusterClient', () => {
     const slowFetch: typeof globalThis.fetch = async (_url, init) => {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
-          resolve(new Response(JSON.stringify(CLUSTERER_RESPONSE), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }))
+          resolve(
+            new Response(JSON.stringify(CLUSTERER_RESPONSE), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          )
         }, 2000)
         init?.signal?.addEventListener('abort', () => {
           clearTimeout(timer)
@@ -439,7 +467,12 @@ const EMBED_RESPONSE = {
 describe('ClusterClient.embed()', () => {
   it('returns embeddings on success', async () => {
     const { logger } = createTestLogger()
-    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, EMBED_RESPONSE))
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      mockFetch(200, EMBED_RESPONSE),
+    )
 
     const result = await client.embed(['hello world'])
 
@@ -457,7 +490,12 @@ describe('ClusterClient.embed()', () => {
 
   it('returns null on malformed response', async () => {
     const { logger } = createTestLogger()
-    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(200, { wrong: 'shape' }))
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      mockFetch(200, { wrong: 'shape' }),
+    )
 
     const result = await client.embed(['hello'])
 

@@ -29,7 +29,7 @@ describe('formatTimeRange', () => {
   it('includes hours and ISO timestamps', () => {
     const result = formatTimeRange(24)
     assert.ok(result.includes('24 hours'))
-    assert.ok(result.includes('T'))  // ISO timestamp
+    assert.ok(result.includes('T')) // ISO timestamp
   })
 })
 

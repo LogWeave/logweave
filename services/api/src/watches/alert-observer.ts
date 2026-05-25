@@ -104,7 +104,12 @@ export class ConsoleObserver implements AlertObserver {
   async notify(alert: AlertEvent): Promise<void> {
     if (isResolvedAlert(alert)) {
       this.logger.info(
-        { alertType: 'resolved', tenantId: alert.tenantId, ruleId: alert.ruleId, service: alert.service },
+        {
+          alertType: 'resolved',
+          tenantId: alert.tenantId,
+          ruleId: alert.ruleId,
+          service: alert.service,
+        },
         `RESOLVED: "${alert.ruleName}" in ${alert.service}`,
       )
       return

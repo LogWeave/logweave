@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { toast } from 'sonner'
-import { useCostThresholds, useSaveCostThresholds, useSpikeBaseline, useSaveSpikeBaseline } from '../../api/queries'
+import {
+  useCostThresholds,
+  useSaveCostThresholds,
+  useSaveSpikeBaseline,
+  useSpikeBaseline,
+} from '../../api/queries'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
@@ -12,6 +17,7 @@ export function SpikeBaselineSettings() {
   const saveMutation = useSaveSpikeBaseline()
 
   const [minBaseline, setMinBaseline] = useState(10)
+  const minBaselineId = useId()
 
   useEffect(() => {
     if (baseline) {
@@ -50,17 +56,22 @@ export function SpikeBaselineSettings() {
       <CardContent>
         <div className="space-y-4">
           <p className="text-xs text-text-muted">
-            Spikes are only surfaced when the pattern had at least this many events in the
-            previous window. Suppresses 0→1 noise without hiding genuine traffic spikes.
+            Spikes are only surfaced when the pattern had at least this many events in the previous
+            window. Suppresses 0→1 noise without hiding genuine traffic spikes.
           </p>
           <div className="space-y-1">
-            <label className="text-xs text-text-secondary font-medium">
+            <label
+              htmlFor={minBaselineId}
+              className="text-xs text-text-secondary font-medium block"
+            >
               Minimum previous-window count
             </label>
             <p className="text-[10px] text-text-muted">
-              Patterns with fewer events than this in the prior window are excluded from spikes. Default: 10
+              Patterns with fewer events than this in the prior window are excluded from spikes.
+              Default: 10
             </p>
             <Input
+              id={minBaselineId}
               type="number"
               min={0}
               max={10000}
@@ -92,6 +103,9 @@ export function CostSettings() {
   const [noiseDebugPct, setNoiseDebugPct] = useState(5)
   const [reviewInfoPct, setReviewInfoPct] = useState(10)
   const [reviewWarnPct, setReviewWarnPct] = useState(20)
+  const noiseDebugId = useId()
+  const reviewInfoId = useId()
+  const reviewWarnId = useId()
 
   // Sync form state with server values
   useEffect(() => {
@@ -142,13 +156,18 @@ export function CostSettings() {
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <label className="text-xs text-text-secondary font-medium">
+              <label
+                htmlFor={noiseDebugId}
+                className="text-xs text-text-secondary font-medium block"
+              >
                 Noise threshold (DEBUG/TRACE)
               </label>
               <p className="text-[10px] text-text-muted">
-                DEBUG/TRACE patterns above this volume percentage are classified as noise. Default: 5
+                DEBUG/TRACE patterns above this volume percentage are classified as noise. Default:
+                5
               </p>
               <Input
+                id={noiseDebugId}
                 type="number"
                 min={0}
                 max={100}
@@ -160,13 +179,17 @@ export function CostSettings() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-text-secondary font-medium">
+              <label
+                htmlFor={reviewInfoId}
+                className="text-xs text-text-secondary font-medium block"
+              >
                 Review threshold (INFO)
               </label>
               <p className="text-[10px] text-text-muted">
                 INFO patterns above this volume percentage are flagged for review. Default: 10
               </p>
               <Input
+                id={reviewInfoId}
                 type="number"
                 min={0}
                 max={100}
@@ -178,13 +201,17 @@ export function CostSettings() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-text-secondary font-medium">
+              <label
+                htmlFor={reviewWarnId}
+                className="text-xs text-text-secondary font-medium block"
+              >
                 Review threshold (WARN)
               </label>
               <p className="text-[10px] text-text-muted">
                 WARN patterns above this volume percentage are flagged for review. Default: 20
               </p>
               <Input
+                id={reviewWarnId}
                 type="number"
                 min={0}
                 max={100}

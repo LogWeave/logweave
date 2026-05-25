@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
 import type { DbClient } from '../../src/db/client.js'
-import type { AlertEvent, TemplateAlertEvent, ThresholdAlertEvent } from '../../src/watches/alert-observer.js'
+import type { TemplateAlertEvent, ThresholdAlertEvent } from '../../src/watches/alert-observer.js'
 import { HistoryObserver } from '../../src/watches/history-observer.js'
 
 const silentLogger = pino({ level: 'silent' })

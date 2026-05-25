@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react'
 
 interface AuthUser {
   userId: string
@@ -26,7 +26,10 @@ export function useAuth(): AuthContextValue {
   return ctx
 }
 
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<{ data?: T; error?: string; status: number }> {
+async function fetchJson<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<{ data?: T; error?: string; status: number }> {
   try {
     const base = window.location.origin
     const res = await fetch(`${base}${path}`, {
@@ -78,7 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: user !== null, isLoading, login, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{ user, isAuthenticated: user !== null, isLoading, login, logout, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   )

@@ -174,7 +174,10 @@ export function useChanges(minBaseline?: number) {
 export function useSpikeBaseline() {
   return useQuery({
     queryKey: queryKeys.spikeBaseline(),
-    queryFn: () => api.get<ApiResponse<{ minBaseline: number; isCustom: boolean }>>('/v1/settings/spike-baseline'),
+    queryFn: () =>
+      api.get<ApiResponse<{ minBaseline: number; isCustom: boolean }>>(
+        '/v1/settings/spike-baseline',
+      ),
     staleTime: 30_000,
   })
 }
@@ -462,10 +465,7 @@ export interface S3QuickCreateUrlResponse {
 export function useS3QuickCreateUrl() {
   return useMutation({
     mutationFn: (body: { bucket: string; prefix?: string; region?: string }) =>
-      api.post<ApiResponse<S3QuickCreateUrlResponse>>(
-        '/v1/connectors/s3/quick-create-url',
-        body,
-      ),
+      api.post<ApiResponse<S3QuickCreateUrlResponse>>('/v1/connectors/s3/quick-create-url', body),
   })
 }
 

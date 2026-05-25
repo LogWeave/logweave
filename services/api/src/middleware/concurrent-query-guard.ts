@@ -20,7 +20,11 @@ export function createConcurrentQueryGuard(options: ConcurrentQueryGuardOptions)
     const current = activeCounts.get(tenantId) ?? 0
 
     if (current >= options.maxConcurrent) {
-      next(rateLimited(`Too many concurrent queries (limit: ${options.maxConcurrent}). Try again shortly.`))
+      next(
+        rateLimited(
+          `Too many concurrent queries (limit: ${options.maxConcurrent}). Try again shortly.`,
+        ),
+      )
       return
     }
 

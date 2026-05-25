@@ -29,7 +29,12 @@ export interface UserStore {
     role: 'admin' | 'viewer'
   }): Promise<DashboardUser>
   updatePassword(userId: string, passwordHash: string, mustChangePassword?: boolean): Promise<void>
-  updateTotp(userId: string, totpSecret: string, recoveryCodes: string, enabled: boolean): Promise<void>
+  updateTotp(
+    userId: string,
+    totpSecret: string,
+    recoveryCodes: string,
+    enabled: boolean,
+  ): Promise<void>
   clearMustChangePassword(userId: string): Promise<void>
   bumpSessionVersion(userId: string): Promise<void>
   updateLastLogin(userId: string): Promise<void>
@@ -128,21 +133,23 @@ export class ClickHouseUserStore implements UserStore {
 
     await this.db.insert({
       table: 'logweave.dashboard_users',
-      values: [{
-        user_id: userId,
-        username: input.username,
-        password_hash: passwordHash,
-        tenant_id: input.tenantId,
-        role: input.role,
-        must_change_password: 1,
-        totp_secret: '',
-        totp_enabled: 0,
-        recovery_codes: '',
-        session_version: 1,
-        last_login_at: null,
-        version: Date.now(),
-        is_deleted: 0,
-      }],
+      values: [
+        {
+          user_id: userId,
+          username: input.username,
+          password_hash: passwordHash,
+          tenant_id: input.tenantId,
+          role: input.role,
+          must_change_password: 1,
+          totp_secret: '',
+          totp_enabled: 0,
+          recovery_codes: '',
+          session_version: 1,
+          last_login_at: null,
+          version: Date.now(),
+          is_deleted: 0,
+        },
+      ],
       format: 'JSONEachRow',
     })
 
@@ -163,50 +170,63 @@ export class ClickHouseUserStore implements UserStore {
     }
   }
 
-  async updatePassword(userId: string, passwordHash: string, mustChangePassword = false): Promise<void> {
+  async updatePassword(
+    userId: string,
+    passwordHash: string,
+    mustChangePassword = false,
+  ): Promise<void> {
     const user = await this.findById(userId)
     if (!user) return
     await this.db.insert({
       table: 'logweave.dashboard_users',
-      values: [{
-        user_id: userId,
-        username: user.username,
-        password_hash: passwordHash,
-        tenant_id: user.tenantId,
-        role: user.role,
-        must_change_password: mustChangePassword ? 1 : 0,
-        totp_secret: user.totpSecret,
-        totp_enabled: user.totpEnabled ? 1 : 0,
-        recovery_codes: user.recoveryCodes,
-        session_version: user.sessionVersion + 1,
-        last_login_at: user.lastLoginAt,
-        version: Date.now(),
-        is_deleted: 0,
-      }],
+      values: [
+        {
+          user_id: userId,
+          username: user.username,
+          password_hash: passwordHash,
+          tenant_id: user.tenantId,
+          role: user.role,
+          must_change_password: mustChangePassword ? 1 : 0,
+          totp_secret: user.totpSecret,
+          totp_enabled: user.totpEnabled ? 1 : 0,
+          recovery_codes: user.recoveryCodes,
+          session_version: user.sessionVersion + 1,
+          last_login_at: user.lastLoginAt,
+          version: Date.now(),
+          is_deleted: 0,
+        },
+      ],
       format: 'JSONEachRow',
     })
   }
 
-  async updateTotp(userId: string, totpSecret: string, recoveryCodes: string, enabled: boolean): Promise<void> {
+  async updateTotp(
+    userId: string,
+    totpSecret: string,
+    recoveryCodes: string,
+    enabled: boolean,
+  ): Promise<void> {
     const user = await this.findById(userId)
     if (!user) return
     await this.db.insert({
       table: 'logweave.dashboard_users',
-      values: [{
-        user_id: userId,
-        username: user.username,
-        password_hash: user.passwordHash,
-        tenant_id: user.tenantId,
-        role: user.role,
-        must_change_password: user.mustChangePassword ? 1 : 0,
-        totp_secret: totpSecret,
-        totp_enabled: enabled ? 1 : 0,
-        recovery_codes: recoveryCodes,
-        session_version: user.sessionVersion + 1,
-        last_login_at: user.lastLoginAt,
-        version: Date.now(),
-        is_deleted: 0,
-      }],
+      values: [
+        {
+          user_id: userId,
+          username: user.username,
+          password_hash: user.passwordHash,
+          tenant_id: user.tenantId,
+          role: user.role,
+          must_change_password: user.mustChangePassword ? 1 : 0,
+          totp_secret: totpSecret,
+          totp_enabled: enabled ? 1 : 0,
+          recovery_codes: recoveryCodes,
+          session_version: user.sessionVersion + 1,
+          last_login_at: user.lastLoginAt,
+          version: Date.now(),
+          is_deleted: 0,
+        },
+      ],
       format: 'JSONEachRow',
     })
   }
@@ -216,21 +236,23 @@ export class ClickHouseUserStore implements UserStore {
     if (!user) return
     await this.db.insert({
       table: 'logweave.dashboard_users',
-      values: [{
-        user_id: userId,
-        username: user.username,
-        password_hash: user.passwordHash,
-        tenant_id: user.tenantId,
-        role: user.role,
-        must_change_password: 0,
-        totp_secret: user.totpSecret,
-        totp_enabled: user.totpEnabled ? 1 : 0,
-        recovery_codes: user.recoveryCodes,
-        session_version: user.sessionVersion,
-        last_login_at: user.lastLoginAt,
-        version: Date.now(),
-        is_deleted: 0,
-      }],
+      values: [
+        {
+          user_id: userId,
+          username: user.username,
+          password_hash: user.passwordHash,
+          tenant_id: user.tenantId,
+          role: user.role,
+          must_change_password: 0,
+          totp_secret: user.totpSecret,
+          totp_enabled: user.totpEnabled ? 1 : 0,
+          recovery_codes: user.recoveryCodes,
+          session_version: user.sessionVersion,
+          last_login_at: user.lastLoginAt,
+          version: Date.now(),
+          is_deleted: 0,
+        },
+      ],
       format: 'JSONEachRow',
     })
   }
@@ -240,21 +262,23 @@ export class ClickHouseUserStore implements UserStore {
     if (!user) return
     await this.db.insert({
       table: 'logweave.dashboard_users',
-      values: [{
-        user_id: userId,
-        username: user.username,
-        password_hash: user.passwordHash,
-        tenant_id: user.tenantId,
-        role: user.role,
-        must_change_password: user.mustChangePassword ? 1 : 0,
-        totp_secret: user.totpSecret,
-        totp_enabled: user.totpEnabled ? 1 : 0,
-        recovery_codes: user.recoveryCodes,
-        session_version: user.sessionVersion + 1,
-        last_login_at: user.lastLoginAt,
-        version: Date.now(),
-        is_deleted: 0,
-      }],
+      values: [
+        {
+          user_id: userId,
+          username: user.username,
+          password_hash: user.passwordHash,
+          tenant_id: user.tenantId,
+          role: user.role,
+          must_change_password: user.mustChangePassword ? 1 : 0,
+          totp_secret: user.totpSecret,
+          totp_enabled: user.totpEnabled ? 1 : 0,
+          recovery_codes: user.recoveryCodes,
+          session_version: user.sessionVersion + 1,
+          last_login_at: user.lastLoginAt,
+          version: Date.now(),
+          is_deleted: 0,
+        },
+      ],
       format: 'JSONEachRow',
     })
   }
@@ -264,21 +288,23 @@ export class ClickHouseUserStore implements UserStore {
     if (!user) return
     await this.db.insert({
       table: 'logweave.dashboard_users',
-      values: [{
-        user_id: userId,
-        username: user.username,
-        password_hash: user.passwordHash,
-        tenant_id: user.tenantId,
-        role: user.role,
-        must_change_password: user.mustChangePassword ? 1 : 0,
-        totp_secret: user.totpSecret,
-        totp_enabled: user.totpEnabled ? 1 : 0,
-        recovery_codes: user.recoveryCodes,
-        session_version: user.sessionVersion,
-        last_login_at: new Date().toISOString(),
-        version: Date.now(),
-        is_deleted: 0,
-      }],
+      values: [
+        {
+          user_id: userId,
+          username: user.username,
+          password_hash: user.passwordHash,
+          tenant_id: user.tenantId,
+          role: user.role,
+          must_change_password: user.mustChangePassword ? 1 : 0,
+          totp_secret: user.totpSecret,
+          totp_enabled: user.totpEnabled ? 1 : 0,
+          recovery_codes: user.recoveryCodes,
+          session_version: user.sessionVersion,
+          last_login_at: new Date().toISOString(),
+          version: Date.now(),
+          is_deleted: 0,
+        },
+      ],
       format: 'JSONEachRow',
     })
   }
@@ -288,21 +314,23 @@ export class ClickHouseUserStore implements UserStore {
     if (!user) return
     await this.db.insert({
       table: 'logweave.dashboard_users',
-      values: [{
-        user_id: userId,
-        username: user.username,
-        password_hash: '',
-        tenant_id: user.tenantId,
-        role: user.role,
-        must_change_password: 0,
-        totp_secret: '',
-        totp_enabled: 0,
-        recovery_codes: '',
-        session_version: user.sessionVersion + 1,
-        last_login_at: user.lastLoginAt,
-        version: Date.now(),
-        is_deleted: 1,
-      }],
+      values: [
+        {
+          user_id: userId,
+          username: user.username,
+          password_hash: '',
+          tenant_id: user.tenantId,
+          role: user.role,
+          must_change_password: 0,
+          totp_secret: '',
+          totp_enabled: 0,
+          recovery_codes: '',
+          session_version: user.sessionVersion + 1,
+          last_login_at: user.lastLoginAt,
+          version: Date.now(),
+          is_deleted: 1,
+        },
+      ],
       format: 'JSONEachRow',
     })
     this.logger.info({ userId, username: user.username }, 'User deleted')

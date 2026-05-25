@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { toast } from 'sonner'
 import {
   useConnectors,
@@ -44,13 +44,27 @@ interface FieldDef {
 const S3_FIELDS: FieldDef[] = [
   { key: 'bucket', label: 'Bucket', placeholder: 'my-log-bucket', required: true },
   { key: 'prefix', label: 'Prefix', placeholder: 'logs/' },
-  { key: 'pathPattern', label: 'Path Pattern', placeholder: '{prefix}{service}/{year}/{month}/{day}/{hour}/', required: true },
+  {
+    key: 'pathPattern',
+    label: 'Path Pattern',
+    placeholder: '{prefix}{service}/{year}/{month}/{day}/{hour}/',
+    required: true,
+  },
   { key: 'region', label: 'Region', placeholder: 'us-east-1', required: true },
-  { key: 'roleArn', label: 'Role ARN (recommended)', placeholder: 'arn:aws:iam::123456789012:role/LogWeaveS3ConnectorRole' },
+  {
+    key: 'roleArn',
+    label: 'Role ARN (recommended)',
+    placeholder: 'arn:aws:iam::123456789012:role/LogWeaveS3ConnectorRole',
+  },
   { key: 'externalId', label: 'External ID', placeholder: 'paste from quick-create' },
   { key: 'endpoint', label: 'Endpoint (dev only)', placeholder: 'http://localhost:4566' },
   { key: 'accessKeyId', label: 'Access Key ID (dev only)', placeholder: 'test', type: 'password' },
-  { key: 'secretAccessKey', label: 'Secret Access Key (dev only)', placeholder: '', type: 'password' },
+  {
+    key: 'secretAccessKey',
+    label: 'Secret Access Key (dev only)',
+    placeholder: '',
+    type: 'password',
+  },
 ]
 
 const ES_FIELDS: FieldDef[] = [
@@ -65,7 +79,12 @@ const ES_FIELDS: FieldDef[] = [
 
 const LOKI_FIELDS: FieldDef[] = [
   { key: 'url', label: 'URL', placeholder: 'http://loki:3100', required: true },
-  { key: 'streamSelector', label: 'Stream Selector', placeholder: '{app="payments"}', required: true },
+  {
+    key: 'streamSelector',
+    label: 'Stream Selector',
+    placeholder: '{app="payments"}',
+    required: true,
+  },
   { key: 'orgId', label: 'Org ID (multi-tenant)', placeholder: 'tenant-1' },
   { key: 'username', label: 'Username', placeholder: '' },
   { key: 'password', label: 'Password', placeholder: '', type: 'password' },
@@ -78,11 +97,46 @@ const FS_FIELDS: FieldDef[] = [
 
 function fieldsForType(type: ConnectorType): FieldDef[] {
   switch (type) {
-    case 's3': return S3_FIELDS
-    case 'elasticsearch': return ES_FIELDS
-    case 'loki': return LOKI_FIELDS
-    case 'filesystem': return FS_FIELDS
+    case 's3':
+      return S3_FIELDS
+    case 'elasticsearch':
+      return ES_FIELDS
+    case 'loki':
+      return LOKI_FIELDS
+    case 'filesystem':
+      return FS_FIELDS
   }
+}
+
+// ---------------------------------------------------------------------------
+// One labeled input row. Extracted so each input gets its own useId().
+// ---------------------------------------------------------------------------
+
+interface ConnectorFieldProps {
+  field: FieldDef
+  value: string
+  onChange: (value: string) => void
+  readOnly?: boolean
+}
+
+function ConnectorField({ field, value, onChange, readOnly }: ConnectorFieldProps) {
+  const id = useId()
+  return (
+    <div>
+      <label htmlFor={id} className="text-[10px] text-text-muted block mb-0.5">
+        {field.label}
+        {field.required && <span className="text-danger-500 ml-0.5">*</span>}
+      </label>
+      <Input
+        id={id}
+        type={field.type ?? 'text'}
+        placeholder={field.placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        readOnly={readOnly}
+      />
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -238,14 +292,10 @@ export function ConnectorSettings() {
           setFormValues(nextValues)
           saveDraft('s3', { formValues: nextValues, name: connectorName })
           window.open(data.url, '_blank', 'noopener,noreferrer')
-          toast.success(
-            'Opened AWS Console. Create the stack, then paste the Role ARN below.',
-          )
+          toast.success('Opened AWS Console. Create the stack, then paste the Role ARN below.')
         },
         onError: (err) =>
-          toast.error(
-            err instanceof Error ? err.message : 'Failed to build quick-create URL',
-          ),
+          toast.error(err instanceof Error ? err.message : 'Failed to build quick-create URL'),
       },
     )
   }
@@ -357,8 +407,7 @@ export function ConnectorSettings() {
                         {restoredFromDraft
                           ? 'Picked up from your previous session. '
                           : 'AWS Console opened in a new tab — '}
-                        Complete CloudFormation in AWS, then paste the Role ARN
-                        below and save.{' '}
+                        Complete CloudFormation in AWS, then paste the Role ARN below and save.{' '}
                         <button
                           type="button"
                           onClick={handleStartOver}
@@ -371,10 +420,9 @@ export function ConnectorSettings() {
                   ) : (
                     <>
                       <div>
-                        <span className="text-text-primary font-medium">Quick setup:</span>{' '}
-                        enter your bucket and region above, click{' '}
-                        <em>Quick-create IAM role</em>, then paste the Role ARN AWS shows you
-                        back into the form.
+                        <span className="text-text-primary font-medium">Quick setup:</span> enter
+                        your bucket and region above, click <em>Quick-create IAM role</em>, then
+                        paste the Role ARN AWS shows you back into the form.
                       </div>
                       <Button
                         size="sm"
@@ -400,30 +448,26 @@ export function ConnectorSettings() {
                   const isLockedExternalId =
                     field.key === 'externalId' && !!formValues.externalId?.trim()
                   return (
-                    <div key={field.key}>
-                      <label className="text-[10px] text-text-muted block mb-0.5">
-                        {field.label}
-                        {field.required && <span className="text-danger-500 ml-0.5">*</span>}
-                      </label>
-                      <Input
-                        type={field.type ?? 'text'}
-                        placeholder={field.placeholder}
-                        value={formValues[field.key] ?? ''}
-                        onChange={(e) =>
-                          setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))
-                        }
-                        readOnly={isLockedExternalId}
-                      />
-                    </div>
+                    <ConnectorField
+                      key={field.key}
+                      field={field}
+                      value={formValues[field.key] ?? ''}
+                      onChange={(value) =>
+                        setFormValues((prev) => ({ ...prev, [field.key]: value }))
+                      }
+                      readOnly={isLockedExternalId}
+                    />
                   )
                 })}
 
                 {/* Log format selector for S3 and filesystem */}
                 {(connectorType === 's3' || connectorType === 'filesystem') && (
-                  <div>
-                    <label className="text-[10px] text-text-muted block mb-0.5">Log Format</label>
+                  <label className="block">
+                    <span className="text-[10px] text-text-muted block mb-0.5">Log Format</span>
                     <select
-                      value={formValues.logFormat ?? (connectorType === 'filesystem' ? 'text' : 'jsonl')}
+                      value={
+                        formValues.logFormat ?? (connectorType === 'filesystem' ? 'text' : 'jsonl')
+                      }
                       onChange={(e) =>
                         setFormValues((prev) => ({ ...prev, logFormat: e.target.value }))
                       }
@@ -432,13 +476,13 @@ export function ConnectorSettings() {
                       <option value="jsonl">JSON Lines</option>
                       <option value="text">Plain Text</option>
                     </select>
-                  </div>
+                  </label>
                 )}
 
                 {/* Compression selector for S3 */}
                 {connectorType === 's3' && (
-                  <div>
-                    <label className="text-[10px] text-text-muted block mb-0.5">Compression</label>
+                  <label className="block">
+                    <span className="text-[10px] text-text-muted block mb-0.5">Compression</span>
                     <select
                       value={formValues.compression ?? 'none'}
                       onChange={(e) =>
@@ -449,7 +493,7 @@ export function ConnectorSettings() {
                       <option value="none">None</option>
                       <option value="gzip">Gzip</option>
                     </select>
-                  </div>
+                  </label>
                 )}
               </div>
 

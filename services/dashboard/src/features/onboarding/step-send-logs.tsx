@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'motion/react'
 import { Check, ClipboardCopy } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { useEffect, useRef, useState } from 'react'
 import { queryKeys } from '../../api/query-keys'
 import { config } from '../../config'
 import { cn } from '../../lib/cn'
@@ -46,15 +46,18 @@ export function StepSendLogs({ complete }: StepSendLogsProps) {
   useEffect(() => {
     if (complete || !polling) return
 
-    const interval = setInterval(() => {
-      elapsedRef.current += 5
-      queryClient.invalidateQueries({ queryKey: queryKeys.onboardingStatus() })
+    const interval = setInterval(
+      () => {
+        elapsedRef.current += 5
+        queryClient.invalidateQueries({ queryKey: queryKeys.onboardingStatus() })
 
-      // After 5 minutes, stop polling
-      if (elapsedRef.current >= 300) {
-        setPolling(false)
-      }
-    }, elapsedRef.current >= 60 ? 10_000 : 5_000)
+        // After 5 minutes, stop polling
+        if (elapsedRef.current >= 300) {
+          setPolling(false)
+        }
+      },
+      elapsedRef.current >= 60 ? 10_000 : 5_000,
+    )
 
     return () => clearInterval(interval)
   }, [complete, polling, queryClient])
@@ -90,9 +93,7 @@ export function StepSendLogs({ complete }: StepSendLogsProps) {
           </motion.div>
         ) : (
           <motion.div key="form" exit={{ opacity: 0, height: 0 }} className="space-y-3">
-            <p className="text-xs text-text-secondary">
-              How do you want to send logs?
-            </p>
+            <p className="text-xs text-text-secondary">How do you want to send logs?</p>
 
             {/* Method tabs */}
             <div className="flex gap-1 bg-surface-base rounded-[var(--radius-md)] p-1">
@@ -146,7 +147,11 @@ export function StepSendLogs({ complete }: StepSendLogsProps) {
                 className="absolute top-2 right-2 p-1.5 rounded-[var(--radius-sm)] bg-surface-elevated/80 hover:bg-surface-overlay text-text-muted hover:text-text-primary transition-colors"
                 title="Copy to clipboard"
               >
-                {copied ? <Check size={14} className="text-success-500" /> : <ClipboardCopy size={14} />}
+                {copied ? (
+                  <Check size={14} className="text-success-500" />
+                ) : (
+                  <ClipboardCopy size={14} />
+                )}
               </button>
             </div>
 
@@ -163,7 +168,9 @@ export function StepSendLogs({ complete }: StepSendLogsProps) {
                   )}
                 </>
               ) : (
-                <span className="text-text-muted">Polling stopped. Refresh the page after sending logs.</span>
+                <span className="text-text-muted">
+                  Polling stopped. Refresh the page after sending logs.
+                </span>
               )}
             </div>
           </motion.div>
@@ -178,8 +185,11 @@ function getSnippet(tab: TabId, httpLang: HttpLang, apiUrl: string, apiKey: stri
   if (tab === 'otel') return otelSnippet(apiUrl, apiKey)
   // HTTP tab
   switch (httpLang) {
-    case 'curl': return curlSnippet(apiUrl, apiKey)
-    case 'Python': return pythonSnippet(apiUrl, apiKey)
-    case 'Go': return goSnippet(apiUrl, apiKey)
+    case 'curl':
+      return curlSnippet(apiUrl, apiKey)
+    case 'Python':
+      return pythonSnippet(apiUrl, apiKey)
+    case 'Go':
+      return goSnippet(apiUrl, apiKey)
   }
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { DbClient } from '../../src/db/client.js'
-import { RuleStore, type AlertRule, type ThresholdConfig } from '../../src/watches/rule-store.js'
+import { type AlertRule, RuleStore, type ThresholdConfig } from '../../src/watches/rule-store.js'
 
 function createMockDb(overrides?: Partial<DbClient>): DbClient {
   return {
@@ -14,7 +14,10 @@ function createMockDb(overrides?: Partial<DbClient>): DbClient {
   } as unknown as DbClient
 }
 
-function makeThresholdRule(tenantId: string, overrides?: Partial<AlertRule>): Omit<AlertRule, 'ruleId'> {
+function makeThresholdRule(
+  tenantId: string,
+  overrides?: Partial<AlertRule>,
+): Omit<AlertRule, 'ruleId'> {
   return {
     tenantId,
     name: 'High error rate',
@@ -81,7 +84,13 @@ describe('RuleStore', () => {
     const result = await store.add(makeThresholdRule('t1'))
     const rule = result as AlertRule
 
-    const newConfig: ThresholdConfig = { metric: 'warn_count', service: 'api', operator: '>=', value: 50, windowMinutes: 15 }
+    const newConfig: ThresholdConfig = {
+      metric: 'warn_count',
+      service: 'api',
+      operator: '>=',
+      value: 50,
+      windowMinutes: 15,
+    }
     const updated = await store.update('t1', rule.ruleId, { config: newConfig })
     assert.ok(updated)
     assert.deepEqual(updated.config, newConfig)
@@ -213,7 +222,14 @@ describe('RuleStore', () => {
       },
     })
 
-    await assert.rejects(() => store.update('t1', rule.ruleId, { enabled: false }), /DB update failed/)
-    assert.equal(store.get('t1', rule.ruleId)?.enabled, true, 'should rollback to original enabled state')
+    await assert.rejects(
+      () => store.update('t1', rule.ruleId, { enabled: false }),
+      /DB update failed/,
+    )
+    assert.equal(
+      store.get('t1', rule.ruleId)?.enabled,
+      true,
+      'should rollback to original enabled state',
+    )
   })
 })

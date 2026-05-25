@@ -36,7 +36,9 @@ const mockCrossServiceRows = [
 // Mock DbClient
 // ---------------------------------------------------------------------------
 
-function createMockDb(capturedQueries: Array<{ query: string; query_params: Record<string, unknown> }>): DbClient {
+function createMockDb(
+  capturedQueries: Array<{ query: string; query_params: Record<string, unknown> }>,
+): DbClient {
   return {
     query: async (params: { query: string; query_params: Record<string, unknown> }) => {
       capturedQueries.push(params)
@@ -64,9 +66,18 @@ describe('queryTemplatesAcrossServices', () => {
     assert.equal(captured.length, 1)
 
     const sql = captured[0].query
-    assert.ok(sql.includes('groupArray(DISTINCT service)'), 'should use groupArray(DISTINCT service)')
-    assert.ok(sql.includes('GROUP BY template_id, template_text'), 'should group by template_id, template_text')
-    assert.ok(!sql.includes('GROUP BY template_id, template_text, service'), 'should NOT include service in GROUP BY')
+    assert.ok(
+      sql.includes('groupArray(DISTINCT service)'),
+      'should use groupArray(DISTINCT service)',
+    )
+    assert.ok(
+      sql.includes('GROUP BY template_id, template_text'),
+      'should group by template_id, template_text',
+    )
+    assert.ok(
+      !sql.includes('GROUP BY template_id, template_text, service'),
+      'should NOT include service in GROUP BY',
+    )
   })
 
   it('servicesAffected contains all unique services', async () => {
@@ -83,7 +94,7 @@ describe('queryTemplatesAcrossServices', () => {
     const captured: Array<{ query: string; query_params: Record<string, unknown> }> = []
     const db = createMockDb(captured)
 
-    const results = await queryTemplatesAcrossServices(db, 'tenant-a')
+    const _results = await queryTemplatesAcrossServices(db, 'tenant-a')
 
     const sql = captured[0].query
     assert.ok(sql.includes('countMerge(occurrence_count)'), 'should aggregate occurrence_count')

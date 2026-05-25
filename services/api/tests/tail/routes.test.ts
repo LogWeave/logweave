@@ -5,11 +5,11 @@ import pino from 'pino'
 import request from 'supertest'
 import { createAuthMiddleware } from '../../src/middleware/auth.js'
 import { createErrorHandler } from '../../src/middleware/error-handler.js'
-import { createMockDb } from '../helpers/mock-db.js'
+import { tailRoutes, tailSseRoute } from '../../src/routes/tail.js'
 import { TailBuffer } from '../../src/tail/buffer.js'
 import { TailTokenStore } from '../../src/tail/token-store.js'
-import { tailRoutes, tailSseRoute } from '../../src/routes/tail.js'
 import { TenantSettingsStore } from '../../src/watches/tenant-settings.js'
+import { createMockDb } from '../helpers/mock-db.js'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -31,7 +31,9 @@ function createTestApp(options?: { tailMode?: string; bufferEvents?: number }) {
 
   // Set tail mode
   if (options?.tailMode) {
-    settingsStore.set(TENANT_A, { tailMode: options.tailMode as 'disabled' | 'metadata' | 'preprocessed' })
+    settingsStore.set(TENANT_A, {
+      tailMode: options.tailMode as 'disabled' | 'metadata' | 'preprocessed',
+    })
   }
 
   // Pre-fill buffer with events
@@ -86,9 +88,7 @@ describe('GET /v1/tail/poll', () => {
   it('returns disabled message when tail_mode=disabled', async () => {
     const { app } = createTestApp({ tailMode: 'disabled' })
 
-    const res = await request(app)
-      .get('/v1/tail/poll')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/tail/poll').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data.events, [])
@@ -99,9 +99,7 @@ describe('GET /v1/tail/poll', () => {
   it('returns disabled message when tail_mode not set', async () => {
     const { app } = createTestApp()
 
-    const res = await request(app)
-      .get('/v1/tail/poll')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/tail/poll').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.ok(res.body.meta.message)
@@ -175,9 +173,7 @@ describe('GET /v1/tail/stats', () => {
   it('returns buffer metrics', async () => {
     const { app } = createTestApp({ tailMode: 'metadata', bufferEvents: 5 })
 
-    const res = await request(app)
-      .get('/v1/tail/stats')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).get('/v1/tail/stats').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.equal(res.body.data.tenants, 1)
@@ -194,9 +190,7 @@ describe('GET /v1/tail/stats', () => {
 describe('POST /v1/tail/token', () => {
   it('returns a token when authenticated', async () => {
     const { app } = createTestApp({ tailMode: 'metadata' })
-    const res = await request(app)
-      .post('/v1/tail/token')
-      .set('Authorization', `Bearer ${KEY_A}`)
+    const res = await request(app).post('/v1/tail/token').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.ok(res.body.data.token)
@@ -231,7 +225,9 @@ describe('TailTokenStore', () => {
     const token = store.issue('tenant-1')
     // Wait for expiry
     const start = Date.now()
-    while (Date.now() - start < 5) { /* busy-wait */ }
+    while (Date.now() - start < 5) {
+      /* busy-wait */
+    }
     assert.equal(store.validate(token), undefined)
   })
 
@@ -252,8 +248,7 @@ describe('GET /v1/tail (SSE)', () => {
     const { app, tailTokenStore } = createTestApp({ tailMode: 'disabled' })
     const token = tailTokenStore.issue(TENANT_A)
 
-    const res = await request(app)
-      .get(`/v1/tail?token=${token}`)
+    const res = await request(app).get(`/v1/tail?token=${token}`)
 
     assert.equal(res.status, 403)
     assert.equal(res.body.error.code, 'TAIL_DISABLED')
@@ -293,7 +288,9 @@ describe('GET /v1/tail (SSE)', () => {
         .get(`/v1/tail?token=${token}`)
         .buffer(false)
         .timeout({ deadline: 100 })
-        .catch(() => { /* expected — connection drops */ })
+        .catch(() => {
+          /* expected — connection drops */
+        })
     })
     await Promise.all(connections)
 

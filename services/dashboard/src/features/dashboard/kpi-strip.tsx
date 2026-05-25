@@ -3,9 +3,9 @@ import { useMemo } from 'react'
 import { useOverview, useTemplates } from '../../api/queries'
 import { QueryError } from '../../components/ui/query-error'
 import { cn } from '../../lib/cn'
+import { TOOLTIPS } from '../../lib/tooltips'
 import { useDashboardStore } from '../../stores/dashboard-store'
 import { KpiCard } from './kpi-card'
-import { TOOLTIPS } from '../../lib/tooltips'
 
 function trendPercent(current: number, previous?: number): number | undefined {
   if (previous === undefined || previous === 0) return undefined
@@ -107,7 +107,9 @@ export function KpiStrip({ className }: { className?: string }) {
           icon={Sparkles}
           label="New Today"
           value={overview?.newTemplatesToday ?? 0}
-          variant={overview?.newTemplatesToday && overview.newTemplatesToday > 0 ? 'warning' : undefined}
+          variant={
+            overview?.newTemplatesToday && overview.newTemplatesToday > 0 ? 'warning' : undefined
+          }
           loading={isLoading}
         />
         <SecondaryPill
@@ -120,7 +122,9 @@ export function KpiStrip({ className }: { className?: string }) {
           icon={Unplug}
           label="Unclustered"
           value={overview?.unclusteredCount ?? 0}
-          variant={overview?.unclusteredCount && overview.unclusteredCount > 0 ? 'warning' : undefined}
+          variant={
+            overview?.unclusteredCount && overview.unclusteredCount > 0 ? 'warning' : undefined
+          }
           loading={isLoading}
         />
         {overview && overview.totalTemplates > 0 && (
@@ -164,7 +168,12 @@ function SecondaryPill({
     >
       <Icon size={12} />
       <span className="uppercase text-[10px] hidden sm:inline">{label}</span>
-      <span className={cn('font-bold font-mono tabular-nums', variant === 'warning' ? 'text-warning' : 'text-text-primary')}>
+      <span
+        className={cn(
+          'font-bold font-mono tabular-nums',
+          variant === 'warning' ? 'text-warning' : 'text-text-primary',
+        )}
+      >
         {typeof value === 'number' ? value.toLocaleString() : value}
       </span>
     </div>

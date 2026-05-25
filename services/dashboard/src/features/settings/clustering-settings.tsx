@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { queryKeys } from '../../api/query-keys'
 import { Button } from '../../components/ui/button'
@@ -55,7 +55,10 @@ export function ClusteringSettings() {
 
   // Sync slider with server value
   useEffect(() => {
-    if (clusteringResponse?.data.sensitivity !== null && clusteringResponse?.data.sensitivity !== undefined) {
+    if (
+      clusteringResponse?.data.sensitivity !== null &&
+      clusteringResponse?.data.sensitivity !== undefined
+    ) {
       setSliderValue(clusteringResponse.data.sensitivity)
     }
   }, [clusteringResponse?.data.sensitivity])
@@ -94,8 +97,7 @@ export function ClusteringSettings() {
   })
 
   const resetMutation = useMutation({
-    mutationFn: (sensitivity: number) =>
-      api.post('/v1/settings/clustering/reset', { sensitivity }),
+    mutationFn: (sensitivity: number) => api.post('/v1/settings/clustering/reset', { sensitivity }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', 'clustering'] })
       queryClient.invalidateQueries({ queryKey: queryKeys.onboardingStatus() })
@@ -113,7 +115,9 @@ export function ClusteringSettings() {
     resetMutation.mutate(sliderValue)
   }, [sliderValue, resetMutation])
 
-  const isConfigured = clusteringResponse?.data.sensitivity !== null && clusteringResponse?.data.sensitivity !== undefined
+  const isConfigured =
+    clusteringResponse?.data.sensitivity !== null &&
+    clusteringResponse?.data.sensitivity !== undefined
 
   return (
     <Card>
@@ -123,7 +127,9 @@ export function ClusteringSettings() {
           <span
             className={cn(
               'text-[11px] font-medium px-2 py-0.5 rounded-full',
-              isConfigured ? 'bg-brand-500/10 text-brand-400' : 'bg-surface-elevated text-text-muted',
+              isConfigured
+                ? 'bg-brand-500/10 text-brand-400'
+                : 'bg-surface-elevated text-text-muted',
             )}
           >
             {isConfigured ? sensitivityLabel(currentSensitivity) : 'Default (0.4)'}
@@ -153,7 +159,9 @@ export function ClusteringSettings() {
               className="w-full accent-brand-500"
             />
             <div className="flex justify-between items-center">
-              <span className="text-xs text-text-secondary font-mono">{sliderValue.toFixed(2)}</span>
+              <span className="text-xs text-text-secondary font-mono">
+                {sliderValue.toFixed(2)}
+              </span>
               <span className="text-xs text-text-muted">{sensitivityLabel(sliderValue)}</span>
             </div>
           </div>
@@ -168,7 +176,9 @@ export function ClusteringSettings() {
                 </div>
                 <div>
                   <span className="text-text-muted">Compression: </span>
-                  <span className="text-text-primary font-medium">{preview.compressionRatio}:1</span>
+                  <span className="text-text-primary font-medium">
+                    {preview.compressionRatio}:1
+                  </span>
                 </div>
                 <div>
                   <span className="text-text-muted">Sample: </span>
@@ -180,9 +190,9 @@ export function ClusteringSettings() {
               {preview.sampleTemplates.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-[10px] text-text-muted">Top patterns:</p>
-                  {preview.sampleTemplates.slice(0, 5).map((tmpl, i) => (
+                  {preview.sampleTemplates.slice(0, 5).map((tmpl) => (
                     <div
-                      key={i}
+                      key={tmpl}
                       className="text-[11px] font-mono text-text-secondary truncate bg-surface-card rounded px-2 py-1"
                     >
                       {tmpl}
@@ -231,7 +241,12 @@ export function ClusteringSettings() {
                 patterns will be learned from incoming logs within minutes.
               </p>
               <div className="flex gap-2">
-                <Button size="sm" variant="primary" onClick={handleReset} disabled={resetMutation.isPending}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={handleReset}
+                  disabled={resetMutation.isPending}
+                >
                   {resetMutation.isPending ? 'Resetting...' : 'Confirm reset'}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowConfirm(false)}>

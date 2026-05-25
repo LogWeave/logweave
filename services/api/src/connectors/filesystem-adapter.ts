@@ -37,7 +37,11 @@ function guardPath(basePath: string, targetPath: string): string {
   const resolvedTarget = resolve(targetPath)
 
   // The resolved target must start with the resolved base + path separator (or equal it)
-  if (resolvedTarget !== resolvedBase && !resolvedTarget.startsWith(`${resolvedBase}/`) && !resolvedTarget.startsWith(`${resolvedBase}\\`)) {
+  if (
+    resolvedTarget !== resolvedBase &&
+    !resolvedTarget.startsWith(`${resolvedBase}/`) &&
+    !resolvedTarget.startsWith(`${resolvedBase}\\`)
+  ) {
     throw new Error(`Path traversal rejected: "${targetPath}" escapes base directory`)
   }
 
@@ -59,9 +63,7 @@ function matchesPattern(filename: string, pattern: string): boolean {
   // Simple patterns: *.ext or exact match
   if (!pattern.includes('/') && !pattern.includes('\\')) {
     // Single-segment pattern like "*.log"
-    const escaped = pattern
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '[^/\\\\]*')
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/\\\\]*')
     return new RegExp(`^${escaped}$`, 'i').test(filename)
   }
 
@@ -160,9 +162,10 @@ export class FilesystemAdapter implements LogSourceAdapter {
 
       return {
         success: true,
-        message: files.length > 0
-          ? `Found ${files.length} file(s) matching "${fsConfig.filePattern}".`
-          : `Directory accessible but no files matching "${fsConfig.filePattern}".`,
+        message:
+          files.length > 0
+            ? `Found ${files.length} file(s) matching "${fsConfig.filePattern}".`
+            : `Directory accessible but no files matching "${fsConfig.filePattern}".`,
         filesFound: files.length,
       }
     } catch (err) {
@@ -249,10 +252,7 @@ export class FilesystemAdapter implements LogSourceAdapter {
           })
           if (lines.length >= limit) break
         }
-      } catch {
-        // Skip unreadable files
-        continue
-      }
+      } catch {}
     }
 
     if (!truncated && filesInRange.length >= SCAN_DEFAULTS.maxFiles && lines.length < limit) {

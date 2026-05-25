@@ -17,7 +17,14 @@ interface PopoverProps {
   minWidth?: number
 }
 
-export function Popover({ open, onOpenChange, anchorRef, children, className, minWidth }: PopoverProps) {
+export function Popover({
+  open,
+  onOpenChange,
+  anchorRef,
+  children,
+  className,
+  minWidth,
+}: PopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<Pos | null>(null)
 

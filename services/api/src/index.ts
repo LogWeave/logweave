@@ -8,11 +8,11 @@ import { ClustererHealthChecker } from './clients/clusterer.js'
 import { loadConfig } from './config.js'
 import { DbClient } from './db/client.js'
 import { initSchema } from './db/schema.js'
+import { LocalEventBus } from './events/local-bus.js'
 import { getInternalEvents, initInternalEvents } from './internal-events/emitter.js'
 import { createLogger } from './logger.js'
 import { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import { ClusterClient } from './pipeline/cluster-client.js'
-import { LocalEventBus } from './events/local-bus.js'
 import { RecoverySweep } from './recovery/reconcile.js'
 import { RetentionSweep } from './retention/sweep.js'
 import { TailBuffer } from './tail/buffer.js'
@@ -23,8 +23,8 @@ import { RuleStore } from './watches/rule-store.js'
 import { SlackObserver } from './watches/slack-observer.js'
 import { TenantSettingsStore } from './watches/tenant-settings.js'
 import { ThresholdEvaluator } from './watches/threshold-evaluator.js'
-import { WebhookObserver } from './watches/webhook-observer.js'
 import { WatchStore } from './watches/watch-store.js'
+import { WebhookObserver } from './watches/webhook-observer.js'
 
 let config: ReturnType<typeof loadConfig>
 try {
@@ -46,9 +46,15 @@ try {
 const logger = createLogger(config.logLevel)
 
 if (!config.clickhouseUser) {
-  logger.warn('LOGWEAVE_CLICKHOUSE_USER is not set — ClickHouse is running without authentication. This is insecure in production.')
+  logger.warn(
+    'LOGWEAVE_CLICKHOUSE_USER is not set — ClickHouse is running without authentication. This is insecure in production.',
+  )
 }
-const clickhouse = createClickHouseClient(config.clickhouseUrl, config.clickhouseUser, config.clickhousePassword)
+const clickhouse = createClickHouseClient(
+  config.clickhouseUrl,
+  config.clickhouseUser,
+  config.clickhousePassword,
+)
 const db = new DbClient(clickhouse)
 const internalEvents = initInternalEvents({ service: 'api', db })
 internalEvents.emitConfigLoaded(config)
@@ -135,7 +141,10 @@ if (config.encryptionKey) {
     // the password out of structured logs reduces the chance it gets indexed
     // by downstream log infrastructure. Operators can still capture stderr
     // manually if needed.
-    logger.info({ tenantId: firstTenantId }, 'Default admin user created — see stderr for one-time password')
+    logger.info(
+      { tenantId: firstTenantId },
+      'Default admin user created — see stderr for one-time password',
+    )
     process.stderr.write('\n')
     process.stderr.write('=================================================================\n')
     process.stderr.write('LOGWEAVE BOOTSTRAP — save this admin password now (shown once).\n')

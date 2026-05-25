@@ -40,7 +40,10 @@ export function useChart(
   const colorMode = useDashboardStore((s) => s.colorMode)
   const theme = colorMode === 'dark' ? 'logweave-dark' : 'logweave-light'
 
-  // Init, dispose, and wire events — all in one effect to avoid race conditions
+  // Init, dispose, and wire events — all in one effect to avoid race conditions.
+  // containerRef.current is read at mount; refs are intentionally exempt from
+  // the deps list (mutating them doesn't re-render).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refs are exempt
   useEffect(() => {
     const el = containerRef.current
     if (!el) return

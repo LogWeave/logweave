@@ -29,7 +29,11 @@ export function watchRoutes(deps: WatchDeps): Router {
 
       const result = await deps.watchStore.add(tenantId, body.templateId, body.templateText)
       if (result === 'limit_exceeded') {
-        throw new AppError(HttpStatus.BAD_REQUEST, 'WATCH_LIMIT_EXCEEDED', 'Maximum 100 watches per tenant')
+        throw new AppError(
+          HttpStatus.BAD_REQUEST,
+          'WATCH_LIMIT_EXCEEDED',
+          'Maximum 100 watches per tenant',
+        )
       }
 
       res.status(HttpStatus.CREATED).json({

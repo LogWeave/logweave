@@ -55,7 +55,10 @@ export function TailPage() {
   const { events, status, error, eventRate, connect, disconnect, isConnected, clear } =
     useTail(filters)
 
-  // Auto-scroll to bottom when new events arrive
+  // Auto-scroll to bottom when new events arrive. `events.length` is in the
+  // dep list as the *trigger* (new event → re-run); the effect body itself
+  // reads scrollHeight directly. Removing it would break auto-scroll.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: events.length is the trigger signal
   useEffect(() => {
     if (!paused && autoScrollRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight

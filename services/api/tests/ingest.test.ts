@@ -3,9 +3,9 @@ import { describe, it } from 'node:test'
 import express from 'express'
 import pino from 'pino'
 import request from 'supertest'
-import { createAuthMiddleware, getTenantId } from '../src/middleware/auth.js'
-import { createErrorHandler } from '../src/middleware/error-handler.js'
 import type { DbClient } from '../src/db/client.js'
+import { createAuthMiddleware } from '../src/middleware/auth.js'
+import { createErrorHandler } from '../src/middleware/error-handler.js'
 import { AnomalyScorer } from '../src/pipeline/anomaly-scorer.js'
 import { ClusterClient } from '../src/pipeline/cluster-client.js'
 import { ingestRoutes } from '../src/routes/ingest.js'
@@ -16,9 +16,7 @@ const TENANT_ID = 'tenant-test'
 const keyMap = new Map([[API_KEY, TENANT_ID]])
 
 const CLUSTER_RESPONSE = {
-  results: [
-    { template_id: 'tpl-1', template_text: 'User <*> logged in', is_new: true },
-  ],
+  results: [{ template_id: 'tpl-1', template_text: 'User <*> logged in', is_new: true }],
 }
 
 function mockFetch(status: number, body: unknown): typeof globalThis.fetch {
@@ -53,12 +51,16 @@ function createTestApp(options?: { fetchFn?: typeof globalThis.fetch; insertErro
 
   const auth = createAuthMiddleware(keyMap)
   const anomalyScorer = new AnomalyScorer({ db: mockDb, logger, coldStartMs: Infinity })
-  app.use('/v1', auth, ingestRoutes({
-    clusterClient,
-    db: mockDb,
-    logger,
-    anomalyScorer,
-  }))
+  app.use(
+    '/v1',
+    auth,
+    ingestRoutes({
+      clusterClient,
+      db: mockDb,
+      logger,
+      anomalyScorer,
+    }),
+  )
 
   app.use(createErrorHandler(logger))
 
@@ -147,9 +149,7 @@ describe('POST /v1/ingest/batch', () => {
 
   it('skips bad events without rejecting the batch', async () => {
     const multiResponse = {
-      results: [
-        { template_id: 'tpl-1', template_text: 'template', is_new: false },
-      ],
+      results: [{ template_id: 'tpl-1', template_text: 'template', is_new: false }],
     }
     const { app } = createTestApp({ fetchFn: mockFetch(200, multiResponse) })
 
@@ -157,11 +157,7 @@ describe('POST /v1/ingest/batch', () => {
       .post('/v1/ingest/batch')
       .set('Authorization', `Bearer ${API_KEY}`)
       .send({
-        events: [
-          'not-an-object',
-          validEvent(),
-          42,
-        ],
+        events: ['not-an-object', validEvent(), 42],
       })
 
     assert.equal(res.status, 200)
@@ -170,7 +166,9 @@ describe('POST /v1/ingest/batch', () => {
 
   it('handles clusterer timeout gracefully (template_id=0)', async () => {
     const abortError = new DOMException('timeout', 'AbortError')
-    const failFetch: typeof globalThis.fetch = async () => { throw abortError }
+    const failFetch: typeof globalThis.fetch = async () => {
+      throw abortError
+    }
     const { app, insertedRows } = createTestApp({ fetchFn: failFetch })
 
     const res = await request(app)
@@ -185,7 +183,10 @@ describe('POST /v1/ingest/batch', () => {
     const row = insertedRows[0]?.[0]
     assert.equal(row?.template_id, '0')
     assert.equal(row?.template_text, '[unclustered]')
-    assert.ok(row?.pre_processed_message, 'pre_processed_message should be populated for unclustered')
+    assert.ok(
+      row?.pre_processed_message,
+      'pre_processed_message should be populated for unclustered',
+    )
   })
 
   it('sets correct tenant_id on inserted rows', async () => {

@@ -46,8 +46,8 @@ function buildHeaders(config: ElasticsearchConnectorConfig): Record<string, stri
  */
 function toEsRegex(regex: RegExp): string {
   return regex.source
-    .replace(/\.\*\?/g, '.*')    // lazy -> greedy
-    .replace(/\(\?:/g, '(')      // non-capturing groups -> capturing (ES doesn't need it)
+    .replace(/\.\*\?/g, '.*') // lazy -> greedy
+    .replace(/\(\?:/g, '(') // non-capturing groups -> capturing (ES doesn't need it)
 }
 
 // ---------------------------------------------------------------------------
@@ -167,15 +167,12 @@ export class ElasticsearchAdapter implements LogSourceAdapter {
     }
 
     try {
-      const res = await fetch(
-        `${baseUrl}/${encodeURIComponent(config.index)}/_search`,
-        {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(query),
-          signal: AbortSignal.timeout(SCAN_DEFAULTS.maxTimeoutMs),
-        },
-      )
+      const res = await fetch(`${baseUrl}/${encodeURIComponent(config.index)}/_search`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(query),
+        signal: AbortSignal.timeout(SCAN_DEFAULTS.maxTimeoutMs),
+      })
 
       if (!res.ok) {
         return {

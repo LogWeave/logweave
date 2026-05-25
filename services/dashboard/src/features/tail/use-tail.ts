@@ -42,13 +42,6 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
   const maxEvents = options?.maxEvents ?? 500
   const autoDisconnectMs = options?.autoDisconnectMs ?? 10 * 60 * 1000
 
-  const resetActivityTimer = useCallback(() => {
-    if (activityTimerRef.current) clearTimeout(activityTimerRef.current)
-    activityTimerRef.current = setTimeout(() => {
-      disconnect()
-    }, autoDisconnectMs)
-  }, [autoDisconnectMs])
-
   const disconnect = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
@@ -65,6 +58,13 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
     setStatus('disconnected')
     setEventRate(0)
   }, [])
+
+  const resetActivityTimer = useCallback(() => {
+    if (activityTimerRef.current) clearTimeout(activityTimerRef.current)
+    activityTimerRef.current = setTimeout(() => {
+      disconnect()
+    }, autoDisconnectMs)
+  }, [autoDisconnectMs, disconnect])
 
   const connect = useCallback(async () => {
     disconnect()
@@ -141,7 +141,9 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
           if (parsed.reason === 'backpressure') {
             setError('Disconnected: could not keep up with event rate')
           }
-        } catch { /* not JSON */ }
+        } catch {
+          /* not JSON */
+        }
       }
     })
 

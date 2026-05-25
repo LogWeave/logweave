@@ -1,11 +1,5 @@
 import type { DbClient } from '../client.js'
-import {
-  clamp,
-  DEFAULT_HOURS,
-  MAX_HOURS,
-  type PaginationOptions,
-  tenantQuery,
-} from '../queries.js'
+import { clamp, DEFAULT_HOURS, MAX_HOURS, type PaginationOptions, tenantQuery } from '../queries.js'
 
 export interface ClusteringHealthSnapshotRow {
   total_events: number | string

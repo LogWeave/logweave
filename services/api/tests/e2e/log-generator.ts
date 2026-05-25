@@ -11,7 +11,12 @@ const ROUTES = ['/api/login', '/api/users', '/api/payments', '/api/health', '/ap
 const HOSTS = ['db-primary', 'redis-01', 'kafka-broker', 'es-node-1', 'cache-01']
 const REASONS = ['Connection refused', 'Timeout', 'DNS lookup failed', 'TLS handshake failed']
 const PROVIDERS = ['sendgrid', 'ses', 'mailgun', 'postmark']
-const PATHS = ['/uploads/report.pdf', '/uploads/avatar.png', '/uploads/data.csv', '/uploads/log.txt']
+const PATHS = [
+  '/uploads/report.pdf',
+  '/uploads/avatar.png',
+  '/uploads/data.csv',
+  '/uploads/log.txt',
+]
 
 function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!
@@ -121,7 +126,7 @@ export function generateEvents(count: number): GeneratedEvent[] {
     // Spread timestamps across a 1-hour window
     const offsetMs = Math.floor((i / count) * oneHourMs)
     const ts = new Date(now - oneHourMs + offsetMs).toISOString()
-    events.push(TEMPLATES[templateIdx]!(ts))
+    events.push(TEMPLATES[templateIdx]?.(ts))
   }
 
   return events

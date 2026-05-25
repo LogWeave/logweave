@@ -1,10 +1,4 @@
-import type {
-  ExtractedFields,
-  LogParser,
-  ParsedEvent,
-  ParseOptions,
-  ParseResult,
-} from './types.js'
+import type { ExtractedFields, LogParser, ParsedEvent, ParseOptions, ParseResult } from './types.js'
 
 /**
  * Field extraction map for JSON log events.
@@ -33,10 +27,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Try to read a value from a record by checking multiple possible keys.
  * Returns undefined if none found.
  */
-function readField(
-  source: Record<string, unknown>,
-  keys: readonly string[],
-): unknown {
+function readField(source: Record<string, unknown>, keys: readonly string[]): unknown {
   for (const key of keys) {
     if (key in source && source[key] != null) {
       return source[key]

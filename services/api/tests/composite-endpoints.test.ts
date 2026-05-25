@@ -69,8 +69,18 @@ const mockServiceRows = [
 ]
 
 const mockVolumeRows = [
-  { interval_start: '2026-03-20T12:00:00.000Z', service: 'api', log_count: '500', error_count: '10' },
-  { interval_start: '2026-03-20T13:00:00.000Z', service: 'api', log_count: '600', error_count: '15' },
+  {
+    interval_start: '2026-03-20T12:00:00.000Z',
+    service: 'api',
+    log_count: '500',
+    error_count: '10',
+  },
+  {
+    interval_start: '2026-03-20T13:00:00.000Z',
+    service: 'api',
+    log_count: '600',
+    error_count: '15',
+  },
 ]
 
 const mockOverviewAggRow = {
@@ -267,7 +277,7 @@ describe('GET /v1/services/:name/health', () => {
 
     assert.equal(res.status, 200)
     assert.equal(captured.length, 1, 'expected one cross-service template query')
-    assert.deepEqual(captured[0]!.levels, ['ERROR'])
+    assert.deepEqual(captured[0]?.levels, ['ERROR'])
   })
 })
 
@@ -279,9 +289,7 @@ describe('GET /v1/overview', () => {
   it('includes top 5 cross-service error patterns', async () => {
     const app = createTestApp(overviewQueryMap())
 
-    const res = await request(app)
-      .get('/v1/overview')
-      .set('Authorization', `Bearer ${TEST_KEY}`)
+    const res = await request(app).get('/v1/overview').set('Authorization', `Bearer ${TEST_KEY}`)
 
     assert.equal(res.status, 200)
     const data = res.body.data
@@ -347,7 +355,7 @@ describe('GET /v1/overview', () => {
 
     assert.equal(res.status, 200)
     assert.equal(captured.length, 1, 'expected one cross-service template query')
-    assert.deepEqual(captured[0]!.levels, ['ERROR'])
+    assert.deepEqual(captured[0]?.levels, ['ERROR'])
   })
 })
 
@@ -359,11 +367,7 @@ describe('composite endpoints: tenant isolation', () => {
   it('all composites require auth', async () => {
     const app = createTestApp(templateDetailQueryMap())
 
-    const endpoints = [
-      '/v1/templates/tmpl-1/detail',
-      '/v1/services/api/health',
-      '/v1/overview',
-    ]
+    const endpoints = ['/v1/templates/tmpl-1/detail', '/v1/services/api/health', '/v1/overview']
 
     for (const endpoint of endpoints) {
       const res = await request(app).get(endpoint)

@@ -6,8 +6,8 @@ import { insertDeploy, queryDeploys } from '../db/deploy-queries.js'
 import { HttpStatus } from '../http-status.js'
 import { isoTimestamp, respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
-import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import { validateBody } from '../middleware/validate.js'
+import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import { uuidv7 } from '../uuid.js'
 
 export interface DeploysDeps {

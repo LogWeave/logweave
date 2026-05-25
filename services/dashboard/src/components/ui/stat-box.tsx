@@ -18,9 +18,7 @@ export function StatBox({ label, value, valueClassName, className, secondary }: 
       >
         {value}
       </p>
-      {secondary && (
-        <p className="text-[10px] text-brand-400 mt-0.5">{secondary}</p>
-      )}
+      {secondary && <p className="text-[10px] text-brand-400 mt-0.5">{secondary}</p>}
     </div>
   )
 }
