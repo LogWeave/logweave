@@ -372,9 +372,13 @@ GROUP BY tenant_id, service, environment, level, interval_start`,
   // is just an INSERT with is_deleted=1; readers use FINAL to see the
   // current state and filter on is_deleted.
   //
-  // key_hash is in the ORDER BY so the auth path's hash → row lookup uses the
-  // primary index. tenant_id comes first to keep the table physically grouped
-  // by tenant — every other query path is also tenant-scoped.
+  // ORDER BY is `(tenant_id, key_id)` because:
+  //   - every CRUD read path is tenant-scoped + key_id-scoped (list, revoke)
+  //   - the auth hot path NEVER queries this table at request time. It uses
+  //     the ApiKeyStore in-memory cache (hash → record), refreshed every 60s.
+  // We deliberately don't index by `key_hash` — a DB-backed validation
+  // fallback would be a real-AWS-style latency hit and a separate design
+  // decision when/if scaling beyond single-instance demands it.
   `CREATE TABLE IF NOT EXISTS logweave.api_keys (
     tenant_id    LowCardinality(String),
     key_id       String,

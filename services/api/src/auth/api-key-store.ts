@@ -88,6 +88,14 @@ export class ApiKeyStore {
   private cache = new Map<string, CachedKey>()
   private refreshHandle: ReturnType<typeof setTimeout> | null = null
   private stopped = false
+  /**
+   * True once a refresh has completed without throwing. Until then we must
+   * NOT let `create()` enforce the per-tenant cap from an empty cache — the
+   * cap is a security control. A cold boot where the first refresh fails
+   * (transient DB hiccup) would otherwise let a tenant create
+   * `maxPerTenant` keys on top of whatever already exists in the table.
+   */
+  private initialRefreshSucceeded = false
 
   constructor(opts: ApiKeyStoreOpts) {
     if (!opts.hmacSecret) {
@@ -138,12 +146,22 @@ export class ApiKeyStore {
         })
       }
       this.cache = next
+      this.initialRefreshSucceeded = true
       this.logger?.debug({ count: next.size }, 'ApiKeyStore cache refreshed')
       return { count: next.size }
     } catch (err) {
       this.logger?.warn({ err }, 'ApiKeyStore refresh failed; keeping previous cache')
       return { count: this.cache.size }
     }
+  }
+
+  /**
+   * True once at least one refresh has succeeded since boot. Used by `create()`
+   * to gate the per-tenant cap check — see {@link initialRefreshSucceeded}.
+   * Exposed so callers (e.g. health checks) can also observe it.
+   */
+  get isReady(): boolean {
+    return this.initialRefreshSucceeded
   }
 
   /** Start the background refresh loop. Idempotent. */
@@ -191,8 +209,17 @@ export class ApiKeyStore {
     if (!this.db) throw new Error('ApiKeyStore.create requires a db')
     if (!args.name.trim()) throw new Error('name is required')
 
+    // Gate on the initial refresh having succeeded. Without it the cache is
+    // empty even if the DB already has keys, and the per-tenant cap below
+    // would be enforced against zero — allowing a runaway tenant to silently
+    // exceed `maxPerTenant`. Fail loudly instead.
+    if (!this.initialRefreshSucceeded) {
+      throw new ApiKeyStoreNotReadyError()
+    }
+
     // Enforce per-tenant cap. Counted from the cache to avoid an extra DB
-    // round-trip; correct after at least one refresh has run.
+    // round-trip; correct after the gate above guarantees the cache reflects
+    // current DB state.
     const tenantActiveCount = [...this.cache.values()].filter(
       (k) => k.tenantId === args.tenantId,
     ).length
@@ -380,6 +407,18 @@ export class ApiKeyLimitError extends Error {
   constructor(public readonly limit: number) {
     super(`tenant has reached the maximum of ${limit} API keys`)
     this.name = 'ApiKeyLimitError'
+  }
+}
+
+/**
+ * Thrown when create() runs before the initial cache refresh has succeeded.
+ * Maps to HTTP 503 — the operator should investigate why ClickHouse is
+ * unreachable, and clients should retry after backoff.
+ */
+export class ApiKeyStoreNotReadyError extends Error {
+  constructor() {
+    super('api key store is not ready yet — initial DB refresh has not succeeded')
+    this.name = 'ApiKeyStoreNotReadyError'
   }
 }
 

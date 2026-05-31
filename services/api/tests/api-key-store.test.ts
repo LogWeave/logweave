@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
-import { ApiKeyLimitError, ApiKeyStore } from '../src/auth/api-key-store.js'
+import {
+  ApiKeyLimitError,
+  ApiKeyStore,
+  ApiKeyStoreNotReadyError,
+} from '../src/auth/api-key-store.js'
 import type { DbClient } from '../src/db/client.js'
 
 const silentLogger = pino({ level: 'silent' })
@@ -67,9 +71,16 @@ function mockDb(): { db: DbClient; rows: ApiKeyDbRow[] } {
 }
 
 describe('ApiKeyStore', () => {
+  // Helper: matches the production bootstrap order (refresh before serving).
+  async function readyStore(db?: DbClient, opts: { maxPerTenant?: number } = {}) {
+    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET, ...opts })
+    await store.refresh()
+    return store
+  }
+
   it('create returns a raw key once, stores only the hash', async () => {
     const { db, rows } = mockDb()
-    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    const store = await readyStore(db)
 
     const { key, rawKey } = await store.create({
       tenantId: 'tenant-a',
@@ -88,7 +99,7 @@ describe('ApiKeyStore', () => {
 
   it('list omits raw key + hash; returns metadata only', async () => {
     const { db } = mockDb()
-    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    const store = await readyStore(db)
     await store.create({ tenantId: 'tenant-a', name: 'one', createdBy: 'admin' })
 
     const list = await store.list('tenant-a')
@@ -102,7 +113,7 @@ describe('ApiKeyStore', () => {
 
   it('validate accepts raw key and returns tenant + keyId', async () => {
     const { db } = mockDb()
-    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    const store = await readyStore(db)
     const { key, rawKey } = await store.create({
       tenantId: 'tenant-a',
       name: 'one',
@@ -117,13 +128,13 @@ describe('ApiKeyStore', () => {
 
   it('validate rejects unknown keys', async () => {
     const { db } = mockDb()
-    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    const store = await readyStore(db)
     assert.equal(store.validate('lw_definitelynotreal'), undefined)
   })
 
   it('validate rejects revoked keys', async () => {
     const { db } = mockDb()
-    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    const store = await readyStore(db)
     const { key, rawKey } = await store.create({
       tenantId: 'tenant-a',
       name: 'one',
@@ -136,7 +147,7 @@ describe('ApiKeyStore', () => {
 
   it('revoke is tenant-scoped — tenant A cannot revoke tenant B keys', async () => {
     const { db } = mockDb()
-    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    const store = await readyStore(db)
     const { key: keyA, rawKey: rawA } = await store.create({
       tenantId: 'tenant-a',
       name: 'a-key',
@@ -155,7 +166,7 @@ describe('ApiKeyStore', () => {
 
   it('revoke is idempotent', async () => {
     const { db } = mockDb()
-    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    const store = await readyStore(db)
     const { key } = await store.create({
       tenantId: 'tenant-a',
       name: 'one',
@@ -173,12 +184,7 @@ describe('ApiKeyStore', () => {
 
   it('per-tenant cap prevents key spam', async () => {
     const { db } = mockDb()
-    const store = new ApiKeyStore({
-      db,
-      logger: silentLogger,
-      hmacSecret: SECRET,
-      maxPerTenant: 2,
-    })
+    const store = await readyStore(db, { maxPerTenant: 2 })
     await store.create({ tenantId: 'tenant-a', name: 'a1', createdBy: 'admin' })
     await store.create({ tenantId: 'tenant-a', name: 'a2', createdBy: 'admin' })
     await assert.rejects(
@@ -200,7 +206,8 @@ describe('ApiKeyStore', () => {
 
   it('refresh loads only active keys into the cache', async () => {
     const { db } = mockDb()
-    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    const store = await readyStore(db)
+    await store.refresh() // gate the cap-bypass guard
 
     const { rawKey: liveKey } = await store.create({
       tenantId: 'tenant-a',
@@ -224,7 +231,7 @@ describe('ApiKeyStore', () => {
 
   it('seedFromBootstrap inserts env-loaded keys idempotently', async () => {
     const { db } = mockDb()
-    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    const store = await readyStore(db)
 
     const first = await store.seedFromBootstrap({
       tenantId: 'tenant-a',
@@ -243,5 +250,64 @@ describe('ApiKeyStore', () => {
 
   it('throws if hmacSecret is missing', () => {
     assert.throws(() => new ApiKeyStore({ hmacSecret: '' }))
+  })
+
+  // ---------------------------------------------------------------------------
+  // Cap-bypass guard: create() must not run before refresh() has succeeded.
+  // ---------------------------------------------------------------------------
+
+  it('isReady is false before any refresh has run', () => {
+    const { db } = mockDb()
+    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    assert.equal(store.isReady, false)
+  })
+
+  it('isReady flips to true after a successful refresh', async () => {
+    const { db } = mockDb()
+    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    await store.refresh()
+    assert.equal(store.isReady, true)
+  })
+
+  it('isReady stays false when refresh fails (DB throws)', async () => {
+    const failingDb = {
+      query: async () => {
+        throw new Error('CH down')
+      },
+      insert: async () => {},
+      command: async () => {},
+      ping: async () => false,
+      close: async () => {},
+    } as unknown as DbClient
+    const store = new ApiKeyStore({ db: failingDb, logger: silentLogger, hmacSecret: SECRET })
+    const { count } = await store.refresh()
+    assert.equal(count, 0)
+    assert.equal(store.isReady, false)
+  })
+
+  it('create() refuses to run before initial refresh succeeded (cap bypass guard)', async () => {
+    const { db } = mockDb()
+    const store = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+    // Note: no refresh() call. Cache is empty BUT the DB might not be —
+    // an attacker who can reach this path could otherwise create
+    // `maxPerTenant` keys on top of an existing population.
+    await assert.rejects(
+      () => store.create({ tenantId: 'tenant-a', name: 'x', createdBy: 'admin' }),
+      (err: unknown) => err instanceof ApiKeyStoreNotReadyError,
+    )
+  })
+
+  it('create() works after refresh succeeds even when the cache is empty', async () => {
+    // Empty DB → refresh succeeds with count 0 → cache empty but isReady=true.
+    // create() should now be allowed.
+    const { db } = mockDb()
+    const store = await readyStore(db)
+    await store.refresh()
+    const result = await store.create({
+      tenantId: 'tenant-a',
+      name: 'first-key',
+      createdBy: 'admin',
+    })
+    assert.ok(result.rawKey)
   })
 })

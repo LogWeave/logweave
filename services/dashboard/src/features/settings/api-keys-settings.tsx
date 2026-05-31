@@ -172,19 +172,14 @@ export function ApiKeysSettings() {
       </Card>
 
       {/* Show-once modal: dismissing this is the only path away from the raw
-          key view. We deliberately do NOT keep `createdKey` in any longer-lived
-          store — once the modal closes, the value is gone from the React tree. */}
+          key view. We deliberately do NOT dismiss on backdrop-click — an
+          accidental outside-click would silently destroy the only copy of a
+          freshly-minted secret. The user must press "I've saved it" (or Copy
+          first, then dismiss). Likewise no Escape handler. */}
       {createdKey && (
-        // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismisses modal
-        // biome-ignore lint/a11y/useKeyWithClickEvents: Escape handled by focused buttons
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-          onClick={() => setCreatedKey(null)}
-        >
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div
             className="rounded-[var(--radius-md)] bg-surface-card border border-border-subtle p-4 max-w-md w-full space-y-3"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="api-key-modal-title"

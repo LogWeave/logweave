@@ -64,9 +64,13 @@ function mockDb(): { db: DbClient; rows: Row[] } {
   return { db, rows }
 }
 
-function createTestApp() {
+async function createTestApp() {
   const { db, rows } = mockDb()
   const apiKeyStore = new ApiKeyStore({ db, logger: silentLogger, hmacSecret: SECRET })
+  // Production bootstrap awaits an initial refresh before the HTTP listener
+  // is started. Mirror that here so create() isn't gated by the
+  // not-ready check.
+  await apiKeyStore.refresh()
 
   const app = express()
   app.use(express.json())
@@ -88,7 +92,7 @@ function createTestApp() {
 
 describe('POST /v1/api-keys', () => {
   it('creates a key and returns the raw value exactly once', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
     const res = await request(app)
       .post('/v1/api-keys')
       .set('Authorization', `Bearer ${KEY_A}`)
@@ -104,13 +108,13 @@ describe('POST /v1/api-keys', () => {
   })
 
   it('returns 401 without auth', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
     const res = await request(app).post('/v1/api-keys').send({ name: 'x' })
     assert.equal(res.status, 401)
   })
 
   it('returns 400 when name is missing', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
     const res = await request(app)
       .post('/v1/api-keys')
       .set('Authorization', `Bearer ${KEY_A}`)
@@ -119,7 +123,7 @@ describe('POST /v1/api-keys', () => {
   })
 
   it('returns 400 when name is empty string', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
     const res = await request(app)
       .post('/v1/api-keys')
       .set('Authorization', `Bearer ${KEY_A}`)
@@ -128,7 +132,7 @@ describe('POST /v1/api-keys', () => {
   })
 
   it('a key created by tenant A actually authenticates as tenant A on subsequent requests', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
     // Create a key as tenant A
     const created = await request(app)
       .post('/v1/api-keys')
@@ -146,7 +150,7 @@ describe('POST /v1/api-keys', () => {
 
 describe('GET /v1/api-keys', () => {
   it('returns active keys for the current tenant, prefix only — no raw key', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
 
     await request(app)
       .post('/v1/api-keys')
@@ -169,7 +173,7 @@ describe('GET /v1/api-keys', () => {
   })
 
   it('tenant isolation — tenant B cannot see tenant A keys', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
 
     await request(app)
       .post('/v1/api-keys')
@@ -182,7 +186,7 @@ describe('GET /v1/api-keys', () => {
   })
 
   it('returns 401 without auth', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
     const res = await request(app).get('/v1/api-keys')
     assert.equal(res.status, 401)
   })
@@ -190,7 +194,7 @@ describe('GET /v1/api-keys', () => {
 
 describe('DELETE /v1/api-keys/:keyId', () => {
   it('revokes a tenant key and the raw key stops working', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
 
     const created = await request(app)
       .post('/v1/api-keys')
@@ -218,7 +222,7 @@ describe('DELETE /v1/api-keys/:keyId', () => {
   })
 
   it('tenant isolation — tenant B cannot revoke tenant A keys', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
 
     const created = await request(app)
       .post('/v1/api-keys')
@@ -238,7 +242,7 @@ describe('DELETE /v1/api-keys/:keyId', () => {
   })
 
   it('returns 404 for unknown keyId', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
     const res = await request(app)
       .delete('/v1/api-keys/00000000-0000-0000-0000-000000000000')
       .set('Authorization', `Bearer ${KEY_A}`)
@@ -246,7 +250,7 @@ describe('DELETE /v1/api-keys/:keyId', () => {
   })
 
   it('returns 401 without auth', async () => {
-    const { app } = createTestApp()
+    const { app } = await createTestApp()
     const res = await request(app).delete('/v1/api-keys/abc')
     assert.equal(res.status, 401)
   })

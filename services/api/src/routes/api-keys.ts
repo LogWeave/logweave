@@ -1,11 +1,16 @@
 import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
-import { ApiKeyLimitError, type ApiKeyStore } from '../auth/api-key-store.js'
+import {
+  ApiKeyLimitError,
+  type ApiKeyStore,
+  ApiKeyStoreNotReadyError,
+} from '../auth/api-key-store.js'
 import { insertAuditEvent } from '../db/audit-queries.js'
 import type { DbClient } from '../db/client.js'
-import { notFound, validationError } from '../errors.js'
+import { notFound, serviceUnavailable, validationError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { getInternalEvents } from '../internal-events/emitter.js'
 import { respond } from '../lib/respond.js'
 import { getKeyId, getTenantId, requireAdmin } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
@@ -50,13 +55,24 @@ export function apiKeyRoutes(deps: ApiKeyRoutesDeps): Router {
       })
 
       // Audit trail. Never include the raw key or its full hash.
+      // Fire-and-forget but visible: structured-logger warn + internal_events
+      // emit. Going to two sinks means an operator who's investigating an
+      // audit gap can still see the failure even if the structured logger
+      // is the thing being audited.
       insertAuditEvent(deps.db, tenantId, {
         keyId: createdBy,
         action: 'api_key.create',
         details: JSON.stringify({ keyId: key.keyId, name: key.name, prefix: key.prefix }),
-      }).catch((err) =>
-        deps.logger.warn({ err, keyId: key.keyId }, 'api_key.create audit insert failed'),
-      )
+      }).catch((err) => {
+        deps.logger.warn({ err, keyId: key.keyId }, 'api_key.create audit insert failed')
+        getInternalEvents().emit({
+          event: 'audit.insert_failed',
+          severity: 'error',
+          code: 'AUDIT_INSERT_FAILED',
+          summary: 'audit row could not be inserted',
+          fields: { action: 'api_key.create', tenant_id: tenantId, key_id: key.keyId },
+        })
+      })
 
       res.status(HttpStatus.CREATED).json({
         data: {
@@ -69,6 +85,10 @@ export function apiKeyRoutes(deps: ApiKeyRoutesDeps): Router {
     } catch (err) {
       if (err instanceof ApiKeyLimitError) {
         next(validationError(err.message))
+        return
+      }
+      if (err instanceof ApiKeyStoreNotReadyError) {
+        next(serviceUnavailable(err.message))
         return
       }
       next(err)
@@ -102,7 +122,16 @@ export function apiKeyRoutes(deps: ApiKeyRoutesDeps): Router {
         keyId: revokedBy,
         action: 'api_key.revoke',
         details: JSON.stringify({ revokedKeyId: keyId }),
-      }).catch((err) => deps.logger.warn({ err, keyId }, 'api_key.revoke audit insert failed'))
+      }).catch((err) => {
+        deps.logger.warn({ err, keyId }, 'api_key.revoke audit insert failed')
+        getInternalEvents().emit({
+          event: 'audit.insert_failed',
+          severity: 'error',
+          code: 'AUDIT_INSERT_FAILED',
+          summary: 'audit row could not be inserted',
+          fields: { action: 'api_key.revoke', tenant_id: tenantId, key_id: keyId },
+        })
+      })
 
       res.status(HttpStatus.NO_CONTENT).end()
     } catch (err) {
