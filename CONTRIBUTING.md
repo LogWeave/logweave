@@ -16,7 +16,7 @@ docker compose up --build
 - `services/api/` — Node.js / Express / TypeScript API server
 - `services/clusterer/` — Python / FastAPI / Drain3 clustering service
 - `services/dashboard/` — React / Vite / Tailwind dashboard
-- `services/mcp/` — MCP server (21 tools for AI assistants)
+- `services/mcp/` — MCP server (26 tools for AI assistants)
 
 ## Development
 
