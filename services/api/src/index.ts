@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { createApp } from './app.js'
+import { ApiKeyStore } from './auth/api-key-store.js'
 import { deriveKeys } from './auth/passwords.js'
 import { HmacSessionProvider } from './auth/session.js'
 import { ClickHouseUserStore } from './auth/user-store.js'
@@ -64,6 +65,13 @@ const anomalyScorer = new AnomalyScorer({ db, logger })
 const watchStore = new WatchStore({ db, logger })
 const settingsStore = new TenantSettingsStore({ db, logger })
 const ruleStore = new RuleStore({ db, logger })
+
+// Runtime-mutable API keys. Lives alongside env-loaded `config.apiKeys`,
+// which remain the bootstrap path. encryptionKey doubles as the HMAC secret
+// (domain-separated inside the store) so we don't need a new env var.
+const apiKeyStore = config.encryptionKey
+  ? new ApiKeyStore({ db, logger, hmacSecret: config.encryptionKey })
+  : undefined
 const alertDispatcher = new AlertDispatcher(logger)
 alertDispatcher.register(new ConsoleObserver(logger))
 alertDispatcher.register(
@@ -98,6 +106,41 @@ try {
   await watchStore.loadFromDb()
   await settingsStore.loadFromDb()
   await ruleStore.loadFromDb()
+  if (apiKeyStore) {
+    // The initial refresh MUST succeed (not the silent-degrade path inside
+    // refresh()) because the per-tenant cap in create() is enforced from
+    // the cache. An empty cache after a failed boot-time refresh would let
+    // a tenant exceed the cap. Treat refresh failure as a startup failure.
+    const { count } = await apiKeyStore.refresh()
+    if (!apiKeyStore.isReady) {
+      throw new Error('ApiKeyStore initial refresh failed; refusing to start')
+    }
+    logger.info({ count }, 'ApiKeyStore loaded')
+
+    // Migrate env-loaded keys (config.apiKeys) into the table on first boot
+    // so they become revocable via the API. After seeding succeeds the env
+    // keys are emptied — the DB is the single source of truth from this
+    // point on, which avoids the "revoked key comes back to life from env"
+    // footgun.
+    const seeded: string[] = []
+    for (const [rawKey, tenantId] of config.apiKeys.entries()) {
+      const added = await apiKeyStore.seedFromBootstrap({
+        tenantId,
+        rawKey,
+        name: 'bootstrap',
+      })
+      if (added) seeded.push(tenantId)
+    }
+    if (seeded.length > 0) {
+      logger.info(
+        { seeded: seeded.length },
+        'Migrated env-loaded API keys into api_keys table; clearing env source',
+      )
+    }
+    // Always clear: even if all keys were already in the table, the env Map
+    // still holds plaintext secrets that don't need to live past boot.
+    config.apiKeys.clear()
+  }
 } catch (err) {
   internalEvents.emit({
     event: 'clickhouse.unreachable',
@@ -176,6 +219,7 @@ const { app, tailTokenStore } = createApp({
   ruleStore,
   watchStore,
   settingsStore,
+  apiKeyStore,
   tailBuffer,
   eventBus,
   sessionProvider,
@@ -233,6 +277,7 @@ const server = app.listen(config.port, () => {
   anomalyScorer.start()
   alertEvaluator.start()
   thresholdEvaluator.start()
+  apiKeyStore?.start()
 })
 
 let shuttingDown = false
@@ -261,6 +306,7 @@ async function shutdown(signal: string): Promise<void> {
   alertEvaluator.stop()
   thresholdEvaluator.stop()
   anomalyScorer.stop()
+  apiKeyStore?.stop()
   await recovery.stop()
   await retention.stop()
   // Stop tail-related background timers (token cleanup, buffer eviction)

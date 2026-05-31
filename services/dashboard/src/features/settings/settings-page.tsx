@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { cn } from '../../lib/cn'
+import { ApiKeysSettings } from './api-keys-settings'
 import { ClusteringSettings } from './clustering-settings'
 import { ConnectorSettings } from './connector-settings'
 import { CostSettings, SpikeBaselineSettings } from './cost-settings'
@@ -159,6 +160,8 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ApiKeysSettings />
 
       <ClusteringSettings />
 

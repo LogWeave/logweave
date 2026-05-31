@@ -28,6 +28,7 @@ export const queryKeys = {
   slackSettings: () => ['settings', 'slack'] as const,
   tagSettings: () => ['settings', 'tags'] as const,
   connectors: () => ['connectors'] as const,
+  apiKeys: () => ['api-keys'] as const,
   onboardingStatus: () => ['settings', 'onboarding'] as const,
   costAnalysis: (hours: number, service: string | null, levels: string) =>
     ['cost', 'analysis', hours, service, levels] as const,

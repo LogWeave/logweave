@@ -365,6 +365,34 @@ GROUP BY tenant_id, service, environment, level, interval_start`,
   ORDER BY (service, event, ts)
   TTL toDateTime(ts) + toIntervalDay(7) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
+
+  // 22. API keys — per-tenant service tokens, runtime-managed (no restart to
+  // rotate). The raw key is never stored; only an HMAC-SHA256 digest is. Same
+  // ReplacingMergeTree(version, is_deleted) pattern as `watches` so a revoke
+  // is just an INSERT with is_deleted=1; readers use FINAL to see the
+  // current state and filter on is_deleted.
+  //
+  // ORDER BY is `(tenant_id, key_id)` because:
+  //   - every CRUD read path is tenant-scoped + key_id-scoped (list, revoke)
+  //   - the auth hot path NEVER queries this table at request time. It uses
+  //     the ApiKeyStore in-memory cache (hash → record), refreshed every 60s.
+  // We deliberately don't index by `key_hash` — a DB-backed validation
+  // fallback would be a real-AWS-style latency hit and a separate design
+  // decision when/if scaling beyond single-instance demands it.
+  `CREATE TABLE IF NOT EXISTS logweave.api_keys (
+    tenant_id    LowCardinality(String),
+    key_id       String,
+    key_hash     String,
+    key_prefix   String,
+    name         String,
+    created_at   DateTime64(3),
+    created_by   String DEFAULT '',
+    revoked_at   Nullable(DateTime64(3)),
+    revoked_by   String DEFAULT '',
+    version      UInt64,
+    is_deleted   UInt8 DEFAULT 0
+  ) ENGINE = ReplacingMergeTree(version, is_deleted)
+  ORDER BY (tenant_id, key_id)`,
 ]
 
 const RESOURCE_GUARDRAILS = `ALTER USER default SETTINGS

@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import type pino from 'pino'
+import type { ApiKeyStore } from '../auth/api-key-store.js'
 import type { SessionProvider } from '../auth/session.js'
 import { SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '../auth/session.js'
 import type { SessionValidationCache } from '../auth/session-cache.js'
@@ -67,19 +68,48 @@ export class KeyStore {
   }
 }
 
+export interface AuthMiddlewareOpts {
+  /** Static env-loaded keys (bootstrap). Optional once apiKeyStore has data. */
+  envKeys?: KeyStore | Map<string, string>
+  /** DB-managed, runtime-mutable keys. Consulted after envKeys. */
+  apiKeyStore?: ApiKeyStore
+  sessionProvider?: SessionProvider
+  sessionCache?: SessionValidationCache
+  userStore?: UserStore
+  logger?: pino.Logger
+}
+
 /**
  * Create auth middleware that validates Bearer tokens and session cookies.
- * Auth priority: Bearer header → session cookie → 401.
- * Accepts either a KeyStore (hot-reloadable) or a static Map (legacy).
+ * Auth priority: Bearer header (env keys → DB keys) → session cookie → 401.
+ *
+ * Two-arg legacy form is preserved so existing tests don't break: pass a
+ * `KeyStore` or `Map` as the first arg. New callers should pass an options
+ * object so the DB-managed `apiKeyStore` can be wired in.
  */
 export function createAuthMiddleware(
-  source: KeyStore | Map<string, string>,
+  sourceOrOpts: KeyStore | Map<string, string> | AuthMiddlewareOpts,
   sessionProvider?: SessionProvider,
   sessionCache?: SessionValidationCache,
   userStore?: UserStore,
   logger?: pino.Logger,
 ): RequestHandler {
-  const store = source instanceof KeyStore ? source : new KeyStore(source)
+  const opts: AuthMiddlewareOpts =
+    sourceOrOpts instanceof KeyStore || sourceOrOpts instanceof Map
+      ? { envKeys: sourceOrOpts, sessionProvider, sessionCache, userStore, logger }
+      : sourceOrOpts
+
+  const envStore =
+    opts.envKeys instanceof KeyStore
+      ? opts.envKeys
+      : opts.envKeys
+        ? new KeyStore(opts.envKeys)
+        : undefined
+  const apiKeyStore = opts.apiKeyStore
+  const sp = opts.sessionProvider
+  const sc = opts.sessionCache
+  const us = opts.userStore
+  const log = opts.logger
 
   return (req: Request, res: Response, next: NextFunction): void => {
     // 1. Bearer token (API keys, MCP, SDK)
@@ -91,7 +121,9 @@ export function createAuthMiddleware(
       }
       const token = header.slice(7).trim()
       if (token.length > 0) {
-        const result = store.validate(token)
+        // Env keys first — small, deterministic, set at boot. DB keys are
+        // the runtime-managed pool; checked second.
+        const result = envStore?.validate(token) ?? apiKeyStore?.validate(token)
         if (result) {
           res.locals[TENANT_ID_KEY] = result.tenantId
           res.locals[KEY_ID_KEY] = result.keyId
@@ -118,28 +150,27 @@ export function createAuthMiddleware(
     }
 
     // 2. Session cookie (dashboard) — validates HMAC + checks session version
-    if (sessionProvider) {
+    if (sp) {
       const cookieValue = (req as Request & { cookies?: Record<string, string> }).cookies?.[
         SESSION_COOKIE_NAME
       ]
       if (cookieValue) {
-        const session = sessionProvider.validateSession(cookieValue)
+        const session = sp.validateSession(cookieValue)
         if (session) {
           // Check session version against cache/DB to catch deleted/changed users
-          if (sessionCache && userStore) {
-            const cached = sessionCache.get(session.userId)
+          if (sc && us) {
+            const cached = sc.get(session.userId)
             if (!cached) {
               // Cache miss — query DB (async, but we need to await)
               // Fire-and-forget populate cache; for this request, trust the signed cookie
-              userStore
-                .findById(session.userId)
+              us.findById(session.userId)
                 .then((user) => {
-                  sessionCache.set(session.userId, user?.sessionVersion ?? 0, !user)
+                  sc.set(session.userId, user?.sessionVersion ?? 0, !user)
                 })
                 .catch((err) => {
                   // Silently swallowing this would mean every request takes the slow
                   // path with no signal in logs. Log it so DB outages are observable.
-                  logger?.warn({ err, userId: session.userId }, 'Session cache populate failed')
+                  log?.warn({ err, userId: session.userId }, 'Session cache populate failed')
                 })
             } else if (cached.isDeleted || cached.sessionVersion !== session.sessionVersion) {
               // User deleted or session version mismatch — reject
@@ -151,7 +182,7 @@ export function createAuthMiddleware(
           res.locals[KEY_ID_KEY] = `session:${session.userId}`
           res.locals[ROLE_KEY] = session.role
           // Refresh cookie to extend idle timeout (preserves absolute exp).
-          const refreshed = sessionProvider.refreshSession(session)
+          const refreshed = sp.refreshSession(session)
           res.cookie(SESSION_COOKIE_NAME, refreshed, SESSION_COOKIE_OPTIONS)
           next()
           return
