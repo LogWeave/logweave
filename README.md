@@ -189,7 +189,7 @@ For events that fail clustering (e.g. clusterer timeout), a pre-processed versio
 Your Apps ──→ LogWeave ──→ Your AI
                  │
                  ├── Dashboard
-                 ├── MCP Server (25 tools)
+                 ├── MCP Server (26 tools)
                  └── Alerts (Slack/PagerDuty)
 ```
 
