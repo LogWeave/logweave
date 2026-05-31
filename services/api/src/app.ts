@@ -5,6 +5,7 @@ import express, { Router } from 'express'
 import helmet from 'helmet'
 import type pino from 'pino'
 import { type Options as PinoHttpOptions, pinoHttp } from 'pino-http'
+import type { ApiKeyStore } from './auth/api-key-store.js'
 import type { SessionProvider } from './auth/session.js'
 import { SessionValidationCache } from './auth/session-cache.js'
 import type { UserStore } from './auth/user-store.js'
@@ -24,6 +25,7 @@ import { createRateLimiter } from './middleware/rate-limit.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
 import type { AnomalyScorer } from './pipeline/anomaly-scorer.js'
 import type { ClusterClient } from './pipeline/cluster-client.js'
+import { apiKeyRoutes } from './routes/api-keys.js'
 import { authRoutes } from './routes/auth.js'
 import { compositeRoutes } from './routes/composite.js'
 import { connectorRoutes } from './routes/connectors.js'
@@ -57,6 +59,8 @@ export interface AppDependencies {
   ruleStore: RuleStore
   watchStore: WatchStore
   settingsStore: TenantSettingsStore
+  /** DB-managed API keys (runtime-mutable; CRUD without restart). */
+  apiKeyStore?: ApiKeyStore
   tailBuffer?: TailBuffer
   eventBus?: EventBus
   sessionProvider?: SessionProvider
@@ -163,13 +167,14 @@ export function createApp(deps: AppDependencies): CreatedApp {
   // Routes — API (authenticated, rate-limited)
   const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys)
   const sessionCache = new SessionValidationCache()
-  const auth = createAuthMiddleware(
-    keyStore,
-    deps.sessionProvider,
+  const auth = createAuthMiddleware({
+    envKeys: keyStore,
+    apiKeyStore: deps.apiKeyStore,
+    sessionProvider: deps.sessionProvider,
     sessionCache,
-    deps.userStore,
-    deps.logger,
-  )
+    userStore: deps.userStore,
+    logger: deps.logger,
+  })
 
   const rateLimiter = createRateLimiter({
     keyRpm: deps.config.rateLimitRpm,
@@ -236,6 +241,15 @@ export function createApp(deps: AppDependencies): CreatedApp {
       logger: deps.logger,
     }),
   )
+  if (deps.apiKeyStore) {
+    v1.use(
+      apiKeyRoutes({
+        db: deps.db,
+        logger: deps.logger,
+        apiKeyStore: deps.apiKeyStore,
+      }),
+    )
+  }
   v1.use(
     settingsRoutes({
       settingsStore: deps.settingsStore,

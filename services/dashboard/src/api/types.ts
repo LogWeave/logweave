@@ -237,3 +237,21 @@ export interface CostAnalysisData {
   patterns: CostPattern[]
   thresholds: CostThresholds
 }
+
+// API key metadata as returned by GET /v1/api-keys. The raw key value only
+// appears in the response of POST /v1/api-keys; see ApiKeyCreateResponse.
+export interface ApiKeyEntry {
+  keyId: string
+  tenantId: string
+  name: string
+  prefix: string
+  createdAt: string
+  createdBy: string
+  revokedAt?: string
+  revokedBy?: string
+}
+
+// Response of POST /v1/api-keys — includes the raw key exactly once.
+export interface ApiKeyCreateResponse extends ApiKeyEntry {
+  key: string
+}

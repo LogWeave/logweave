@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { createApp } from './app.js'
+import { ApiKeyStore } from './auth/api-key-store.js'
 import { deriveKeys } from './auth/passwords.js'
 import { HmacSessionProvider } from './auth/session.js'
 import { ClickHouseUserStore } from './auth/user-store.js'
@@ -64,6 +65,13 @@ const anomalyScorer = new AnomalyScorer({ db, logger })
 const watchStore = new WatchStore({ db, logger })
 const settingsStore = new TenantSettingsStore({ db, logger })
 const ruleStore = new RuleStore({ db, logger })
+
+// Runtime-mutable API keys. Lives alongside env-loaded `config.apiKeys`,
+// which remain the bootstrap path. encryptionKey doubles as the HMAC secret
+// (domain-separated inside the store) so we don't need a new env var.
+const apiKeyStore = config.encryptionKey
+  ? new ApiKeyStore({ db, logger, hmacSecret: config.encryptionKey })
+  : undefined
 const alertDispatcher = new AlertDispatcher(logger)
 alertDispatcher.register(new ConsoleObserver(logger))
 alertDispatcher.register(
@@ -98,6 +106,9 @@ try {
   await watchStore.loadFromDb()
   await settingsStore.loadFromDb()
   await ruleStore.loadFromDb()
+  if (apiKeyStore) {
+    await apiKeyStore.refresh()
+  }
 } catch (err) {
   internalEvents.emit({
     event: 'clickhouse.unreachable',
@@ -176,6 +187,7 @@ const { app, tailTokenStore } = createApp({
   ruleStore,
   watchStore,
   settingsStore,
+  apiKeyStore,
   tailBuffer,
   eventBus,
   sessionProvider,
@@ -233,6 +245,7 @@ const server = app.listen(config.port, () => {
   anomalyScorer.start()
   alertEvaluator.start()
   thresholdEvaluator.start()
+  apiKeyStore?.start()
 })
 
 let shuttingDown = false
@@ -261,6 +274,7 @@ async function shutdown(signal: string): Promise<void> {
   alertEvaluator.stop()
   thresholdEvaluator.stop()
   anomalyScorer.stop()
+  apiKeyStore?.stop()
   await recovery.stop()
   await retention.stop()
   // Stop tail-related background timers (token cleanup, buffer eviction)

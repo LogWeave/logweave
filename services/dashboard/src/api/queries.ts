@@ -6,6 +6,8 @@ import { levelApiParam, levelParam, queryKeys } from './query-keys'
 import type {
   AlertHistoryEntry,
   AlertRule,
+  ApiKeyCreateResponse,
+  ApiKeyEntry,
   ApiResponse,
   ClusteringHealthData,
   ConnectionTestResult,
@@ -507,6 +509,39 @@ export function useSaveCostThresholds() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.costThresholds() })
       queryClient.invalidateQueries({ queryKey: ['cost'] })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// API keys
+// ---------------------------------------------------------------------------
+
+export function useApiKeys() {
+  return useQuery({
+    queryKey: queryKeys.apiKeys(),
+    queryFn: () => api.get<ApiResponse<ApiKeyEntry[]>>('/v1/api-keys'),
+    staleTime: 30_000,
+  })
+}
+
+export function useCreateApiKey() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { name: string }) =>
+      api.post<ApiResponse<ApiKeyCreateResponse>>('/v1/api-keys', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys() })
+    },
+  })
+}
+
+export function useRevokeApiKey() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (keyId: string) => api.del(`/v1/api-keys/${keyId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys() })
     },
   })
 }
