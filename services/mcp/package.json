@@ -4,6 +4,12 @@
   "description": "LogWeave MCP server — log intelligence tools for AI assistants",
   "type": "module",
   "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "bin": {
     "logweave-mcp": "./dist/index.js"
   },
@@ -26,14 +32,17 @@
     "observability"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/RobertDicker/logweave/tree/main/services/mcp#readme",
+  "homepage": "https://github.com/logweave/logweave/tree/main/services/mcp#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RobertDicker/logweave.git",
+    "url": "git+https://github.com/logweave/logweave.git",
     "directory": "services/mcp"
   },
   "bugs": {
-    "url": "https://github.com/RobertDicker/logweave/issues"
+    "url": "https://github.com/logweave/logweave/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=20"

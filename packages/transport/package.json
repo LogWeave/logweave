@@ -16,6 +16,25 @@
     "dist",
     "LICENSE"
   ],
+  "homepage": "https://github.com/logweave/logweave/tree/main/packages/transport#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/logweave/logweave.git",
+    "directory": "packages/transport"
+  },
+  "bugs": {
+    "url": "https://github.com/logweave/logweave/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "logweave",
+    "winston",
+    "winston-transport",
+    "log-intelligence",
+    "observability"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "tsx scripts/test.ts",
