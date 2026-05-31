@@ -21,7 +21,7 @@ LogWeave works alongside your existing logging stack (Datadog, Grafana, CloudWat
 ## Quick Start
 
 ```bash
-git clone https://github.com/RobertDicker/logweave.git
+git clone https://github.com/logweave/logweave.git
 cd logweave
 cp .env.production.example .env
 # Edit .env — set LOGWEAVE_API_KEYS and LOGWEAVE_ENCRYPTION_KEY
