@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import type { DbClient } from '../../src/db/client.js'
 import {
   computeTimeWindow,
+  queryBaselineSnapshot,
   queryNewTemplates,
   queryResolvedTemplates,
   queryTemplateSpikes,
@@ -324,5 +325,72 @@ describe('queryResolvedTemplates with since', () => {
       captured[0].query.includes('HAVING prev_count >= 5'),
       'should keep minimum count threshold',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// queryBaselineSnapshot tests (issue #218)
+// ---------------------------------------------------------------------------
+
+describe('queryBaselineSnapshot', () => {
+  it('returns empty when previous window has zero events', async () => {
+    const { db } = createCapturingDb([{ prev_events: 0 }])
+    const result = await queryBaselineSnapshot(db, 'tenant-a', { hours: 1 })
+    assert.equal(result.status, 'empty')
+    assert.equal(result.previousWindowEvents, 0)
+  })
+
+  it('returns sparse when previous window has < 50 events', async () => {
+    const { db } = createCapturingDb([{ prev_events: 25 }])
+    const result = await queryBaselineSnapshot(db, 'tenant-a', { hours: 1 })
+    assert.equal(result.status, 'sparse')
+    assert.equal(result.previousWindowEvents, 25)
+  })
+
+  it('returns ok when previous window has >= 50 events', async () => {
+    const { db } = createCapturingDb([{ prev_events: 1500 }])
+    const result = await queryBaselineSnapshot(db, 'tenant-a', { hours: 1 })
+    assert.equal(result.status, 'ok')
+    assert.equal(result.previousWindowEvents, 1500)
+  })
+
+  it('handles string-typed counts from ClickHouse JSON', async () => {
+    const { db } = createCapturingDb([{ prev_events: '300' }])
+    const result = await queryBaselineSnapshot(db, 'tenant-a', { hours: 1 })
+    assert.equal(result.status, 'ok')
+    assert.equal(result.previousWindowEvents, 300)
+  })
+
+  it('hours-path uses previous-window time range only', async () => {
+    const { db, captured } = createCapturingDb([{ prev_events: 100 }])
+    await queryBaselineSnapshot(db, 'tenant-a', { hours: 1 })
+    const sql = captured[0].query
+    assert.ok(sql.includes('template_stats'), 'should query template_stats')
+    assert.ok(sql.includes('countMerge(occurrence_count)'), 'should aggregate occurrence_count')
+    assert.equal(captured[0].query_params.hours, 1)
+    assert.equal(captured[0].query_params.window, 2, 'window should be 2x hours')
+  })
+
+  it('since-path passes absolute timestamps', async () => {
+    const { db, captured } = createCapturingDb([{ prev_events: 100 }])
+    const since = new Date(Date.now() - 3_600_000).toISOString()
+    await queryBaselineSnapshot(db, 'tenant-a', { since })
+    const params = captured[0].query_params
+    assert.ok(params.previous_start, 'should have previous_start param')
+    assert.ok(params.previous_end, 'should have previous_end param')
+    assert.ok(!params.hours, 'should NOT use hours when since is provided')
+  })
+
+  it('respects tenant isolation', async () => {
+    const { db, captured } = createCapturingDb([{ prev_events: 100 }])
+    await queryBaselineSnapshot(db, 'tenant-xyz', { hours: 1 })
+    assert.equal(captured[0].query_params.tenant_id, 'tenant-xyz')
+  })
+
+  it('handles empty result rows (defensive)', async () => {
+    const { db } = createCapturingDb([])
+    const result = await queryBaselineSnapshot(db, 'tenant-a', { hours: 1 })
+    assert.equal(result.status, 'empty')
+    assert.equal(result.previousWindowEvents, 0)
   })
 })

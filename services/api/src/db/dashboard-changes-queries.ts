@@ -49,6 +49,24 @@ interface SpikesOptions extends ChangesOptions {
 const DEFAULT_CHANGES_LIMIT = 20
 const MAX_CHANGES_LIMIT = 100
 
+/**
+ * Event count below which the previous window is considered too thin for a
+ * meaningful spike comparison. Surfaces as `meta.baselineStatus: 'sparse'` so
+ * the UI can tell users the panel's results may be incomplete.
+ *
+ * 50 events ≈ ~5 events per minute over a 10-minute window. Below that the
+ * spike-ratio numerator (current count) easily dominates and produces alarm-
+ * looking ratios from a handful of legitimate events.
+ */
+const SPARSE_BASELINE_THRESHOLD = 50
+
+export type BaselineStatus = 'empty' | 'sparse' | 'ok'
+
+export interface BaselineSnapshot {
+  status: BaselineStatus
+  previousWindowEvents: number
+}
+
 // -- Time window computation for since-based queries --
 
 interface TimeWindow {
@@ -444,4 +462,72 @@ LIMIT {limit:UInt32}`
   const params: Record<string, unknown> = { hours, limit, window }
   addFilterParams(params, service, levels)
   return db.query<ResolvedTemplateRow>(tenantQuery(query, tenantId, params))
+}
+
+/**
+ * Total event count in the previous (baseline) comparison window.
+ *
+ * The spike query needs prior-window data to produce a ratio; the new/resolved
+ * queries need it to detect set-difference. When the tenant has been ingesting
+ * for less than 2× the lookback period (common on fresh installs), the previous
+ * window is empty and all three buckets silently return zero rows. Surfacing
+ * this count lets the API tell the client to render an honest "no baseline"
+ * state instead of a misleading "all quiet."
+ *
+ * Returns 'empty' when the previous window has zero events, 'sparse' when it
+ * has < SPARSE_BASELINE_THRESHOLD, otherwise 'ok'.
+ */
+export async function queryBaselineSnapshot(
+  db: DbClient,
+  tenantId: string,
+  options?: ChangesOptions,
+): Promise<BaselineSnapshot> {
+  const service = options?.service
+  const levels = options?.level
+  const { serviceFilter, levelFilter } = buildFilters(service, levels)
+
+  let query: string
+  const params: Record<string, unknown> = {}
+
+  if (options?.since) {
+    const tw = computeTimeWindow(options.since)
+    query = `
+/* @query: baselineSnapshot */
+SELECT countMerge(occurrence_count) AS prev_events
+FROM logweave.template_stats
+WHERE tenant_id = {tenant_id:String}
+  AND interval_start >= {previous_start:DateTime64(3)}
+  AND interval_start < {previous_end:DateTime64(3)}
+  ${serviceFilter}
+  ${levelFilter}`
+    params.previous_start = toClickHouseDateTime(tw.previousStart)
+    params.previous_end = toClickHouseDateTime(tw.previousEnd)
+  } else {
+    const hours = clamp(options?.hours ?? DEFAULT_HOURS, MAX_HOURS)
+    const window = hours * 2
+    query = `
+/* @query: baselineSnapshot */
+SELECT countMerge(occurrence_count) AS prev_events
+FROM logweave.template_stats
+WHERE tenant_id = {tenant_id:String}
+  AND interval_start > now64(3) - toIntervalHour({window:UInt32})
+  AND interval_start <= now64(3) - toIntervalHour({hours:UInt32})
+  ${serviceFilter}
+  ${levelFilter}`
+    params.hours = hours
+    params.window = window
+  }
+  addFilterParams(params, service, levels)
+
+  const rows = await db.query<{ prev_events: number | string }>(
+    tenantQuery(query, tenantId, params),
+  )
+  const previousWindowEvents = Number(rows[0]?.prev_events ?? 0)
+
+  let status: BaselineStatus
+  if (previousWindowEvents === 0) status = 'empty'
+  else if (previousWindowEvents < SPARSE_BASELINE_THRESHOLD) status = 'sparse'
+  else status = 'ok'
+
+  return { status, previousWindowEvents }
 }

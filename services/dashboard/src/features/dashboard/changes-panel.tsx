@@ -93,6 +93,8 @@ export function ChangesPanel({ className }: { className?: string }) {
   const resolved = changesData?.resolved ?? []
   const totalCount = spikes.length + newEvents.length + resolved.length
   const hasAnyData = (overviewResponse?.data?.totalEvents ?? 0) > 0
+  const baselineStatus = response?.meta?.baselineStatus
+  const previousWindowEvents = response?.meta?.previousWindowEvents ?? 0
   const setSelectedTemplateId = useDashboardStore((s) => s.setSelectedTemplateId)
 
   if (isLoading) {
@@ -122,12 +124,20 @@ export function ChangesPanel({ className }: { className?: string }) {
           <QueryError onRetry={() => refetch()} />
         ) : totalCount === 0 ? (
           <p className="text-xs text-text-muted py-4 text-center">
-            {hasAnyData
-              ? 'All quiet — no spikes, new patterns, or resolutions in this window.'
-              : 'Waiting for log data to start detecting changes.'}
+            {!hasAnyData
+              ? 'Waiting for log data to start detecting changes.'
+              : baselineStatus === 'empty'
+                ? 'No baseline data yet — change detection compares the current window to the equivalent prior window, which is empty. Check back once ingestion has covered both periods.'
+                : 'All quiet — no spikes, new patterns, or resolutions in this window.'}
           </p>
         ) : (
           <div className="max-h-[300px] overflow-y-auto space-y-2">
+            {baselineStatus === 'sparse' && (
+              <p className="text-[11px] text-text-muted mb-2 italic">
+                Sparse baseline ({previousWindowEvents.toLocaleString()} events in prior window) —
+                spike ratios may be noisier than usual.
+              </p>
+            )}
             {spikes.length > 0 && (
               <div>
                 <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">

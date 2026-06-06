@@ -1,3 +1,5 @@
+export type BaselineStatus = 'empty' | 'sparse' | 'ok'
+
 export interface ApiResponse<T> {
   data: T
   meta: {
@@ -6,6 +8,10 @@ export interface ApiResponse<T> {
     offset?: number
     count: number
     fetchedAt: string
+    /** Present on `/v1/dashboard/changes` only. See ChangesPanel rendering. */
+    baselineStatus?: BaselineStatus
+    /** Present on `/v1/dashboard/changes` only. Total event count in the prior window. */
+    previousWindowEvents?: number
   }
 }
 
