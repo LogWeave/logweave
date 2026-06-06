@@ -37,8 +37,12 @@ function EventRow({ event }: { event: TailEvent }) {
         <span className="text-text-muted shrink-0 w-16 text-right">{event.durationMs}ms</span>
       )}
       {isAnomaly && (
-        <Badge variant="error" className="shrink-0 text-[10px]">
-          {event.anomalyScore.toFixed(2)}
+        <Badge
+          variant="error"
+          className="shrink-0 text-[10px]"
+          title={`Anomaly score ${event.anomalyScore.toFixed(2)} — events with score > 1.0 deviate significantly from this template's baseline volume`}
+        >
+          ⚠ {event.anomalyScore.toFixed(2)}
         </Badge>
       )}
     </div>

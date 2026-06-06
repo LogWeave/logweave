@@ -101,12 +101,14 @@ export function KpiStrip({ className }: { className?: string }) {
           icon={Layers}
           label="Patterns"
           value={overview?.totalTemplates ?? 0}
+          tooltip={TOOLTIPS.totalTemplates}
           loading={isLoading}
         />
         <SecondaryPill
           icon={Sparkles}
           label="New Today"
           value={overview?.newTemplatesToday ?? 0}
+          tooltip={TOOLTIPS.newToday}
           variant={
             overview?.newTemplatesToday && overview.newTemplatesToday > 0 ? 'warning' : undefined
           }
@@ -122,6 +124,7 @@ export function KpiStrip({ className }: { className?: string }) {
           icon={Unplug}
           label="Unclustered"
           value={overview?.unclusteredCount ?? 0}
+          tooltip={TOOLTIPS.unclustered}
           variant={
             overview?.unclusteredCount && overview.unclusteredCount > 0 ? 'warning' : undefined
           }
@@ -144,12 +147,14 @@ function SecondaryPill({
   icon: Icon,
   label,
   value,
+  tooltip,
   variant,
   loading,
 }: {
   icon: typeof Activity
   label: string
   value: number | string
+  tooltip?: string
   variant?: 'warning'
   loading?: boolean
 }) {
@@ -164,7 +169,7 @@ function SecondaryPill({
           ? 'bg-amber-500/5 border-amber-500/20 text-warning'
           : 'bg-surface-base border-border-subtle text-text-muted',
       )}
-      title={label}
+      title={tooltip ?? label}
     >
       <Icon size={12} />
       <span className="uppercase text-[10px] hidden sm:inline">{label}</span>
