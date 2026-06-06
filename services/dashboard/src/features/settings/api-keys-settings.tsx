@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { cn } from '../../lib/cn'
+import { formatRelativeTime } from '../../lib/format-time'
 
 /**
  * Settings → API Keys.
@@ -104,8 +105,11 @@ export function ApiKeysSettings() {
                       <div className="text-sm text-text-primary font-medium truncate">{k.name}</div>
                       <div className="text-[10px] text-text-muted font-mono">
                         {k.prefix}…
-                        <span className="ml-2 text-text-muted/70">
-                          created {new Date(k.createdAt).toLocaleDateString()}
+                        <span
+                          className="ml-2 text-text-muted/70"
+                          title={formatRelativeTime(k.createdAt).iso}
+                        >
+                          created {formatRelativeTime(k.createdAt).relative}
                         </span>
                       </div>
                     </div>

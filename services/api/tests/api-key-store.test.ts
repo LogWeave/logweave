@@ -248,6 +248,47 @@ describe('ApiKeyStore', () => {
     assert.ok(store.validate('lw_bootstrapkeyfromenv'), 'seeded key validates')
   })
 
+  // Regression: bootstrap admin landed in tenant 'default' even when
+  // LOGWEAVE_API_KEYS was configured, because index.ts cleared config.apiKeys
+  // before reading the first tenant. firstTenantId() lets the bootstrap path
+  // read from the DB-backed cache instead. See issue #219.
+  it('firstTenantId returns undefined when the store has no keys', async () => {
+    const { db } = mockDb()
+    const store = await readyStore(db)
+    assert.equal(store.firstTenantId(), undefined)
+  })
+
+  it('firstTenantId returns the first cached tenant after seeding', async () => {
+    const { db } = mockDb()
+    const store = await readyStore(db)
+    await store.seedFromBootstrap({
+      tenantId: 'dev-tenant',
+      rawKey: 'lw_devkeyforbootstrap',
+      name: 'bootstrap',
+    })
+    assert.equal(store.firstTenantId(), 'dev-tenant')
+  })
+
+  it('firstTenantId preserves insertion order across multiple tenants', async () => {
+    const { db } = mockDb()
+    const store = await readyStore(db)
+    await store.seedFromBootstrap({
+      tenantId: 'acme-prod',
+      rawKey: 'lw_acmekeyone1234567',
+      name: 'bootstrap',
+    })
+    await store.seedFromBootstrap({
+      tenantId: 'acme-staging',
+      rawKey: 'lw_acmekeytwo1234567',
+      name: 'bootstrap',
+    })
+    assert.equal(
+      store.firstTenantId(),
+      'acme-prod',
+      'first seeded tenant wins — used by admin bootstrap to pick a sensible default',
+    )
+  })
+
   it('throws if hmacSecret is missing', () => {
     assert.throws(() => new ApiKeyStore({ hmacSecret: '' }))
   })
