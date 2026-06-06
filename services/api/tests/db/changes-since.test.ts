@@ -198,14 +198,27 @@ describe('queryNewTemplates with since', () => {
 // ---------------------------------------------------------------------------
 
 describe('queryNewTemplates with hours (regression)', () => {
-  it('SQL uses is_new_template flag', async () => {
+  // Issue #218: hours-path now mirrors since-path — set-difference on template_stats.
+  // The previous is_new_template=1 filter was based on Drain3's global "first ever seen"
+  // state, which fires once per template lifetime and missed templates dormant-then-surging.
+  it('SQL uses set-difference on template_stats (not is_new_template flag)', async () => {
     const { db, captured } = createCapturingDb(mockNewRows)
 
     await queryNewTemplates(db, 'tenant-a', { hours: 24 })
 
     const sql = captured[0].query
-    assert.ok(sql.includes('is_new_template'), 'hours-path should use is_new_template flag')
-    assert.ok(sql.includes('log_metadata'), 'hours-path should query log_metadata')
+    assert.ok(
+      !sql.includes('is_new_template'),
+      'hours-path must NOT use is_new_template (Drain3-global flag)',
+    )
+    assert.ok(sql.includes('template_stats'), 'hours-path should query template_stats')
+    assert.ok(!sql.includes('log_metadata'), 'hours-path should NOT query log_metadata')
+    assert.ok(sql.includes('current_active'), 'should use current_active CTE')
+    assert.ok(sql.includes('previous_ids'), 'should use previous_ids CTE')
+    assert.ok(
+      sql.includes('p.template_id IS NULL'),
+      'should use set-difference (LEFT JOIN WHERE NULL)',
+    )
   })
 
   it('defaults to hours=24 when neither hours nor since provided', async () => {
@@ -215,6 +228,7 @@ describe('queryNewTemplates with hours (regression)', () => {
 
     const params = captured[0].query_params
     assert.equal(params.hours, 24, 'should default to 24 hours')
+    assert.equal(params.window, 48, 'should use 2x window for previous comparison')
     assert.ok(!captured[0].query.includes('current_start'), 'should NOT use absolute timestamps')
   })
 })
