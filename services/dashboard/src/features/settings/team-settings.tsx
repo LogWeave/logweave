@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { api } from '../../lib/api-client'
+import { formatRelativeTime } from '../../lib/format-time'
 
 interface TeamUser {
   userId: string
@@ -121,8 +122,11 @@ export function TeamSettings() {
                 </div>
                 <div className="flex items-center gap-2">
                   {u.lastLoginAt && (
-                    <span className="text-[10px] text-text-muted">
-                      Last login: {new Date(u.lastLoginAt).toLocaleDateString()}
+                    <span
+                      className="text-[10px] text-text-muted"
+                      title={formatRelativeTime(u.lastLoginAt).iso}
+                    >
+                      Last login: {formatRelativeTime(u.lastLoginAt).relative}
                     </span>
                   )}
                   {u.userId !== user.userId && (

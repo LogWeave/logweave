@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { cn } from '../../lib/cn'
+import { formatRelativeTime } from '../../lib/format-time'
 import { ApiKeysSettings } from './api-keys-settings'
 import { ClusteringSettings } from './clustering-settings'
 import { ConnectorSettings } from './connector-settings'
@@ -122,10 +123,15 @@ export function SettingsPage() {
 
             {settings?.configured ? (
               <div className="space-y-3">
-                <p className="text-xs text-text-secondary">
+                <p
+                  className="text-xs text-text-secondary"
+                  title={
+                    settings.lastTestAt ? formatRelativeTime(settings.lastTestAt).iso : undefined
+                  }
+                >
                   Webhook configured.
                   {settings.lastTestAt &&
-                    ` Last tested: ${new Date(settings.lastTestAt).toLocaleString()}`}
+                    ` Last tested ${formatRelativeTime(settings.lastTestAt).relative}`}
                 </p>
                 <div className="flex gap-2">
                   <Button size="sm" onClick={handleTest} disabled={testMutation.isPending}>

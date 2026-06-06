@@ -170,7 +170,12 @@ if (config.encryptionKey) {
   // Password is randomly generated and printed once to stdout — never use a static default.
   const userCount = await userStore.countUsers()
   if (userCount === 0) {
-    const firstTenantId = [...config.apiKeys.values()][0] ?? 'default'
+    // Source the bootstrap-admin tenant from apiKeyStore (the DB-backed source
+    // of truth after seeding), NOT config.apiKeys — that Map is cleared on
+    // line 142 once env-loaded keys have been migrated, so reading it here
+    // always yields empty and the admin ends up in the literal 'default'
+    // tenant regardless of LOGWEAVE_API_KEYS. See issue #219.
+    const firstTenantId = apiKeyStore?.firstTenantId() ?? 'default'
     const bootstrapPassword = randomBytes(18).toString('base64url')
     await userStore.createUser({
       username: 'admin',

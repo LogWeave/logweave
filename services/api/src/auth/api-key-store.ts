@@ -401,6 +401,17 @@ export class ApiKeyStore {
   get size(): number {
     return this.cache.size
   }
+
+  /**
+   * First known tenant ID from the cache, in insertion order. Used by the
+   * admin-bootstrap path so the default admin user lands in the same tenant
+   * as the seeded API keys, not the literal string 'default'. Returns
+   * undefined when no keys are loaded.
+   */
+  firstTenantId(): string | undefined {
+    const first = this.cache.values().next()
+    return first.done ? undefined : first.value.tenantId
+  }
 }
 
 export class ApiKeyLimitError extends Error {
