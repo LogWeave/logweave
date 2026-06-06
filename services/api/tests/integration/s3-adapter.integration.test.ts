@@ -153,8 +153,14 @@ describe('S3Adapter integration (Floci)', async () => {
     delete process.env.AWS_SECRET_ACCESS_KEY
   })
 
-  function skipIfDown(t: { skip: (msg: string) => void }) {
-    if (!flociUp) t.skip(`Floci not reachable at ${FLOCI_ENDPOINT}`)
+  // node:test's t.skip() marks the test as skipped but does NOT abort the
+  // function body — execution continues. Return a boolean so callers can early-return.
+  function skipIfDown(t: { skip: (msg: string) => void }): boolean {
+    if (!flociUp) {
+      t.skip(`Floci not reachable at ${FLOCI_ENDPOINT}`)
+      return true
+    }
+    return false
   }
 
   // --- Dev branch: static creds against `endpoint` ---
@@ -174,14 +180,14 @@ describe('S3Adapter integration (Floci)', async () => {
   }
 
   it('dev branch: testConnection succeeds against a populated bucket', async (t) => {
-    skipIfDown(t)
+    if (skipIfDown(t)) return
     const result = await adapter.testConnection(devConfig)
     assert.equal(result.success, true, `testConnection should succeed, got: ${result.message}`)
     assert.ok((result.filesFound ?? 0) >= 1, `expected files found, got ${result.filesFound}`)
   })
 
   it('dev branch: NoSuchBucket → actionable, scrubbed message', async (t) => {
-    skipIfDown(t)
+    if (skipIfDown(t)) return
     const result = await adapter.testConnection({
       ...devConfig,
       bucket: 'definitely-does-not-exist-xyz-12345',
@@ -192,7 +198,7 @@ describe('S3Adapter integration (Floci)', async () => {
   })
 
   it('dev branch: fetchRawLogs returns lines matching the template', async (t) => {
-    skipIfDown(t)
+    if (skipIfDown(t)) return
     const now = new Date()
     const result = await adapter.fetchRawLogs({
       config: devConfig,
@@ -210,7 +216,7 @@ describe('S3Adapter integration (Floci)', async () => {
   })
 
   it('dev branch: fetchRawLogs returns 0 lines when prefix path has no objects', async (t) => {
-    skipIfDown(t)
+    if (skipIfDown(t)) return
     const now = new Date()
     const result = await adapter.fetchRawLogs({
       config: { ...devConfig, prefix: 'no-such-prefix/' },
@@ -225,7 +231,7 @@ describe('S3Adapter integration (Floci)', async () => {
   // --- Production branch: AssumeRole via STS ---
 
   it('AssumeRole branch: testConnection succeeds through STS → S3', async (t) => {
-    skipIfDown(t)
+    if (skipIfDown(t)) return
     assert.ok(roleArn, 'role must have been created in before()')
     const result = await adapter.testConnection(
       {
@@ -258,7 +264,7 @@ describe('S3Adapter integration (Floci)', async () => {
   })
 
   it('AssumeRole branch: fetchRawLogs returns lines after STS handshake', async (t) => {
-    skipIfDown(t)
+    if (skipIfDown(t)) return
     assert.ok(roleArn, 'role must have been created in before()')
     const now = new Date()
     const result = await adapter.fetchRawLogs({

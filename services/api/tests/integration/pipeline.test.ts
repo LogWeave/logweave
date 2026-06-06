@@ -356,16 +356,13 @@ describe('Integration: ingest -> clustering -> scoring -> dashboard pipeline', (
   // -------------------------------------------------------------------------
 
   it('anomaly scorer produces maxAnomalyScore > 0 for spike templates', async () => {
-    // The anomaly scorer has been recording events during ingest (coldStartMs: 0).
-    // To trigger a detectable anomaly, we set a low baseline for a known template
-    // and then ingest a burst.
-
-    // First, determine a template ID by deriving from a known message
-    const { templateId } = deriveTemplate('Critical error in payment processor')
-
-    // Seed a low baseline so a burst will exceed the threshold
-    anomalyScorer.setWarmup(tenantA, 'payments', Date.now() - 2 * 3_600_000)
-    anomalyScorer.setBaseline(tenantA, 'payments', templateId, 2)
+    // The scorer is constructed with coldStartMs: 0 (see setup above), so the
+    // first ingested event for this tenant+service initialises the warmup tracker
+    // at "now" and subsequent events score immediately. Without a 7-day baseline
+    // (none exists in the test database), the scorer uses the new-template
+    // absolute threshold path: any template with count > newTemplateThreshold (20)
+    // in the current 5-min interval scores `count / 20`. Ingesting 30 events of
+    // the same pattern produces ~29 counter increments → score ≈ 1.45 > 0.
 
     // Ingest a burst of events with that pattern
     const burstEvents = Array.from({ length: 30 }, () => ({
