@@ -44,10 +44,25 @@ function RuleRow({ rule }: { rule: AlertRule }) {
   }
 
   const handleDelete = () => {
-    if (!window.confirm(`Delete rule "${rule.name}"?`)) return
-    deleteMutation.mutate(rule.ruleId, {
-      onSuccess: () => toast.success('Rule deleted'),
-      onError: () => toast.error('Failed to delete rule'),
+    toast(`Delete rule "${rule.name}"?`, {
+      description: 'This cannot be undone.',
+      // Default sonner duration (4s) is too short for a destructive confirm —
+      // users miss the action. Hold the toast open until they choose.
+      duration: Infinity,
+      action: {
+        label: 'Delete',
+        onClick: () =>
+          deleteMutation.mutate(rule.ruleId, {
+            onSuccess: () => toast.success('Rule deleted'),
+            onError: () => toast.error('Failed to delete rule'),
+          }),
+      },
+      cancel: {
+        label: 'Cancel',
+        onClick: () => {
+          /* no-op — sonner dismisses on click */
+        },
+      },
     })
   }
 

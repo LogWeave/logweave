@@ -22,6 +22,7 @@ import { Button } from '../../components/ui/button'
 import { StatBox } from '../../components/ui/stat-box'
 import { InfoTooltip, Tooltip } from '../../components/ui/tooltip'
 import { cn } from '../../lib/cn'
+import { formatRelativeTime } from '../../lib/format-time'
 import { TOOLTIPS } from '../../lib/tooltips'
 import { useDashboardStore } from '../../stores/dashboard-store'
 
@@ -331,8 +332,11 @@ function DetailContent({ template }: { template: TemplateRow }) {
         </div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-text-muted">First seen</span>
-          <span className="font-mono text-text-primary">
-            {new Date(template.firstSeen).toLocaleString()}
+          <span
+            className="font-mono text-text-primary"
+            title={formatRelativeTime(template.firstSeen).iso}
+          >
+            {formatRelativeTime(template.firstSeen).relative}
             {template.isNewToday && (
               <Badge variant="new" className="ml-2">
                 new
@@ -342,8 +346,11 @@ function DetailContent({ template }: { template: TemplateRow }) {
         </div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-text-muted">Last seen</span>
-          <span className="font-mono text-text-primary">
-            {new Date(template.lastSeen).toLocaleString()}
+          <span
+            className="font-mono text-text-primary"
+            title={formatRelativeTime(template.lastSeen).iso}
+          >
+            {formatRelativeTime(template.lastSeen).relative}
           </span>
         </div>
       </div>
