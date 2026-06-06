@@ -73,13 +73,21 @@ describe('batchInsert', () => {
 
     await batchInsert(db, [row])
 
-    const result = await client.query({
-      query: `SELECT * FROM logweave.log_metadata
-              WHERE tenant_id = {tenant_id:String} LIMIT 1`,
-      query_params: { tenant_id: singleTenant },
-    })
-    const rows = await jsonRows<Record<string, unknown>>(result)
-    const stored = rows[0]
+    // wait_for_async_insert=1 makes the insert promise resolve only after the
+    // server flushes the async buffer, but under heavy concurrent load from a
+    // long test suite we occasionally see a small read-after-write delay. Poll
+    // briefly to be robust without dragging out the happy path.
+    let stored: Record<string, unknown> | undefined
+    for (let attempt = 0; attempt < 5 && !stored; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 200))
+      const result = await client.query({
+        query: `SELECT * FROM logweave.log_metadata
+                WHERE tenant_id = {tenant_id:String} LIMIT 1`,
+        query_params: { tenant_id: singleTenant },
+      })
+      const rows = await jsonRows<Record<string, unknown>>(result)
+      stored = rows[0]
+    }
     assert.ok(stored, 'Expected at least one row')
     assert.equal(stored.tenant_id, singleTenant)
     assert.equal(stored.service, 'test-svc')

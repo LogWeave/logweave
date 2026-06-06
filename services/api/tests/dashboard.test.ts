@@ -787,11 +787,20 @@ const mockResolvedRows = [
   },
 ]
 
-function changesQueryMap(): Map<string, unknown> {
+function changesQueryMap(
+  baselineEvents: number | 'empty' | 'sparse' | 'ok' = 'ok',
+): Map<string, unknown> {
   const map = new Map<string, unknown>()
   map.set('newTemplates', mockNewTemplateRows)
   map.set('templateSpikes', mockSpikeRows)
   map.set('resolvedTemplates', mockResolvedRows)
+  // queryBaselineSnapshot expects rows with { prev_events: number }
+  let prevEvents: number
+  if (baselineEvents === 'empty') prevEvents = 0
+  else if (baselineEvents === 'sparse') prevEvents = 25
+  else if (baselineEvents === 'ok') prevEvents = 1500
+  else prevEvents = baselineEvents
+  map.set('baselineSnapshot', [{ prev_events: prevEvents }])
   return map
 }
 
@@ -812,6 +821,32 @@ describe('GET /v1/dashboard/changes', () => {
     assert.equal(typeof res.body.meta.count, 'number')
     assert.equal(res.body.meta.count, 3)
     assert.equal(typeof res.body.meta.fetchedAt, 'string')
+    assert.equal(res.body.meta.baselineStatus, 'ok')
+    assert.equal(res.body.meta.previousWindowEvents, 1500)
+  })
+
+  it('reports baselineStatus=empty when previous window has zero events', async () => {
+    const app = createTestApp(changesQueryMap('empty'))
+
+    const res = await request(app)
+      .get('/v1/dashboard/changes')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.meta.baselineStatus, 'empty')
+    assert.equal(res.body.meta.previousWindowEvents, 0)
+  })
+
+  it('reports baselineStatus=sparse when previous window has < 50 events', async () => {
+    const app = createTestApp(changesQueryMap('sparse'))
+
+    const res = await request(app)
+      .get('/v1/dashboard/changes')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.meta.baselineStatus, 'sparse')
+    assert.equal(res.body.meta.previousWindowEvents, 25)
   })
 
   it('maps new template events correctly', async () => {

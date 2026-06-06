@@ -25,6 +25,7 @@ import {
 } from '../db/dashboard/templates.js'
 import { queryDashboardVolume } from '../db/dashboard/volume.js'
 import {
+  queryBaselineSnapshot,
   queryNewTemplates,
   queryResolvedTemplates,
   queryTemplateSpikes,
@@ -443,10 +444,11 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         ? Math.ceil((Date.now() - new Date(since).getTime()) / 3_600_000)
         : params.hours
 
-      const [newRows, spikeRows, resolvedRows] = await Promise.all([
+      const [newRows, spikeRows, resolvedRows, baseline] = await Promise.all([
         queryNewTemplates(deps.db, tenantId, queryOpts),
         queryTemplateSpikes(deps.db, tenantId, queryOpts),
         queryResolvedTemplates(deps.db, tenantId, queryOpts),
+        queryBaselineSnapshot(deps.db, tenantId, queryOpts),
       ])
 
       const newEvents = mapNewEvents(toRawRows(newRows))
@@ -464,6 +466,8 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
           hours,
           limit: params.limit,
           count: newEvents.length + spikeEvents.length + resolvedEvents.length,
+          baselineStatus: baseline.status,
+          previousWindowEvents: baseline.previousWindowEvents,
           ...(since ? { since } : {}),
         },
       )
