@@ -74,12 +74,14 @@ const mockCorrelations = [
   {
     template_id: '019abc-20',
     template_text: 'Connection reset by peer',
+    service: 'api-gateway',
     coefficient: '0.923',
     occurrence_count: '1500',
   },
   {
     template_id: '019abc-21',
     template_text: 'Upstream timeout after <*>ms',
+    service: 'payments-api',
     coefficient: '-0.812',
     occurrence_count: '890',
   },
@@ -266,7 +268,7 @@ describe('GET /v1/templates/:id/related', () => {
 describe('GET /v1/templates/:id/correlations', () => {
   function correlationQueryMap(): Map<string, unknown> {
     const map = new Map<string, unknown>()
-    map.set('corr(a.cnt, c.cnt)', mockCorrelations)
+    map.set('corr(af.cnt, cf.cnt)', mockCorrelations)
     return map
   }
 
@@ -282,11 +284,13 @@ describe('GET /v1/templates/:id/correlations', () => {
 
     const first = res.body.data[0]
     assert.equal(first.templateId, '019abc-20')
+    assert.equal(first.service, 'api-gateway')
     assert.equal(first.coefficient, 0.923)
     assert.equal(first.direction, 'positive')
     assert.equal(first.occurrenceCount, 1500)
 
     const second = res.body.data[1]
+    assert.equal(second.service, 'payments-api')
     assert.equal(second.coefficient, -0.812)
     assert.equal(second.direction, 'negative')
   })
@@ -312,6 +316,56 @@ describe('GET /v1/templates/:id/correlations', () => {
     assert.equal(res.status, 200)
     assert.equal(res.body.meta.hours, 72)
     assert.equal(res.body.meta.limit, 5)
+  })
+
+  // Regression for #220: INNER JOIN dropped zero-buckets and produced r=1
+  // noise. SQL must use a full bucket grid + LEFT JOIN + coalesce so Pearson
+  // sees real zeros, and a minimum-observations guard so a tiny window can't
+  // produce false signal.
+  it('SQL uses full bucket grid with LEFT JOIN (regression #220)', async () => {
+    let capturedQuery = ''
+    const db = {
+      query: async (params: { query: string }) => {
+        capturedQuery = params.query
+        return []
+      },
+      insert: async () => {},
+      command: async () => {},
+      ping: async () => true,
+      close: async () => {},
+    } as unknown as DbClient
+
+    const app = express()
+    app.use(express.json())
+    const router = Router()
+    const tenantA = 'tenant-a'
+    router.use((_, res, next) => {
+      res.locals.tenantId = tenantA
+      next()
+    })
+    router.use(correlationRoutes({ db, logger: pino({ level: 'silent' }) }))
+    app.use('/v1', router)
+
+    // Direct call to bypass auth — just want to capture the SQL
+    const { queryCorrelations } = await import('../src/db/correlation-queries.js')
+    await queryCorrelations(db, tenantA, { templateId: 'tmpl-1', hours: 6 })
+
+    assert.ok(capturedQuery.includes('grid AS'), 'should declare a bucket grid CTE')
+    assert.ok(capturedQuery.includes('coalesce'), 'should coalesce absent buckets to 0')
+    assert.ok(capturedQuery.includes('LEFT JOIN'), 'should LEFT JOIN against grid')
+    assert.ok(
+      !/INNER JOIN\s+anchor\b/i.test(capturedQuery),
+      'must NOT INNER JOIN against the anchor CTE (the original #220 bug)',
+    )
+    assert.ok(
+      capturedQuery.includes('any(cb.service) AS service') ||
+        capturedQuery.includes('any(cf.service)'),
+      'should select service so MCP postmortem can render it (regression #221)',
+    )
+    assert.ok(
+      capturedQuery.includes('min_observations'),
+      'should have min_observations guard against false-signal',
+    )
   })
 
   it('returns 401 without auth', async () => {

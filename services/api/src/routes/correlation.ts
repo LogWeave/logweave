@@ -69,6 +69,7 @@ export interface RelatedPattern {
 export interface Correlation {
   templateId: string
   templateText: string
+  service: string
   coefficient: number
   direction: 'positive' | 'negative'
   occurrenceCount: number
@@ -233,6 +234,7 @@ export function correlationRoutes(deps: CorrelationDeps): Router {
           return {
             templateId: r.template_id,
             templateText: r.template_text,
+            service: r.service,
             coefficient: Math.round(coefficient * 1000) / 1000,
             direction: coefficient >= 0 ? 'positive' : 'negative',
             occurrenceCount: Number(r.occurrence_count) || 0,
