@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-05-23
-**Issue:** [#203](https://github.com/RobertDicker/logweave/issues/203)
+**Issue:** [#203](https://github.com/LogWeave/logweave/issues/203)
 
 ## Context
 

@@ -60,3 +60,5 @@ dev.sh
 .mcp.json
 benchmarks/
 docs/reviews/
+docs/qa/
+docs/specs/
