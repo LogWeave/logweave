@@ -5,6 +5,7 @@ import {
   preprocessMessage,
   processEvent,
 } from '../../src/pipeline/preprocess.js'
+import { MAX_MESSAGE_LENGTH } from '../../src/pipeline/parse.js'
 import type { ParsedEvent } from '../../src/pipeline/types.js'
 
 describe('preprocessMessage', () => {
@@ -113,11 +114,27 @@ describe('preprocessMessage', () => {
     assert.ok(!result.includes('192.168.1.1'))
     assert.ok(!result.includes('123456789'))
   })
+
+  it('does not backtrack super-linearly on the EMAIL ReDoS payload', () => {
+    // `digit.digit` repeated with no '@' is the pathological input that made
+    // the unbounded email regex block the event loop for ~10s at 128KB. With
+    // bounded quantifiers a full 32KB message must process in well under 50ms.
+    const input = '1.'.repeat(MAX_MESSAGE_LENGTH / 2) // 32KB, no '@'
+    const start = performance.now()
+    const result = preprocessMessage(input)
+    const elapsed = performance.now() - start
+    assert.ok(
+      elapsed < 50,
+      `preprocessMessage took ${elapsed.toFixed(1)}ms on a 32KB payload (expected <50ms)`,
+    )
+    // No email present, so nothing should be replaced with <EMAIL>.
+    assert.ok(!result.includes('<EMAIL>'))
+  })
 })
 
 describe('PREPROCESSING_VERSION', () => {
-  it('is 1 for current pattern set', () => {
-    assert.equal(PREPROCESSING_VERSION, 1)
+  it('is 2 for current pattern set', () => {
+    assert.equal(PREPROCESSING_VERSION, 2)
   })
 })
 
@@ -132,7 +149,7 @@ describe('processEvent', () => {
     }
     const result = processEvent(parsed)
     assert.equal(result.preProcessedMessage, 'User <UUID> logged in from <IP>')
-    assert.equal(result.preprocessingVersion, 1)
+    assert.equal(result.preprocessingVersion, PREPROCESSING_VERSION)
     assert.equal(result.service, 'auth')
     assert.equal(result.level, 'INFO')
     assert.equal(result.environment, 'prod')

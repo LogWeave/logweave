@@ -1,6 +1,14 @@
 import type { ExtractedFields, LogParser, ParsedEvent, ParseOptions, ParseResult } from './types.js'
 
 /**
+ * Hard upper bound on a single log message, matching the clusterer's own 32 KB
+ * limit. Oversized messages are rejected before preprocessing so one giant line
+ * can't drive regex/clustering cost (defense-in-depth alongside the bounded
+ * preprocessing patterns). Dropped events are counted via EVENTS_DROPPED.
+ */
+export const MAX_MESSAGE_LENGTH = 32 * 1024
+
+/**
  * Field extraction map for JSON log events.
  * Maps output field name → possible input field names (checked in order).
  * Checked at top level first, then inside a `fields` sub-object.
@@ -105,6 +113,14 @@ export function parseEvent(
     return {
       ok: false,
       error: 'Event has no valid message field (checked message, msg)',
+      index,
+    }
+  }
+
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    return {
+      ok: false,
+      error: `Event message exceeds ${MAX_MESSAGE_LENGTH} characters (got ${message.length})`,
       index,
     }
   }

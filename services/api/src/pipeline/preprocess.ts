@@ -1,7 +1,7 @@
 import type { ParsedEvent, ProcessedEvent } from './types.js'
 
 /** Bump when regex patterns change to track which version processed a message. */
-export const PREPROCESSING_VERSION = 1
+export const PREPROCESSING_VERSION = 2
 
 /**
  * Compiled regex patterns applied in strict order.
@@ -18,9 +18,12 @@ const PATTERNS: ReadonlyArray<{ regex: RegExp; replacement: string }> = [
     regex: /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/g,
     replacement: '<TS>',
   },
-  // 3. Email — case-insensitive, TLD required to avoid false positives
+  // 3. Email — case-insensitive, TLD required to avoid false positives.
+  //    Quantifiers are bounded (local 1-64, domain 1-255, TLD 2-24) so the
+  //    pattern can't backtrack super-linearly on adversarial input like a long
+  //    run of `digit.digit` — that previously froze the event loop for seconds.
   {
-    regex: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,
+    regex: /[a-z0-9._%+-]{1,64}@[a-z0-9.-]{1,255}\.[a-z]{2,24}/gi,
     replacement: '<EMAIL>',
   },
   // 4. IPv4 — word boundaries prevent matching inside larger numbers

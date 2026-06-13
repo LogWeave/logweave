@@ -8,6 +8,7 @@ import { createAuthMiddleware } from '../src/middleware/auth.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
 import { AnomalyScorer } from '../src/pipeline/anomaly-scorer.js'
 import { ClusterClient } from '../src/pipeline/cluster-client.js'
+import { PREPROCESSING_VERSION } from '../src/pipeline/preprocess.js'
 import { ingestRoutes } from '../src/routes/ingest.js'
 import type { LogMetadataRow } from '../src/types.js'
 
@@ -270,7 +271,7 @@ describe('POST /v1/ingest/batch', () => {
     const row = insertedRows[0]?.[0]
     assert.equal(row?.source_type, 'transport')
     assert.equal(row?.source_ref, '')
-    assert.equal(row?.preprocessing_version, 1)
+    assert.equal(row?.preprocessing_version, PREPROCESSING_VERSION)
   })
 
   it('accepts custom source_type and source_ref', async () => {

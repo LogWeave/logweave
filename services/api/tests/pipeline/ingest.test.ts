@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
 import type { DbClient } from '../../src/db/client.js'
+import * as metrics from '../../src/metrics.js'
 import { AnomalyScorer } from '../../src/pipeline/anomaly-scorer.js'
 import type { ClusterClient, ClusterResult } from '../../src/pipeline/cluster-client.js'
 import { ingestBatch } from '../../src/pipeline/ingest.js'
+import { MAX_MESSAGE_LENGTH } from '../../src/pipeline/parse.js'
 import { TenantSettingsStore } from '../../src/watches/tenant-settings.js'
 
 const logger = pino({ level: 'silent' })
@@ -112,5 +114,37 @@ describe('ingestBatch — Phase 4.5 tag extraction', () => {
     const values = tagValues.map((t) => t.tag_value).sort()
     // Only WARN and ERROR survive the level filter; DEBUG and INFO are dropped.
     assert.deepEqual(values, ['cust-ERR', 'cust-WARN'])
+  })
+})
+
+describe('ingestBatch — oversized message cap', () => {
+  it('drops messages over the cap, counts them via EVENTS_DROPPED, ingests the rest', async () => {
+    const { db, metadataInserts } = createDb()
+    const anomalyScorer = new AnomalyScorer({ db, logger, coldStartMs: Infinity })
+
+    const events = [
+      { message: 'normal line', level: 'info', service: 'api' },
+      { message: 'x'.repeat(MAX_MESSAGE_LENGTH + 1), level: 'error', service: 'api' },
+    ]
+
+    // Only the valid event reaches the clusterer.
+    const clusterClient = makeClusterClient([
+      { templateId: 'tpl-1', templateText: 'normal line', isNewTemplate: false },
+    ])
+
+    const droppedBefore = metrics.get(metrics.EVENTS_DROPPED)
+    const result = await ingestBatch(
+      { clusterClient, db, logger, anomalyScorer },
+      TENANT,
+      events,
+      {},
+    )
+
+    assert.equal(result.accepted, 1, 'only the in-bounds event is accepted')
+    assert.equal(metrics.get(metrics.EVENTS_DROPPED) - droppedBefore, 1, 'oversized event counted')
+    // The oversized message must never be written to ClickHouse.
+    const insertedRows = metadataInserts.flat() as Array<Record<string, unknown>>
+    assert.equal(insertedRows.length, 1)
+    assert.equal(insertedRows[0]?.template_text, 'normal line')
   })
 })
