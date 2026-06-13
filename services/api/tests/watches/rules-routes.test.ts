@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import cookieParser from 'cookie-parser'
 import express from 'express'
 import pino from 'pino'
 import request from 'supertest'
+import { HmacSessionProvider, SESSION_COOKIE_NAME } from '../../src/auth/session.js'
 import type { DbClient } from '../../src/db/client.js'
 import { createAuthMiddleware } from '../../src/middleware/auth.js'
 import { createErrorHandler } from '../../src/middleware/error-handler.js'
@@ -91,13 +93,26 @@ function createMockDb(queryResults?: unknown[]): DbClient {
 // Test app factory
 // ---------------------------------------------------------------------------
 
+const SESSION_KEY = Buffer.alloc(32, 0x42)
+const sessionProvider = new HmacSessionProvider(SESSION_KEY)
+
+function viewerCookie(): string {
+  return sessionProvider.createSession({
+    userId: 'viewer-1',
+    tenantId: TENANT_A,
+    role: 'viewer',
+    sessionVersion: 1,
+  })
+}
+
 function createTestApp(opts?: { maxRules?: number; queryResults?: unknown[] }) {
   const logger = pino({ level: 'silent' })
   const ruleStore = new RuleStore({ maxPerTenant: opts?.maxRules })
   const db = createMockDb(opts?.queryResults)
   const app = express()
   app.use(express.json())
-  const auth = createAuthMiddleware(new Map(keyMap))
+  app.use(cookieParser())
+  const auth = createAuthMiddleware(new Map(keyMap), sessionProvider)
   app.use('/v1', auth, ruleRoutes({ ruleStore, db, logger }))
   app.use(createErrorHandler(logger))
   return { app, ruleStore }
@@ -654,5 +669,61 @@ describe('GET /v1/alerts', () => {
       [],
       'object is not a valid channels_notified array',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin guard — viewer sessions must be rejected on mutating routes
+// ---------------------------------------------------------------------------
+
+describe('admin guard', () => {
+  it('rejects POST /rules from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .post('/v1/rules')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+      .send(VALID_THRESHOLD_BODY)
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('rejects PUT /rules/:id from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .put('/v1/rules/some-id')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+      .send({ enabled: false })
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('rejects DELETE /rules/:id from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .delete('/v1/rules/some-id')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('allows GET /rules from viewer session', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .get('/v1/rules')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 200)
+  })
+
+  it('allows GET /alerts from viewer session', async () => {
+    const { app } = createTestApp({ queryResults: [] })
+    const res = await request(app)
+      .get('/v1/alerts')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 200)
   })
 })

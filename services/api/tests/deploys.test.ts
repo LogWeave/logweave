@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import cookieParser from 'cookie-parser'
 import express, { Router } from 'express'
 import pino from 'pino'
 import request from 'supertest'
+import { HmacSessionProvider, SESSION_COOKIE_NAME } from '../src/auth/session.js'
 import type { DbClient } from '../src/db/client.js'
 import { createAuthMiddleware } from '../src/middleware/auth.js'
 import { createConcurrentQueryGuard } from '../src/middleware/concurrent-query-guard.js'
@@ -72,13 +74,26 @@ function createMockDb(queryResults?: Map<string, unknown>): DbClient {
   } as unknown as DbClient
 }
 
+const SESSION_KEY = Buffer.alloc(32, 0x42)
+const sessionProvider = new HmacSessionProvider(SESSION_KEY)
+
+function viewerCookie(): string {
+  return sessionProvider.createSession({
+    userId: 'viewer-1',
+    tenantId: TENANT_A,
+    role: 'viewer',
+    sessionVersion: 1,
+  })
+}
+
 function createTestApp(queryResults?: Map<string, unknown>) {
   const logger = pino({ level: 'silent' })
   const db = createMockDb(queryResults)
   const app = express()
   app.use(express.json())
+  app.use(cookieParser())
   const v1 = Router()
-  v1.use(createAuthMiddleware(new Map(keyMap)))
+  v1.use(createAuthMiddleware(new Map(keyMap), sessionProvider))
   v1.use(createRateLimiter({ keyRpm: 1000, tenantRpm: 2000, ingestKeyRpm: 3000 }))
   v1.use(createConcurrentQueryGuard({ maxConcurrent: 100 }))
   v1.use(deployRoutes({ db, logger }))
@@ -235,5 +250,31 @@ describe('GET /v1/deploys', () => {
     const app = createTestApp(deploysQueryMap())
     const res = await request(app).get('/v1/deploys')
     assert.equal(res.status, 401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin guard — viewer sessions must be rejected on mutating routes
+// ---------------------------------------------------------------------------
+
+describe('admin guard', () => {
+  it('rejects POST /deploys from viewer session with 403', async () => {
+    const app = createTestApp()
+    const res = await request(app)
+      .post('/v1/deploys')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+      .send({ service: 'payment-service' })
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('allows GET /deploys from viewer session', async () => {
+    const app = createTestApp(deploysQueryMap())
+    const res = await request(app)
+      .get('/v1/deploys')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 200)
   })
 })

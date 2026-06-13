@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import cookieParser from 'cookie-parser'
 import express from 'express'
 import pino from 'pino'
 import request from 'supertest'
+import { HmacSessionProvider, SESSION_COOKIE_NAME } from '../src/auth/session.js'
 import { createAuthMiddleware } from '../src/middleware/auth.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
 import { settingsRoutes } from '../src/routes/settings.js'
@@ -12,13 +14,26 @@ const TEST_KEY = 'test-key'
 const TENANT_A = 'tenant-a'
 const keyMap = new Map([[TEST_KEY, TENANT_A]])
 
+const SESSION_KEY = Buffer.alloc(32, 0x42)
+const sessionProvider = new HmacSessionProvider(SESSION_KEY)
+
+function viewerCookie(): string {
+  return sessionProvider.createSession({
+    userId: 'viewer-1',
+    tenantId: TENANT_A,
+    role: 'viewer',
+    sessionVersion: 1,
+  })
+}
+
 function createTestApp() {
   const logger = pino({ level: 'silent' })
   const settingsStore = new TenantSettingsStore({ logger })
-  const auth = createAuthMiddleware(keyMap)
+  const auth = createAuthMiddleware(keyMap, sessionProvider)
 
   const app = express()
   app.use(express.json())
+  app.use(cookieParser())
   app.use('/v1', auth, settingsRoutes({ settingsStore, db: null, logger }))
   app.use(createErrorHandler(logger))
   return { app, settingsStore }
@@ -279,5 +294,81 @@ describe('PUT /v1/settings/spike-baseline', () => {
     const res = await request(app).put('/v1/settings/spike-baseline').send({ minBaseline: 10 })
 
     assert.equal(res.status, 401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin guard — viewer sessions must be rejected on mutating routes
+// ---------------------------------------------------------------------------
+
+describe('admin guard', () => {
+  const cookie = () => `${SESSION_COOKIE_NAME}=${viewerCookie()}`
+
+  it('rejects POST /settings/slack from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .post('/v1/settings/slack')
+      .set('Cookie', cookie())
+      .send({ webhookUrl: 'https://hooks.slack.com/services/T00/B00/xxx' })
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('rejects DELETE /settings/slack from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app).delete('/v1/settings/slack').set('Cookie', cookie())
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('rejects PUT /settings/tags from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .put('/v1/settings/tags')
+      .set('Cookie', cookie())
+      .send({ extractTags: ['request_id'] })
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('rejects PUT /settings/clustering from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .put('/v1/settings/clustering')
+      .set('Cookie', cookie())
+      .send({ sensitivity: 0.5 })
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('rejects PUT /settings/cost-thresholds from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .put('/v1/settings/cost-thresholds')
+      .set('Cookie', cookie())
+      .send({ noiseDebugPct: 8 })
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('rejects POST /settings/slack/test from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app).post('/v1/settings/slack/test').set('Cookie', cookie())
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('allows GET /settings/cost-thresholds from viewer session', async () => {
+    const { app } = createTestApp()
+    const res = await request(app).get('/v1/settings/cost-thresholds').set('Cookie', cookie())
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.isCustom, false)
   })
 })

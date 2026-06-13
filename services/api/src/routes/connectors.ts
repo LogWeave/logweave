@@ -318,7 +318,7 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
   })
 
   // POST /connectors/:id/test — test connection
-  router.post('/connectors/:id/test', async (req, res, next) => {
+  router.post('/connectors/:id/test', requireAdmin, async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const connectorId = req.params.id as string

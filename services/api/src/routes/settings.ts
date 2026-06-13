@@ -5,7 +5,7 @@ import type { DbClient } from '../db/client.js'
 import { AppError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { respond } from '../lib/respond.js'
-import { getTenantId } from '../middleware/auth.js'
+import { getTenantId, requireAdminForWrites } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
 import { sendSlackTestMessage } from '../watches/slack-observer.js'
@@ -29,6 +29,10 @@ const slackWebhookSchema = z.object({
 
 export function settingsRoutes(deps: SettingsDeps): Router {
   const router = Router()
+
+  // State-changing settings (Slack webhook, clustering, tags, cost thresholds,
+  // …) are admin-only; viewers keep read access to the GET routes.
+  router.use(requireAdminForWrites)
 
   // GET /settings/slack -- returns config status (never exposes the URL)
   router.get('/settings/slack', async (_req, res, next) => {
