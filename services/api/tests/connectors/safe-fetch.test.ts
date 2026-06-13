@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { type AddressInfo, createServer, type Server } from 'node:http'
 import { after, before, describe, it } from 'node:test'
 import {
+  assertAddressesAllowed,
   isBlockedHostname,
   isInternalIp,
   safeFetch,
@@ -42,22 +43,77 @@ describe('isInternalIp', () => {
       '::1',
       '::',
       'fe80::1',
-      'feba::1',
+      'febf::1', // link-local upper boundary
       'fc00::1',
       'fd12:3456::1',
       'ff02::1', // multicast
-      '::ffff:127.0.0.1', // IPv4-mapped loopback
-      '::ffff:10.0.0.1', // IPv4-mapped private
+      '::ffff:127.0.0.1', // IPv4-mapped loopback (dotted)
+      '::ffff:10.0.0.1', // IPv4-mapped private (dotted)
     ]) {
       assert.equal(isInternalIp(ip), true, `${ip} should be internal`)
     }
   })
 
-  it('allows public IPv6 and treats junk as internal (fail closed)', () => {
+  it('blocks IPv4-mapped IPv6 written in hex-colon notation (regression)', () => {
+    // ::ffff:7f00:1 == 127.0.0.1, ::ffff:a9fe:a9fe == 169.254.169.254 (metadata),
+    // ::ffff:0a00:1 == 10.0.0.1 — these must not slip past as "public".
+    for (const ip of ['::ffff:7f00:1', '::ffff:a9fe:a9fe', '::ffff:0a00:1', '[::ffff:7f00:1]']) {
+      assert.equal(isInternalIp(ip), true, `${ip} should be internal`)
+    }
+  })
+
+  it('allows public IPv6 and IPv4-mapped public addresses', () => {
     assert.equal(isInternalIp('2606:4700:4700::1111'), false)
     assert.equal(isInternalIp('2001:4860:4860::8888'), false)
+    assert.equal(isInternalIp('fec0::1'), false) // just outside fe80::/10
+    assert.equal(isInternalIp('::ffff:8.8.8.8'), false) // mapped public
+    assert.equal(isInternalIp('::ffff:0808:0808'), false) // mapped public, hex form
+  })
+
+  it('treats junk as internal (fail closed)', () => {
     assert.equal(isInternalIp('not-an-ip'), true)
     assert.equal(isInternalIp(''), true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// assertAddressesAllowed — the resolve-time guard (rebinding defense)
+// ---------------------------------------------------------------------------
+
+describe('assertAddressesAllowed', () => {
+  it('throws when a hostname resolves to an internal address', () => {
+    assert.throws(
+      () => assertAddressesAllowed('evil.example.com', [{ address: '10.0.0.5' }], new Set()),
+      SsrfBlockedError,
+    )
+  })
+
+  it('throws if any resolved address is internal (mixed result)', () => {
+    assert.throws(
+      () =>
+        assertAddressesAllowed(
+          'evil.example.com',
+          [{ address: '93.184.216.34' }, { address: '169.254.169.254' }],
+          new Set(),
+        ),
+      SsrfBlockedError,
+    )
+  })
+
+  it('allows a hostname that resolves only to public addresses', () => {
+    assert.doesNotThrow(() =>
+      assertAddressesAllowed('logs.example.com', [{ address: '93.184.216.34' }], new Set()),
+    )
+  })
+
+  it('permits an internal resolution for an explicitly allowlisted host', () => {
+    assert.doesNotThrow(() =>
+      assertAddressesAllowed('loki', [{ address: '10.0.0.5' }], new Set(['loki'])),
+    )
+  })
+
+  it('fails closed when a hostname resolves to nothing', () => {
+    assert.throws(() => assertAddressesAllowed('nx.example.com', [], new Set()), SsrfBlockedError)
   })
 })
 

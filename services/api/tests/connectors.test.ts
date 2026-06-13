@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { afterEach, describe, it } from 'node:test'
 import cookieParser from 'cookie-parser'
 import express, { Router } from 'express'
 import pino from 'pino'
@@ -171,6 +171,59 @@ describe('POST /v1/connectors', () => {
     const app = createTestApp()
     const res = await request(app).post('/v1/connectors').send({ name: 'Test', config: {} })
     assert.equal(res.status, 401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SSRF guard (create-time URL validation for elasticsearch/loki connectors)
+// ---------------------------------------------------------------------------
+
+describe('POST /v1/connectors SSRF guard', () => {
+  const prevAllowlist = process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
+
+  afterEach(() => {
+    if (prevAllowlist === undefined) delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
+    else process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS = prevAllowlist
+  })
+
+  function esBody(url: string) {
+    return { name: 'ES', config: { type: 'elasticsearch', url, index: 'logs-*' } }
+  }
+
+  it('rejects an elasticsearch connector pointed at cloud metadata', async () => {
+    delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
+    const res = await request(createTestApp())
+      .post('/v1/connectors')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(esBody('http://169.254.169.254/'))
+    assert.equal(res.status, 400)
+  })
+
+  it('rejects a connector pointed at localhost regardless of NODE_ENV', async () => {
+    delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
+    const res = await request(createTestApp())
+      .post('/v1/connectors')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(esBody('http://localhost:9200'))
+    assert.equal(res.status, 400)
+  })
+
+  it('accepts a connector pointed at a public host', async () => {
+    delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
+    const res = await request(createTestApp())
+      .post('/v1/connectors')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(esBody('https://logs.example.com:9200'))
+    assert.equal(res.status, 201)
+  })
+
+  it('accepts an internal host only when explicitly allowlisted', async () => {
+    process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS = '10.0.0.5'
+    const res = await request(createTestApp())
+      .post('/v1/connectors')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(esBody('http://10.0.0.5:9200'))
+    assert.equal(res.status, 201)
   })
 })
 

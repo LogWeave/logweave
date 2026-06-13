@@ -58,30 +58,85 @@ function isInternalIpv4(ip: string): boolean {
 }
 
 /**
+ * Expand any valid IPv6 text form to its eight 16-bit hextets. Handles `::`
+ * compression and a trailing dotted-decimal IPv4 (`::ffff:127.0.0.1`). Returns
+ * null if the string can't be expanded to exactly eight hextets.
+ */
+function expandIpv6(input: string): number[] | null {
+  let s = input
+  // Fold a trailing dotted IPv4 (e.g. ::ffff:127.0.0.1) into two hextets so the
+  // dotted and hex-colon (::ffff:7f00:1) notations classify identically.
+  const dotted = s.match(/^(.*:)((?:\d{1,3}\.){3}\d{1,3})$/)
+  if (dotted?.[1] && dotted[2]) {
+    const v4 = dotted[2].split('.').map(Number)
+    if (v4.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null
+    const [a, b, c, d] = v4 as [number, number, number, number]
+    s = `${dotted[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`
+  }
+
+  const halves = s.split('::')
+  if (halves.length > 2) return null
+  const head = halves[0] ? halves[0].split(':') : []
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : []
+  let parts: string[]
+  if (halves.length === 2) {
+    const missing = 8 - head.length - tail.length
+    if (missing < 0) return null
+    parts = [...head, ...new Array(missing).fill('0'), ...tail]
+  } else {
+    parts = head
+  }
+  if (parts.length !== 8) return null
+  const nums = parts.map((p) => Number.parseInt(p || '0', 16))
+  if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 0xffff)) return null
+  return nums
+}
+
+function isInternalIpv6(ip: string): boolean {
+  const hextets = expandIpv6(ip)
+  if (!hextets) return true // unparseable — fail closed
+  const [h0, h1, h2, h3, h4, h5, h6, h7] = hextets as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ]
+  // IPv4-mapped (::ffff:a.b.c.d) and the deprecated IPv4-compatible (::a.b.c.d) —
+  // judge by the embedded IPv4 so 127.x / metadata / RFC1918 can't hide here.
+  const firstFiveZero = h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0
+  if (firstFiveZero && h5 === 0xffff) {
+    return isInternalIpv4(`${h6 >> 8}.${h6 & 0xff}.${h7 >> 8}.${h7 & 0xff}`)
+  }
+  if (firstFiveZero && h5 === 0 && (h6 !== 0 || h7 > 1)) {
+    return isInternalIpv4(`${h6 >> 8}.${h6 & 0xff}.${h7 >> 8}.${h7 & 0xff}`)
+  }
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0 && h6 === 0) {
+    return true // :: unspecified and ::1 loopback
+  }
+  if ((h0 & 0xff00) === 0xff00) return true // ff00::/8 multicast
+  if ((h0 & 0xfe00) === 0xfc00) return true // fc00::/7 unique-local
+  if ((h0 & 0xffc0) === 0xfe80) return true // fe80::/10 link-local
+  return false
+}
+
+/**
  * True if an already-resolved IP address falls in a loopback, link-local,
  * private, or otherwise non-public range. Conservative: anything it can't
  * parse is treated as internal (fail closed).
  */
 export function isInternalIp(ip: string): boolean {
-  const kind = isIP(ip)
-  if (kind === 4) return isInternalIpv4(ip)
-  if (kind === 6) {
-    let h = ip.toLowerCase()
-    if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)
-    // Strip zone id (fe80::1%eth0)
-    const pct = h.indexOf('%')
-    if (pct !== -1) h = h.slice(0, pct)
-    if (h === '::' || h === '::1') return true // unspecified / loopback
-    // IPv4-mapped / -compatible (::ffff:a.b.c.d) — judge by the embedded IPv4
-    const mapped = h.match(/(?:^|:)((?:\d{1,3}\.){3}\d{1,3})$/)
-    if (mapped?.[1]) return isInternalIpv4(mapped[1])
-    if (h.startsWith('ff')) return true // ff00::/8 multicast
-    if (h.startsWith('fc') || h.startsWith('fd')) return true // fc00::/7 unique-local
-    // fe80::/10 link-local (fe80–febf)
-    const first = h.split(':')[0] ?? ''
-    if (/^fe[89ab][0-9a-f]?$/.test(first)) return true
-    return false
-  }
+  let v = ip.trim()
+  if (v.startsWith('[') && v.endsWith(']')) v = v.slice(1, -1)
+  const pct = v.indexOf('%') // strip zone id (fe80::1%eth0)
+  if (pct !== -1) v = v.slice(0, pct)
+  v = v.toLowerCase()
+  const kind = isIP(v)
+  if (kind === 4) return isInternalIpv4(v)
+  if (kind === 6) return isInternalIpv6(v)
   return true // not a valid IP literal — fail closed
 }
 
@@ -127,37 +182,53 @@ type LookupFn = (
 ) => void
 
 /**
- * A node lookup() implementation that rejects internal addresses. Allowlisted
- * hosts skip the IP check (the operator has explicitly trusted them).
+ * The resolve-time SSRF decision: throw if any address a hostname resolved to is
+ * internal, unless the host is explicitly allowlisted. This is the core guard —
+ * it runs for every connection (including each redirect hop) on the actual IPs
+ * the socket will use, so DNS rebinding cannot substitute a different address.
+ */
+export function assertAddressesAllowed(
+  hostname: string,
+  addresses: readonly { address: string }[],
+  allowedHosts: Set<string>,
+): void {
+  if (allowedHosts.has(hostname.toLowerCase())) return
+  if (addresses.length === 0) {
+    throw new SsrfBlockedError(`No addresses resolved for ${hostname}`)
+  }
+  const blocked = addresses.find((a) => isInternalIp(a.address))
+  if (blocked) {
+    throw new SsrfBlockedError(
+      `Refusing to connect to ${hostname}: resolves to internal address ${blocked.address}`,
+    )
+  }
+}
+
+/**
+ * A node lookup() implementation that rejects internal addresses. Note node only
+ * invokes lookup for DNS names — IP-literal hosts connect directly and are
+ * guarded by the synchronous {@link isBlockedHostname} pre-check in safeFetch.
  */
 function makeGuardedLookup(allowedHosts: Set<string>): LookupFn {
   return (hostname, options, callback) => {
-    const allowed = allowedHosts.has(hostname.toLowerCase())
+    // Resolve every address so we can reject if any one of them is internal,
+    // then answer in the shape node asked for.
     dnsLookup(hostname, { ...options, all: true }, (err, addresses) => {
       if (err) {
         callback(err, [])
         return
       }
-      if (!allowed) {
-        const blocked = addresses.find((a) => isInternalIp(a.address))
-        if (blocked) {
-          callback(
-            new SsrfBlockedError(
-              `Refusing to connect to ${hostname}: resolves to internal address ${blocked.address}`,
-            ),
-            [],
-          )
-          return
-        }
+      try {
+        assertAddressesAllowed(hostname, addresses, allowedHosts)
+      } catch (guardErr) {
+        callback(guardErr as NodeJS.ErrnoException, [])
+        return
       }
       if (options.all) {
         callback(null, addresses)
       } else {
-        const first = addresses[0]
-        if (!first) {
-          callback(new SsrfBlockedError(`No addresses resolved for ${hostname}`), [])
-          return
-        }
+        // assertAddressesAllowed guarantees a non-empty list here.
+        const [first] = addresses as [LookupAddress, ...LookupAddress[]]
         callback(null, first.address, first.family)
       }
     })
