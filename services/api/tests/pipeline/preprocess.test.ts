@@ -130,6 +130,21 @@ describe('preprocessMessage', () => {
     // No email present, so nothing should be replaced with <EMAIL>.
     assert.ok(!result.includes('<EMAIL>'))
   })
+
+  it('stays linear on a with-@ adversarial EMAIL payload', () => {
+    // Forces the domain class to match greedily then fail the TLD tail at every
+    // start position — the harder backtracking path now bounded by {1,64}/
+    // {1,255}/{2,24}. A 32KB payload must still finish well under 50ms.
+    const bait = `${'a'.repeat(60)}@${'b'.repeat(250)}-`
+    const input = bait.repeat(Math.ceil(MAX_MESSAGE_LENGTH / bait.length))
+    const start = performance.now()
+    preprocessMessage(input)
+    const elapsed = performance.now() - start
+    assert.ok(
+      elapsed < 50,
+      `preprocessMessage took ${elapsed.toFixed(1)}ms on a 32KB with-@ payload (expected <50ms)`,
+    )
+  })
 })
 
 describe('PREPROCESSING_VERSION', () => {
