@@ -3,11 +3,9 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## 0.1.0 (2026-06-13)
 
-LogWeave has not yet had a tagged release. Everything listed below is on `main`
-and ships in the first release (planned as 0.1.0). This section will be split
-into a dated `0.1.0` heading when we tag.
+First public Beta release.
 
 ### Core
 
@@ -57,9 +55,11 @@ into a dated `0.1.0` heading when we tag.
 
 - Docker Compose dev and production configs with resource limits
 - Health probes, graceful shutdown, circuit breaker
-- Self-hosted install guide (5-minute setup)
+- Self-hosted install guide
 - CloudFormation templates for AWS deployment (network + application stacks)
 - Landing page for GitHub Pages
+- Bootstrap admin credentials persisted to file in addition to stderr (auto-deleted on first password change) so operators who miss the log line can still recover
+- Admin password recovery script (`scripts/reset-admin-password.ts`) — resets a single user without touching any tenant data
 
 ### Connectors
 
