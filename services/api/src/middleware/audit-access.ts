@@ -21,13 +21,15 @@ export function createAccessAuditMiddleware(deps: {
   db: DbClient
   logger: pino.Logger
 }): RequestHandler {
+  // Anchored so a future sibling route (e.g. /v1/settings-export) can't inherit
+  // the wrong action via a substring match. Each pattern ends at a path boundary.
   const AUDITED_PATTERNS: Array<{ method: string; pattern: RegExp; action: string }> = [
-    { method: 'POST', pattern: /\/v1\/ingest/, action: 'ingest' },
-    { method: 'PUT', pattern: /\/v1\/settings/, action: 'settings.update' },
-    { method: 'POST', pattern: /\/v1\/settings/, action: 'settings.update' },
-    { method: 'POST', pattern: /\/v1\/connectors/, action: 'connector.create' },
-    { method: 'DELETE', pattern: /\/v1\/connectors/, action: 'connector.delete' },
-    { method: 'POST', pattern: /\/v1\/deploys/, action: 'deploy.create' },
+    { method: 'POST', pattern: /^\/v1\/ingest(\/|$)/, action: 'ingest' },
+    { method: 'PUT', pattern: /^\/v1\/settings(\/|$)/, action: 'settings.update' },
+    { method: 'POST', pattern: /^\/v1\/settings(\/|$)/, action: 'settings.update' },
+    { method: 'POST', pattern: /^\/v1\/connectors(\/|$)/, action: 'connector.create' },
+    { method: 'DELETE', pattern: /^\/v1\/connectors(\/|$)/, action: 'connector.delete' },
+    { method: 'POST', pattern: /^\/v1\/deploys(\/|$)/, action: 'deploy.create' },
   ]
 
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -43,7 +45,9 @@ export function createAccessAuditMiddleware(deps: {
       if (res.statusCode >= 400) return
 
       // req.path is mount-relative inside /v1; match the full path.
-      const reqPath = req.originalUrl.split('?')[0] ?? req.path
+      const reqPath = req.originalUrl.split('?')[0] ?? ''
+      // Connection/notification test endpoints (…/test) are not mutations.
+      if (reqPath.endsWith('/test')) return
       const match = AUDITED_PATTERNS.find((p) => p.method === req.method && p.pattern.test(reqPath))
       if (!match) return
 

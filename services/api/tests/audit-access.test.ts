@@ -43,8 +43,13 @@ function createTestApp() {
   v1.use(createAccessAuditMiddleware({ db, logger }))
   v1.put('/settings', (_req, res) => res.json({ ok: true }))
   v1.post('/connectors', (_req, res) => res.status(201).json({ ok: true }))
+  v1.post('/connectors/abc/test', (_req, res) => res.json({ ok: true }))
   v1.post('/deploys', (_req, res) => res.status(201).json({ ok: true }))
   v1.post('/settings/bad', (_req, res) => res.status(400).json({ error: 'bad' }))
+  v1.post('/settings-export', (_req, res) => res.status(201).json({ ok: true }))
+  // A rules route that does NOT self-audit — proves the middleware no longer
+  // carries rule.* patterns (rule auditing moved to the route handler).
+  v1.post('/rules', (_req, res) => res.status(201).json({ ok: true }))
   v1.get('/settings', (_req, res) => res.json({ ok: true }))
   app.use('/v1', v1)
   return { app, commands }
@@ -89,14 +94,32 @@ describe('createAccessAuditMiddleware', () => {
     assert.equal(auditRows(commands).length, 0)
   })
 
-  it('does not double-audit rule mutations (handled explicitly in routes)', async () => {
-    // The middleware no longer carries rule.* patterns; a POST to a rules-like
-    // path must not produce a middleware audit row.
+  it('does not audit rule mutations (handled explicitly in routes)', async () => {
+    // The middleware no longer carries rule.* patterns, so a POST /v1/rules must
+    // produce no middleware audit row (the route handler audits explicitly).
     const { app, commands } = createTestApp()
-    await request(app).put('/v1/settings').set('Authorization', `Bearer ${KEY_A}`).send({})
+    await request(app).post('/v1/rules').set('Authorization', `Bearer ${KEY_A}`).send({})
     await delay(0)
 
-    const ruleRows = auditRows(commands).filter((r) => String(r.action).startsWith('rule.'))
-    assert.equal(ruleRows.length, 0)
+    assert.equal(auditRows(commands).length, 0)
+  })
+
+  it('does not audit connection-test endpoints (…/test)', async () => {
+    const { app, commands } = createTestApp()
+    await request(app)
+      .post('/v1/connectors/abc/test')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send({})
+    await delay(0)
+
+    assert.equal(auditRows(commands).length, 0)
+  })
+
+  it('does not match a sibling route via substring (settings-export)', async () => {
+    const { app, commands } = createTestApp()
+    await request(app).post('/v1/settings-export').set('Authorization', `Bearer ${KEY_A}`).send({})
+    await delay(0)
+
+    assert.equal(auditRows(commands).length, 0)
   })
 })
