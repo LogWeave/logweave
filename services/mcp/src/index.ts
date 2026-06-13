@@ -2,10 +2,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { LogWeaveClient } from './client.js'
-import type { DevToolsConfig } from './dev-tools.js'
 import { registerChanges } from './registrations/changes.js'
 import { registerCorrelations } from './registrations/correlations.js'
-import { registerDev } from './registrations/dev.js'
 import { registerInsights } from './registrations/insights.js'
 import { registerOverview } from './registrations/overview.js'
 import { registerPatterns } from './registrations/patterns.js'
@@ -43,13 +41,30 @@ registerRules(server, client)
 registerInsights(server, client)
 
 if (process.env.LOGWEAVE_DEV === 'true') {
-  const devConfig: DevToolsConfig = {
-    clickhouseUrl: process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://localhost:8123',
-    clustererUrl: process.env.LOGWEAVE_CLUSTERER_URL ?? 'http://localhost:8000',
-    apiUrl,
+  // Dev tools bypass tenant scoping and are excluded from the published build.
+  // Load them dynamically via a non-literal specifier so the prod bundle never
+  // references the module, and only after the multi-tenant guard inside passes.
+  const devModule = './registrations/dev.js'
+  try {
+    const dev = (await import(devModule)) as {
+      registerDev: (
+        server: McpServer,
+        config: { clickhouseUrl: string; clustererUrl: string; apiUrl: string },
+      ) => Promise<boolean>
+    }
+    const registered = await dev.registerDev(server, {
+      clickhouseUrl: process.env.LOGWEAVE_CLICKHOUSE_URL ?? 'http://localhost:8123',
+      clustererUrl: process.env.LOGWEAVE_CLUSTERER_URL ?? 'http://localhost:8000',
+      apiUrl,
+    })
+    if (registered) {
+      process.stderr.write('Dev mode enabled — 3 diagnostic tools registered\n')
+    }
+  } catch (err) {
+    process.stderr.write(
+      `Dev tools unavailable in this build: ${err instanceof Error ? err.message : String(err)}\n`,
+    )
   }
-  registerDev(server, devConfig)
-  process.stderr.write('Dev mode enabled — 3 diagnostic tools registered\n')
 }
 
 async function main() {

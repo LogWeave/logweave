@@ -12,6 +12,28 @@ export interface DevToolsConfig {
   apiUrl: string
 }
 
+/**
+ * Count distinct tenants in the backend. Used as a safety gate: dev tools query
+ * ClickHouse directly and bypass tenant scoping, so they must never register
+ * against a multi-tenant deployment. Throws on connection/HTTP error so the
+ * caller fails closed (refuses to register).
+ */
+export async function countDistinctTenants(config: DevToolsConfig): Promise<number> {
+  const res = await globalThis.fetch(config.clickhouseUrl, {
+    method: 'POST',
+    body: 'SELECT uniqExact(tenant_id) FROM logweave.log_metadata\nFORMAT TabSeparated\nSETTINGS readonly=1',
+    signal: AbortSignal.timeout(CH_TIMEOUT_MS),
+  })
+  if (!res.ok) {
+    throw new Error(`ClickHouse returned ${res.status} ${res.statusText}`)
+  }
+  const count = Number.parseInt((await res.text()).trim(), 10)
+  if (!Number.isFinite(count)) {
+    throw new Error('Could not parse tenant count from ClickHouse')
+  }
+  return count
+}
+
 // ---------------------------------------------------------------------------
 // dev_health — check all 3 services
 // ---------------------------------------------------------------------------
