@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
 import { type ApiResponse, READ_ONLY, formatMeta, toolHandler } from '../shared/handler.js'
+import { buildSystemNotes, formatSystemStateBlock, getAnomalyState } from '../shared/system-state.js'
 
 async function changes(
   client: LogWeaveClient,
@@ -24,8 +25,16 @@ async function changes(
   const spikes = data.spike ?? []
   const resolved = data.resolved ?? []
 
+  const changesMeta = res.meta as {
+    baselineStatus?: 'empty' | 'sparse' | 'ok'
+    previousWindowEvents?: number
+    tenantFirstSeenAt?: string | null
+  }
+  const anomalyState = await getAnomalyState(client)
+  const systemBlock = formatSystemStateBlock(buildSystemNotes(anomalyState, changesMeta))
+
   if (newEvents.length === 0 && spikes.length === 0 && resolved.length === 0) {
-    return `No changes detected.${formatMeta(res.meta)}`
+    return `No changes detected.${formatMeta(res.meta)}${systemBlock}`
   }
 
   let text = `## Changes Detected\n\n`
@@ -54,6 +63,7 @@ async function changes(
   }
 
   text += formatMeta(res.meta)
+  text += systemBlock
   return text
 }
 
@@ -159,6 +169,19 @@ async function diagnoseService(
   }
 
   text += formatMeta(healthRes.meta)
+
+  // Self-aware system-state block. INSUFFICIENT_DATA verdicts during warmup
+  // are easily misread as "system is healthy" by an LLM agent. The block
+  // explicitly says "we cannot tell yet" so the LLM relays the right thing
+  // to the user.
+  const diagnoseAnomalyState = await getAnomalyState(client)
+  const diagnoseChangesMeta = (changesRes.meta as {
+    baselineStatus?: 'empty' | 'sparse' | 'ok'
+    previousWindowEvents?: number
+    tenantFirstSeenAt?: string | null
+  }) ?? {}
+  text += formatSystemStateBlock(buildSystemNotes(diagnoseAnomalyState, diagnoseChangesMeta))
+
   return text
 }
 

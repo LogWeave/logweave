@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
 import { type ApiResponse, READ_ONLY, formatMeta, toolHandler } from '../shared/handler.js'
+import { buildSystemNotes, formatSystemStateBlock, getAnomalyState } from '../shared/system-state.js'
 
 async function overview(
   client: LogWeaveClient,
@@ -31,6 +32,13 @@ async function overview(
   }
 
   text += formatMeta(res.meta)
+
+  // Self-aware system-state block so LLM agents know whether to trust low
+  // anomaly numbers or treat them as "system warming up".
+  const anomalyState = await getAnomalyState(client)
+  const notes = buildSystemNotes(anomalyState, null)
+  text += formatSystemStateBlock(notes)
+
   return text
 }
 
