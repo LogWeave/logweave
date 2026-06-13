@@ -43,9 +43,19 @@ describe('getClientIp', () => {
   })
 
   it('honors the proxy-supplied client IP when trust proxy is on', async () => {
-    const app = appReturningIp(true)
+    const app = appReturningIp(parseTrustProxy('true'))
     const res = await request(app).get('/ip').set('X-Forwarded-For', '1.2.3.4')
     assert.equal(res.body.ip, '1.2.3.4')
+  })
+
+  it('with one trusted hop, picks the proxy-added IP, not a client-prepended spoof', async () => {
+    // parseTrustProxy('true') === 1 (single hop). For "spoof, realClient" the
+    // proxy appends the real client on the right; the leftmost is attacker-set
+    // and must be rejected. This is the property the audit hinges on.
+    assert.equal(parseTrustProxy('true'), 1)
+    const app = appReturningIp(parseTrustProxy('true'))
+    const res = await request(app).get('/ip').set('X-Forwarded-For', '9.9.9.9, 8.8.8.8')
+    assert.equal(res.body.ip, '8.8.8.8')
   })
 })
 
@@ -66,7 +76,7 @@ describe('ip rate limiter respects trust proxy', () => {
 
   it('distinct real clients get independent buckets when trust proxy is on', async () => {
     const app = express()
-    app.set('trust proxy', true)
+    app.set('trust proxy', parseTrustProxy('true'))
     app.use(createIpRateLimiter(2))
     app.get('/login', (_req, res) => res.json({ ok: true }))
 
