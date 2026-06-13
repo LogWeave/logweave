@@ -55,8 +55,28 @@ const apiKeysSchema = z
     return new Map(entries as [string, string][])
   })
 
+/**
+ * Parse LOGWEAVE_TRUST_PROXY into an Express `trust proxy` value.
+ * - unset/false/off/0 → false (don't trust X-Forwarded-For; req.ip = socket)
+ * - true/on → 1 (trust exactly one proxy hop — the documented Caddy/nginx in
+ *   front; the address that proxy added is the real client and is not spoofable)
+ * - a number → that many trusted hops
+ * - anything else → passed through (subnet list or preset like 'loopback')
+ */
+export function parseTrustProxy(value: string | undefined): boolean | number | string {
+  const lower = (value ?? '').trim().toLowerCase()
+  if (lower === '' || lower === 'false' || lower === 'off' || lower === '0') return false
+  if (lower === 'true' || lower === 'on') return 1
+  if (/^\d+$/.test(lower)) return Number(lower)
+  return value as string
+}
+
 const configSchema = z.object({
   port: z.coerce.number().int().min(1).max(65535).default(3000),
+  trustProxy: z
+    .string()
+    .optional()
+    .transform(parseTrustProxy),
   clickhouseUrl: z.string().min(1),
   clickhouseUser: z.string().optional(),
   clickhousePassword: z.string().optional(),
@@ -98,6 +118,7 @@ export type Config = z.infer<typeof configSchema>
 export function loadConfig(): Config {
   return configSchema.parse({
     port: process.env.LOGWEAVE_PORT,
+    trustProxy: process.env.LOGWEAVE_TRUST_PROXY,
     clickhouseUrl: process.env.LOGWEAVE_CLICKHOUSE_URL,
     clickhouseUser: process.env.LOGWEAVE_CLICKHOUSE_USER || undefined,
     clickhousePassword: process.env.LOGWEAVE_CLICKHOUSE_PASSWORD || undefined,

@@ -1,5 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import { rateLimited } from '../errors.js'
+import { getClientIp } from './client-ip.js'
 
 interface WindowEntry {
   count: number
@@ -8,15 +9,6 @@ interface WindowEntry {
 
 const WINDOW_MS = 60_000
 const CLEANUP_INTERVAL_MS = 60_000
-
-function clientIp(req: Request): string {
-  const xff = req.headers['x-forwarded-for']
-  if (typeof xff === 'string' && xff.length > 0) {
-    const first = xff.split(',')[0]
-    if (first) return first.trim()
-  }
-  return req.ip ?? req.socket.remoteAddress ?? 'unknown'
-}
 
 /**
  * Per-IP rate limiter for unauthenticated endpoints (login, etc.).
@@ -34,7 +26,7 @@ export function createIpRateLimiter(rpm: number): RequestHandler {
   cleanup.unref()
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    const ip = clientIp(req)
+    const ip = getClientIp(req)
     const now = Date.now()
     let entry = windows.get(ip)
     if (!entry || now >= entry.resetAt) {

@@ -3,6 +3,7 @@ import type pino from 'pino'
 import { insertAuditEvent } from '../db/audit-queries.js'
 import type { DbClient } from '../db/client.js'
 import { getKeyId, getTenantId } from './auth.js'
+import { getClientIp } from './client-ip.js'
 
 /**
  * Middleware that audits data access operations (not just auth events).
@@ -45,7 +46,7 @@ export function createAccessAuditMiddleware(deps: {
       try {
         const tenantId = getTenantId(res)
         const keyId = getKeyId(res)
-        const sourceIp = req.ip ?? req.socket.remoteAddress ?? ''
+        const sourceIp = getClientIp(req)
 
         insertAuditEvent(deps.db, tenantId, {
           keyId,

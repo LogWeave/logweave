@@ -7,6 +7,7 @@ import { AppError, unauthorized } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
+import { getClientIp } from '../middleware/client-ip.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import type { TailBuffer } from '../tail/buffer.js'
 import type { TailTokenStore } from '../tail/token-store.js'
@@ -360,7 +361,7 @@ export function tailSseRoute(deps: TailDeps): Router {
     insertAuditEvent(deps.db, resolvedTenantId, {
       keyId,
       action: 'tail.connect',
-      sourceIp: req.ip ?? '',
+      sourceIp: getClientIp(req),
       details: JSON.stringify(filters),
     }).catch(() => {
       /* audit write failure must not crash the connection */
