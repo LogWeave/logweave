@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { AppError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { respond } from '../lib/respond.js'
-import { getTenantId } from '../middleware/auth.js'
+import { getTenantId, requireAdminForWrites } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import type { WatchStore } from '../watches/watch-store.js'
 
@@ -20,6 +20,10 @@ const createWatchSchema = z.object({
 
 export function watchRoutes(deps: WatchDeps): Router {
   const router = Router()
+
+  // Creating and removing watches is admin-only; viewers keep read access to
+  // GET /watches.
+  router.use(requireAdminForWrites)
 
   // POST /watches — create a watch
   router.post('/watches', validateBody(createWatchSchema), async (req, res, next) => {

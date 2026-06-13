@@ -227,3 +227,17 @@ export const requireAdmin: RequestHandler = (_req, res, next): void => {
   }
   next()
 }
+
+/**
+ * Middleware: requires admin for any state-changing request, leaving reads open
+ * to viewers. Mount with `router.use(...)` so every non-GET route on the router
+ * is admin-by-default — new write routes are protected without remembering to
+ * add a guard. API keys are always admin. HEAD is treated as a read.
+ */
+export const requireAdminForWrites: RequestHandler = (req, res, next): void => {
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    next()
+    return
+  }
+  requireAdmin(req, res, next)
+}

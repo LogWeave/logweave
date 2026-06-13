@@ -280,6 +280,17 @@ describe('admin guard', () => {
     assert.equal(res.body.error.code, 'FORBIDDEN')
   })
 
+  it('rejects POST /connectors/:id/test from viewer session with 403', async () => {
+    const app = createTestApp(connectorQueryMap())
+
+    const res = await request(app)
+      .post('/v1/connectors/019abc-conn-1/test')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
   it('allows GET /connectors from viewer session', async () => {
     const app = createTestApp(connectorQueryMap())
 

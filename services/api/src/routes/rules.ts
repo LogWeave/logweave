@@ -6,7 +6,7 @@ import type { DbClient } from '../db/client.js'
 import { AppError, notFound } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { respond } from '../lib/respond.js'
-import { getTenantId } from '../middleware/auth.js'
+import { getTenantId, requireAdminForWrites } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import type {
@@ -180,6 +180,10 @@ function isTemplateWatchConfig(config: unknown): config is TemplateWatchConfig {
 
 export function ruleRoutes(deps: RuleDeps): Router {
   const router = Router()
+
+  // Creating, updating and deleting alert rules is admin-only; viewers keep
+  // read access to GET /rules and GET /alerts.
+  router.use(requireAdminForWrites)
 
   // POST /rules — create a rule
   router.post('/rules', validateBody(createRuleSchema), async (req, res, next) => {

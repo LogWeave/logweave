@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import cookieParser from 'cookie-parser'
 import express from 'express'
 import pino from 'pino'
 import request from 'supertest'
+import { HmacSessionProvider, SESSION_COOKIE_NAME } from '../../src/auth/session.js'
 import { createAuthMiddleware } from '../../src/middleware/auth.js'
 import { createErrorHandler } from '../../src/middleware/error-handler.js'
 import { watchRoutes } from '../../src/routes/watches.js'
@@ -16,12 +18,25 @@ const keyMap = new Map([
   ['key-b', TENANT_B],
 ])
 
+const SESSION_KEY = Buffer.alloc(32, 0x42)
+const sessionProvider = new HmacSessionProvider(SESSION_KEY)
+
+function viewerCookie(): string {
+  return sessionProvider.createSession({
+    userId: 'viewer-1',
+    tenantId: TENANT_A,
+    role: 'viewer',
+    sessionVersion: 1,
+  })
+}
+
 function createTestApp(maxWatches = 100) {
   const logger = pino({ level: 'silent' })
   const watchStore = new WatchStore({ maxPerTenant: maxWatches })
   const app = express()
   app.use(express.json())
-  const auth = createAuthMiddleware(keyMap)
+  app.use(cookieParser())
+  const auth = createAuthMiddleware(keyMap, sessionProvider)
   app.use('/v1', auth, watchRoutes({ watchStore, logger }))
   app.use(createErrorHandler(logger))
   return { app, watchStore }
@@ -177,5 +192,37 @@ describe('GET /v1/watches', () => {
 
     assert.deepEqual(resA.body.data, [{ templateId: 'tmpl-a' }])
     assert.deepEqual(resB.body.data, [{ templateId: 'tmpl-b' }])
+  })
+})
+
+describe('admin guard', () => {
+  it('rejects POST /watches from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .post('/v1/watches')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+      .send({ templateId: 'tmpl-1' })
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('rejects DELETE /watches/:templateId from viewer session with 403', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .delete('/v1/watches/tmpl-1')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'FORBIDDEN')
+  })
+
+  it('allows GET /watches from viewer session', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .get('/v1/watches')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 200)
   })
 })
