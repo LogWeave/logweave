@@ -80,7 +80,7 @@ Navigate to `http://localhost:3000`.
 
 ```bash
 # Option A — from the API container logs
-docker compose -f docker-compose.prod.yml logs api | grep -A 1 "LOGWEAVE BOOTSTRAP"
+docker compose -f docker-compose.prod.yml logs api | grep -A 3 "LOGWEAVE BOOTSTRAP"
 
 # Option B — from the credentials file (auto-deleted after first password change)
 docker compose -f docker-compose.prod.yml exec api cat /data/bootstrap-credentials.txt
@@ -232,7 +232,7 @@ Navigate to `https://logweave.acme.com` in your browser.
 
 ```bash
 # Option A — from the API container logs
-docker compose -f docker-compose.prod.yml logs api | grep -A 1 "LOGWEAVE BOOTSTRAP"
+docker compose -f docker-compose.prod.yml logs api | grep -A 3 "LOGWEAVE BOOTSTRAP"
 
 # Option B — from the credentials file (auto-deleted after first password change)
 docker compose -f docker-compose.prod.yml exec api cat /data/bootstrap-credentials.txt
@@ -368,7 +368,7 @@ import winston from "winston";
 const logger = winston.createLogger({
   transports: [
     new LogWeaveTransport({
-      endpoint: "https://logweave.acme.com",
+      endpoint: "https://logweave.acme.com/v1/ingest/batch",
       apiKey: "YOUR_API_KEY",
       service: "my-service",
     }),

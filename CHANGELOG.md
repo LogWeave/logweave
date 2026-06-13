@@ -23,7 +23,7 @@ First public Beta release.
 
 ### MCP server (`@logweave/mcp`)
 
-- 26 production tools (plus 3 dev-only tools behind `LOGWEAVE_DEV=1`) covering overview, error patterns, change detection, service diagnosis, template search (text + semantic), correlations, related patterns, traces, raw logs, live tail, deploys, cost optimizer, threshold rule creation, clustering health, period comparison, and more
+- 26 production tools (plus 3 dev-only tools behind `LOGWEAVE_DEV=true`) covering overview, error patterns, change detection, service diagnosis, template search (text + semantic), correlations, related patterns, traces, raw logs, live tail, deploys, cost optimizer, threshold rule creation, clustering health, period comparison, and more
 - stdio transport, npm-publishable as `@logweave/mcp`
 
 ### Ingestion

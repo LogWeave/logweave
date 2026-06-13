@@ -1,7 +1,7 @@
 # LogWeave — Production Docker Compose
 #
 # Usage:
-#   cp .env.production .env    # edit values
+#   cp .env.production.example .env    # edit values
 #   docker compose -f docker-compose.prod.yml up -d
 #
 # Prerequisites: Docker Engine 24+, Docker Compose v2
