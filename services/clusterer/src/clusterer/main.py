@@ -113,7 +113,7 @@ async def lifespan(app: FastAPI):
     embedding_service = EmbeddingService()
     app.state.embedding_service = embedding_service
     app.state.backfill_running = False
-    registry = TemplateRegistry(ch_client, embedding_service=embedding_service)
+    registry = TemplateRegistry(ch_client)
     hmac_key = settings.checkpoint_hmac_key.get_secret_value()
     checkpoint_mgr = CheckpointManager(settings.drain3_checkpoint_dir, hmac_key=hmac_key)
     if not hmac_key:

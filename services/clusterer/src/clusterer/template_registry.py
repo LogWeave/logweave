@@ -11,16 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
 
 import clickhouse_connect.driver
 from cachetools import LRUCache
 from uuid_utils import uuid7
 
 from clusterer.internal_events import emit_clickhouse_failure
-
-if TYPE_CHECKING:
-    from clusterer.embedding import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +61,8 @@ VALUES
 
 
 class TemplateRegistry:
-    def __init__(
-        self,
-        client: clickhouse_connect.driver.Client,
-        embedding_service: EmbeddingService | None = None,
-    ) -> None:
+    def __init__(self, client: clickhouse_connect.driver.Client) -> None:
         self._client = client
-        self._embedding = embedding_service
         self._cache: LRUCache = LRUCache(maxsize=_CACHE_MAX_SIZE)
         self._tenant_locks: dict[str, asyncio.Lock] = {}
         self._global_lock = asyncio.Lock()
@@ -227,24 +218,14 @@ class TemplateRegistry:
             raise
         return {row[0]: row[1] for row in result.result_rows}
 
-    def _embed_texts(self, texts: list[str]) -> list[list[float]]:
-        """Best-effort embedding. Returns empty vectors on failure."""
-        if self._embedding is None:
-            return [[] for _ in texts]
-        try:
-            return self._embedding.embed(texts)
-        except Exception:
-            logger.warning("Embedding failed, inserting without vectors", exc_info=True)
-            return [[] for _ in texts]
-
-    def _get_model_name(self) -> str:
-        if self._embedding is None:
-            return ""
-        return self._embedding.MODEL_NAME
-
     def _insert_template(self, tenant_id: str, template_text: str, template_id: str) -> None:
-        """Sync ClickHouse insert."""
-        embeddings = self._embed_texts([template_text])
+        """Sync ClickHouse insert.
+
+        Embeddings are left empty (``[]``) and populated asynchronously by the
+        ``/embed/backfill`` job. Embedding the text inline would put the model's
+        ~2 s cold start on the ``/cluster`` hot path, which has a sub-second
+        timeout — the first event for each new template would time out.
+        """
         try:
             self._client.command(
                 _INSERT_SQL,
@@ -252,8 +233,8 @@ class TemplateRegistry:
                     "tid": tenant_id,
                     "text": template_text,
                     "template_id": template_id,
-                    "embedding": embeddings[0],
-                    "embedding_model": self._get_model_name(),
+                    "embedding": [],
+                    "embedding_model": "",
                 },
             )
         except Exception as exc:
@@ -261,14 +242,11 @@ class TemplateRegistry:
             raise
 
     def _batch_insert_templates(self, tenant_id: str, entries: list[tuple[str, str]]) -> None:
-        """Batch INSERT via client.insert(). cityHash64 and first_seen computed by DEFAULT."""
-        texts = [text for text, _ in entries]
-        embeddings = self._embed_texts(texts)
-        model_name = self._get_model_name()
-        rows = [
-            [tenant_id, text, template_id, emb, model_name]
-            for (text, template_id), emb in zip(entries, embeddings)
-        ]
+        """Batch INSERT via client.insert(). cityHash64 and first_seen computed by DEFAULT.
+
+        Embeddings are left empty for async backfill — see ``_insert_template``.
+        """
+        rows = [[tenant_id, text, template_id, [], ""] for text, template_id in entries]
         try:
             self._client.insert(
                 "template_registry",
