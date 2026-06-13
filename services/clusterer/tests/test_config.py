@@ -72,6 +72,19 @@ def test_client_kwargs_omits_credentials_when_user_unset():
     assert "password" not in kwargs
 
 
+def test_password_not_leaked_in_config_loaded_event():
+    """The config.loaded summary (allowlist-only) must never carry the plaintext
+    password, even via model_dump(). Locks the end-to-end redaction guarantee."""
+    import json
+
+    from clusterer.config import Settings
+    from clusterer.internal_events import summarize_config
+
+    s = Settings(clickhouse_user="logweave", clickhouse_password="s3cret-value")
+    summary = summarize_config(s.model_dump())
+    assert "s3cret-value" not in json.dumps(summary, default=str)
+
+
 def test_sim_th_validation():
     """sim_th must be > 0.0 and <= 1.0."""
     from pydantic import ValidationError
