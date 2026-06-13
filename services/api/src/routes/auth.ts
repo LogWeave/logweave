@@ -23,6 +23,7 @@ import { insertAuditEvent } from '../db/audit-queries.js'
 import type { DbClient } from '../db/client.js'
 import { AppError, notFound } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { getClientIp } from '../middleware/client-ip.js'
 import { createIpRateLimiter } from '../middleware/ip-rate-limit.js'
 import { validateBody } from '../middleware/validate.js'
 
@@ -76,7 +77,7 @@ export function authRoutes(deps: AuthDeps): Router {
   // POST /auth/session — login
   router.post('/auth/session', loginIpLimiter, validateBody(loginSchema), async (req, res) => {
     const { username, password, totpCode } = req.body as z.infer<typeof loginSchema>
-    const sourceIp = req.ip ?? ''
+    const sourceIp = getClientIp(req)
 
     // Check lockout (keyed on username+sourceIp — see LockoutTracker)
     if (lockout.isLocked(username, sourceIp)) {

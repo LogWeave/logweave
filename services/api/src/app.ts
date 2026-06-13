@@ -79,6 +79,11 @@ export function createApp(deps: AppDependencies): CreatedApp {
   const app = express()
   app.disable('x-powered-by')
 
+  // Controls whether X-Forwarded-For is trusted for req.ip. Off by default so a
+  // direct client can't spoof its IP; set LOGWEAVE_TRUST_PROXY=true behind the
+  // reverse proxy (Caddy/nginx) so rate-limiting and lockout key on the real IP.
+  app.set('trust proxy', deps.config.trustProxy)
+
   // Request-id middleware (must be first — sets up AsyncLocalStorage context)
   app.use(requestIdMiddleware)
 

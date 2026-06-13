@@ -211,6 +211,12 @@ sudo systemctl reload caddy
 
 Caddy automatically obtains and renews a Let's Encrypt certificate for your domain.
 
+> **Set `LOGWEAVE_TRUST_PROXY=true`** whenever the API runs behind a reverse
+> proxy like this (it defaults to `true` in `docker-compose.prod.yml`). Without
+> it the API sees every request as coming from the proxy, so the login rate
+> limit and account lockout key on a single IP instead of the real client.
+> Leave it unset/`false` only if the API is exposed directly with no proxy.
+
 ### 4. Start the stack
 
 ```bash
