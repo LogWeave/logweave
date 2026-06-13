@@ -1,12 +1,13 @@
 /**
  * Elasticsearch / OpenSearch log source adapter.
  *
- * Uses global fetch (no new dependencies). Works with ES 7.x+ and OpenSearch 1.x+.
+ * Uses the SSRF-safe HTTP client (no new dependencies). Works with ES 7.x+ and OpenSearch 1.x+.
  *
  * testConnection: GET /_cluster/health + GET /{index}/_count
  * fetchRawLogs:   POST /{index}/_search with bool query (range + regex)
  */
 
+import { safeFetch } from './safe-fetch.js'
 import { templateToRegex } from './template-regex.js'
 import {
   type ConnectionTestResult,
@@ -64,7 +65,7 @@ export class ElasticsearchAdapter implements LogSourceAdapter {
 
     try {
       // Check cluster health
-      const healthRes = await fetch(`${baseUrl}/_cluster/health`, {
+      const healthRes = await safeFetch(`${baseUrl}/_cluster/health`, {
         headers,
         signal: AbortSignal.timeout(10_000),
       })
@@ -86,7 +87,7 @@ export class ElasticsearchAdapter implements LogSourceAdapter {
       const health = (await healthRes.json()) as Record<string, unknown>
 
       // Check index exists and get doc count
-      const countRes = await fetch(`${baseUrl}/${encodeURIComponent(esConfig.index)}/_count`, {
+      const countRes = await safeFetch(`${baseUrl}/${encodeURIComponent(esConfig.index)}/_count`, {
         headers,
         signal: AbortSignal.timeout(10_000),
       })
@@ -167,7 +168,7 @@ export class ElasticsearchAdapter implements LogSourceAdapter {
     }
 
     try {
-      const res = await fetch(`${baseUrl}/${encodeURIComponent(config.index)}/_search`, {
+      const res = await safeFetch(`${baseUrl}/${encodeURIComponent(config.index)}/_search`, {
         method: 'POST',
         headers,
         body: JSON.stringify(query),

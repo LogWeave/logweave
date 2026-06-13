@@ -1,12 +1,13 @@
 /**
  * Grafana Loki log source adapter.
  *
- * Uses global fetch (no new dependencies).
+ * Uses the SSRF-safe HTTP client (no new dependencies).
  *
  * testConnection: GET /ready + GET /loki/api/v1/labels
  * fetchRawLogs:   GET /loki/api/v1/query_range with LogQL `|~ "regex"`
  */
 
+import { safeFetch } from './safe-fetch.js'
 import { templateToRegex } from './template-regex.js'
 import {
   type ConnectionTestResult,
@@ -77,7 +78,7 @@ export class LokiAdapter implements LogSourceAdapter {
 
     try {
       // Check readiness
-      const readyRes = await fetch(`${baseUrl}/ready`, {
+      const readyRes = await safeFetch(`${baseUrl}/ready`, {
         headers,
         signal: AbortSignal.timeout(10_000),
       })
@@ -90,7 +91,7 @@ export class LokiAdapter implements LogSourceAdapter {
       }
 
       // Check labels to verify data access
-      const labelsRes = await fetch(`${baseUrl}/loki/api/v1/labels`, {
+      const labelsRes = await safeFetch(`${baseUrl}/loki/api/v1/labels`, {
         headers,
         signal: AbortSignal.timeout(10_000),
       })
@@ -152,7 +153,7 @@ export class LokiAdapter implements LogSourceAdapter {
     url.searchParams.set('direction', 'backward')
 
     try {
-      const res = await fetch(url, {
+      const res = await safeFetch(url, {
         headers,
         signal: AbortSignal.timeout(SCAN_DEFAULTS.maxTimeoutMs),
       })

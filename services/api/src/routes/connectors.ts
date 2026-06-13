@@ -2,6 +2,7 @@ import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
 import { buildQuickCreateUrl, generateExternalId } from '../connectors/s3-cfn-url.js'
+import { defaultAllowedHosts, isBlockedHostname } from '../connectors/safe-fetch.js'
 import { getAdapter } from '../connectors/shared.js'
 import type { ConnectorConfig } from '../connectors/types.js'
 import { decrypt, encrypt } from '../crypto.js'
@@ -108,37 +109,16 @@ const s3ConfigSchema = z
     { message: 'roleArn and endpoint are mutually exclusive — use one or the other' },
   )
 
-// SSRF prevention — blocks loopback, link-local (incl. AWS/GCP metadata at
-// 169.254.169.254), and RFC1918 private ranges in production. Dev allows them
-// so users can point at local Elasticsearch/Loki on localhost.
-function isInternalHost(hostname: string): boolean {
-  const h = hostname.toLowerCase()
-  if (h === 'localhost' || h.endsWith('.localhost') || h === '0.0.0.0') return true
-  // IPv4 octet check
-  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
-  if (m) {
-    const o = m.slice(1).map(Number)
-    const [a, b] = o as [number, number, number, number]
-    if (a === 127) return true // loopback
-    if (a === 10) return true // 10.0.0.0/8
-    if (a === 172 && b >= 16 && b <= 31) return true // 172.16.0.0/12
-    if (a === 192 && b === 168) return true // 192.168.0.0/16
-    if (a === 169 && b === 254) return true // link-local incl. metadata
-    if (a === 0) return true // 0.0.0.0/8
-  }
-  // IPv6 loopback / link-local / unique-local
-  if (h === '::1' || h === '[::1]') return true
-  if (h.startsWith('fe80:') || h.startsWith('[fe80:')) return true
-  if (h.startsWith('fc') || h.startsWith('fd') || h.startsWith('[fc') || h.startsWith('[fd'))
-    return true
-  return false
-}
-
+// SSRF prevention (create-time, host-string check). This is fast feedback only;
+// the authoritative guard runs at fetch-time in safe-fetch.ts, which resolves
+// DNS and re-validates every redirect against the resolved IP. Internal targets
+// are blocked unless explicitly allowlisted via LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
+// — there is no NODE_ENV bypass.
 function externalUrl(url: string): boolean {
   try {
     const u = new URL(url)
-    if (process.env.NODE_ENV !== 'production') return true
-    return !isInternalHost(u.hostname)
+    if (defaultAllowedHosts().has(u.hostname.toLowerCase())) return true
+    return !isBlockedHostname(u.hostname)
   } catch {
     return false
   }
@@ -146,7 +126,8 @@ function externalUrl(url: string): boolean {
 
 const externalUrlSchema = z.string().url().max(1024).refine(externalUrl, {
   message:
-    'URL must point to an external host (loopback, link-local, and RFC1918 ranges are blocked in production — SSRF prevention).',
+    'URL must point to an external host. Loopback, link-local, and private ranges are blocked ' +
+    '(SSRF prevention); allowlist a host with LOGWEAVE_CONNECTOR_ALLOWED_HOSTS for local development.',
 })
 
 const elasticsearchConfigSchema = z.object({
