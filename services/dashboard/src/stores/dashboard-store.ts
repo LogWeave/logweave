@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 
 export type TimeRange = '1h' | '6h' | '24h' | '7d'
 export type ColorMode = 'dark' | 'light'
+export type TimezoneMode = 'local' | 'utc'
 
 interface DashboardState {
   timeRange: TimeRange
@@ -29,6 +30,9 @@ interface DashboardState {
   setSelectedTimeRange: (range: { start: string; end: string } | null) => void
   investigatingStatusCode: number | null
   setInvestigatingStatusCode: (code: number | null) => void
+  /** Display timezone for event timestamps in Live Tail. Defaults to local. */
+  tailTimezone: TimezoneMode
+  toggleTailTimezone: () => void
 }
 
 export const useDashboardStore = create<DashboardState>()(
@@ -68,6 +72,9 @@ export const useDashboardStore = create<DashboardState>()(
         set({ selectedTimeRange, investigatingStatusCode: null }),
       investigatingStatusCode: null,
       setInvestigatingStatusCode: (investigatingStatusCode) => set({ investigatingStatusCode }),
+      tailTimezone: 'local',
+      toggleTailTimezone: () =>
+        set((state) => ({ tailTimezone: state.tailTimezone === 'local' ? 'utc' : 'local' })),
     }),
     {
       name: 'logweave-dashboard',
@@ -78,6 +85,7 @@ export const useDashboardStore = create<DashboardState>()(
         hiddenTemplateIds: state.hiddenTemplateIds,
         serviceFilter: state.serviceFilter,
         levelFilters: state.levelFilters,
+        tailTimezone: state.tailTimezone,
       }),
     },
   ),
