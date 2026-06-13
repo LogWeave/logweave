@@ -12,6 +12,19 @@ export interface DevToolsConfig {
   apiUrl: string
 }
 
+// Count distinct tenants across every tenant-bearing table, not just those that
+// have shipped logs — a tenant provisioned via settings/watches but with no log
+// data yet must still count toward the multi-tenant guard.
+const TENANT_COUNT_QUERY = `SELECT uniqExact(tenant_id) FROM (
+  SELECT tenant_id FROM logweave.log_metadata
+  UNION ALL
+  SELECT tenant_id FROM logweave.tenant_settings
+  UNION ALL
+  SELECT tenant_id FROM logweave.watches
+)
+FORMAT TabSeparated
+SETTINGS readonly=1`
+
 /**
  * Count distinct tenants in the backend. Used as a safety gate: dev tools query
  * ClickHouse directly and bypass tenant scoping, so they must never register
@@ -21,7 +34,7 @@ export interface DevToolsConfig {
 export async function countDistinctTenants(config: DevToolsConfig): Promise<number> {
   const res = await globalThis.fetch(config.clickhouseUrl, {
     method: 'POST',
-    body: 'SELECT uniqExact(tenant_id) FROM logweave.log_metadata\nFORMAT TabSeparated\nSETTINGS readonly=1',
+    body: TENANT_COUNT_QUERY,
     signal: AbortSignal.timeout(CH_TIMEOUT_MS),
   })
   if (!res.ok) {
