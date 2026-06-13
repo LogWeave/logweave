@@ -37,6 +37,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "tsc",
     "test": "tsx scripts/test.ts",
     "lint": "biome check .",
     "lint:fix": "biome check --fix .",

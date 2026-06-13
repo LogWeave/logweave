@@ -248,8 +248,9 @@ Ingest a batch of log events (LogWeave SDK format).
 ```json
 {
   "accepted": 100,
-  "rejected": 2,
-  "errors": ["..."]
+  "clustered": 98,
+  "unclustered": 2,
+  "new_templates": 5
 }
 ```
 

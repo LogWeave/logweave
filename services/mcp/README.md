@@ -45,7 +45,7 @@ Add to your MCP config (`~/.config/claude-desktop/config.json` or `.mcp.json`):
 
 ## Tools
 
-The server registers 26 tools (plus 3 dev-only tools when `LOGWEAVE_DEV=1`):
+The server registers 26 tools (plus 3 dev-only tools when `LOGWEAVE_DEV=true`):
 
 **Overview & health** — `overview`, `service_health`, `clustering_health`, `list_services`, `level_distribution`, `compare_periods`
 
@@ -59,4 +59,4 @@ The server registers 26 tools (plus 3 dev-only tools when `LOGWEAVE_DEV=1`):
 
 ## License
 
-MIT — see [LICENSE](../../LICENSE).
+MIT (this package only) — see [LICENSE](./LICENSE). The LogWeave server is licensed separately under [BSL-1.1](https://github.com/logweave/logweave/blob/main/LICENSE).

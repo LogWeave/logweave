@@ -7,5 +7,5 @@ useDefault = true
 description = "Global allowlist"
 paths = [
   '''\.gitleaks\.toml$''',
-  '''\.env\.example$''',
+  '''\.env(\.[a-z]+)?\.example$''',
 ]

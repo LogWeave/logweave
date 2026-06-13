@@ -110,7 +110,7 @@ Your AI assistant gets structured access to your production runtime:
 | `deploys` | Deployment markers for change correlation |
 | `cost_optimizer` | Identify noisy patterns and volume reduction opportunities |
 | `create_rule` | Create threshold alerts programmatically |
-| ...and 8 more | See `services/mcp/src/tools.ts` for all tools |
+| ...and 12 more | See [`docs/mcp-tools.md`](docs/mcp-tools.md) for all tools |
 
 ### Real-Time Dashboard
 
@@ -230,7 +230,7 @@ cd services/clusterer && uv sync --dev && uv run poe serve
 cd services/dashboard && pnpm install && pnpm dev
 
 # Tests
-cd services/api && pnpm test        # 635 unit tests
+cd services/api && pnpm test:unit   # unit tests, no external deps (use `pnpm test` to also run ClickHouse-backed tests)
 cd services/clusterer && uv run poe test  # 106 tests
 ```
 
