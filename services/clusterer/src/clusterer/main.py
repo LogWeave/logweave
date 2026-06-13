@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from clusterer.checkpoint import CheckpointManager
-from clusterer.config import get_settings
+from clusterer.config import Settings, get_settings
 from clusterer.drain_service import DrainService, TenantLimitError
 from clusterer.embedding import EmbeddingService
 from clusterer.internal_events import (
@@ -40,6 +40,20 @@ _REQUEST_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 _READY_CACHE_TTL = 5.0  # seconds
 
 
+def build_clickhouse_client_kwargs(settings: Settings) -> dict[str, object]:
+    """Assemble clickhouse_connect.get_client kwargs from settings.
+
+    Credentials are passed explicitly so they take precedence over anything in
+    the DSN. An empty user means anonymous (dev compose, no users.xml); prod
+    compose mounts a users.xml that requires authentication.
+    """
+    kwargs: dict[str, object] = {"dsn": settings.clickhouse_url}
+    if settings.clickhouse_user:
+        kwargs["username"] = settings.clickhouse_user
+        kwargs["password"] = settings.clickhouse_password.get_secret_value()
+    return kwargs
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -49,13 +63,21 @@ async def lifespan(app: FastAPI):
     # emit clickhouse.unreachable from the connection-failure path itself.
     init_internal_events(None)
 
-    # Connect to ClickHouse with retry (Docker Compose startup race)
+    # Connect to ClickHouse with retry (Docker Compose startup race).
+    client_kwargs = build_clickhouse_client_kwargs(settings)
+    if not settings.clickhouse_user:
+        logger.warning(
+            "LOGWEAVE_CLICKHOUSE_USER is not set — connecting to ClickHouse "
+            "anonymously. This fails against a users.xml that requires auth "
+            "(the production compose). Set it in production."
+        )
+
     ch_client = None
     for attempt in range(5):
         try:
             ch_client = await asyncio.to_thread(
                 clickhouse_connect.get_client,
-                dsn=settings.clickhouse_url,
+                **client_kwargs,
             )
             break
         except Exception:

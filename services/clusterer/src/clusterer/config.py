@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     drain3_sim_th: float = Field(default=0.4, gt=0.0, le=1.0)
     drain3_depth: int = Field(default=4, ge=2)
     clickhouse_url: str = Field(default="clickhouse://localhost:9000/logweave", min_length=1)
+    # Credentials are passed alongside the DSN. Empty user => connect anonymously
+    # (dev compose, where ClickHouse has no users.xml). Prod compose mounts a
+    # users.xml that requires these.
+    clickhouse_user: str | None = Field(default=None)
+    clickhouse_password: SecretStr = SecretStr("")
     drain3_max_clusters: int = Field(default=10_000, ge=1)
     max_concurrent_requests: int = Field(default=4, ge=1)
     request_timeout_seconds: float = Field(default=0.45, gt=0.0)
