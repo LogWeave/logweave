@@ -5,6 +5,7 @@ import {
   preprocessMessage,
   processEvent,
 } from '../../src/pipeline/preprocess.js'
+import { MAX_MESSAGE_LENGTH } from '../../src/pipeline/parse.js'
 import type { ParsedEvent } from '../../src/pipeline/types.js'
 
 describe('preprocessMessage', () => {
@@ -113,11 +114,42 @@ describe('preprocessMessage', () => {
     assert.ok(!result.includes('192.168.1.1'))
     assert.ok(!result.includes('123456789'))
   })
+
+  it('does not backtrack super-linearly on the EMAIL ReDoS payload', () => {
+    // `digit.digit` repeated with no '@' is the pathological input that made
+    // the unbounded email regex block the event loop for ~10s at 128KB. With
+    // bounded quantifiers a full 32KB message must process in well under 50ms.
+    const input = '1.'.repeat(MAX_MESSAGE_LENGTH / 2) // 32KB, no '@'
+    const start = performance.now()
+    const result = preprocessMessage(input)
+    const elapsed = performance.now() - start
+    assert.ok(
+      elapsed < 50,
+      `preprocessMessage took ${elapsed.toFixed(1)}ms on a 32KB payload (expected <50ms)`,
+    )
+    // No email present, so nothing should be replaced with <EMAIL>.
+    assert.ok(!result.includes('<EMAIL>'))
+  })
+
+  it('stays linear on a with-@ adversarial EMAIL payload', () => {
+    // Forces the domain class to match greedily then fail the TLD tail at every
+    // start position — the harder backtracking path now bounded by {1,64}/
+    // {1,255}/{2,24}. A 32KB payload must still finish well under 50ms.
+    const bait = `${'a'.repeat(60)}@${'b'.repeat(250)}-`
+    const input = bait.repeat(Math.ceil(MAX_MESSAGE_LENGTH / bait.length))
+    const start = performance.now()
+    preprocessMessage(input)
+    const elapsed = performance.now() - start
+    assert.ok(
+      elapsed < 50,
+      `preprocessMessage took ${elapsed.toFixed(1)}ms on a 32KB with-@ payload (expected <50ms)`,
+    )
+  })
 })
 
 describe('PREPROCESSING_VERSION', () => {
-  it('is 1 for current pattern set', () => {
-    assert.equal(PREPROCESSING_VERSION, 1)
+  it('is 2 for current pattern set', () => {
+    assert.equal(PREPROCESSING_VERSION, 2)
   })
 })
 
@@ -132,7 +164,7 @@ describe('processEvent', () => {
     }
     const result = processEvent(parsed)
     assert.equal(result.preProcessedMessage, 'User <UUID> logged in from <IP>')
-    assert.equal(result.preprocessingVersion, 1)
+    assert.equal(result.preprocessingVersion, PREPROCESSING_VERSION)
     assert.equal(result.service, 'auth')
     assert.equal(result.level, 'INFO')
     assert.equal(result.environment, 'prod')

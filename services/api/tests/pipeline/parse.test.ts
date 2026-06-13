@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { JsonLogParser, parseBatch, parseEvent } from '../../src/pipeline/parse.js'
+import {
+  JsonLogParser,
+  MAX_MESSAGE_LENGTH,
+  parseBatch,
+  parseEvent,
+} from '../../src/pipeline/parse.js'
 
 describe('parseEvent', () => {
   // -- Core extraction --
@@ -177,12 +182,21 @@ describe('parseEvent', () => {
     assert.equal(result.index, 5)
   })
 
-  it('succeeds with extremely long message', () => {
-    const raw = { message: 'x'.repeat(40_000), level: 'ERROR' }
+  it('succeeds with a message exactly at the length cap', () => {
+    const raw = { message: 'x'.repeat(MAX_MESSAGE_LENGTH), level: 'ERROR' }
     const result = parseEvent(raw, 0)
     assert.equal(result.ok, true)
     if (!result.ok) return
-    assert.equal(result.event.message.length, 40_000)
+    assert.equal(result.event.message.length, MAX_MESSAGE_LENGTH)
+  })
+
+  it('rejects a message that exceeds the length cap', () => {
+    const raw = { message: 'x'.repeat(MAX_MESSAGE_LENGTH + 1), level: 'ERROR' }
+    const result = parseEvent(raw, 7)
+    assert.equal(result.ok, false)
+    if (result.ok) return
+    assert.equal(result.index, 7)
+    assert.ok(result.error.includes('exceeds'))
   })
 })
 
