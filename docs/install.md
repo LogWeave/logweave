@@ -395,16 +395,28 @@ service:
 
 ## Backups
 
+`docker-compose.prod.yml` registers a `backups` disk in ClickHouse (mounted at `/var/lib/clickhouse/backups/` inside the container, which lives on the `clickhouse_data` Docker volume). Backups are taken and restored with ClickHouse's native commands and survive container restarts.
+
 **Online backup (no downtime) — recommended:**
 
 ```bash
+TODAY=$(date +%Y%m%d)
 docker compose -f docker-compose.prod.yml exec clickhouse \
-  clickhouse-client --query "BACKUP DATABASE logweave TO Disk('backups', 'logweave-$(date +%Y%m%d).zip')"
+  clickhouse-client --query "BACKUP DATABASE logweave TO Disk('backups', 'logweave-${TODAY}.zip')"
 ```
 
-To restore:
+The archive is written to `/var/lib/clickhouse/backups/logweave-YYYYMMDD.zip` inside the container. Copy it off-host:
 
 ```bash
+docker compose -f docker-compose.prod.yml cp \
+  clickhouse:/var/lib/clickhouse/backups/logweave-${TODAY}.zip ./
+```
+
+To restore (place the archive in the same path inside the container first if you copied it off-host):
+
+```bash
+docker compose -f docker-compose.prod.yml cp ./logweave-YYYYMMDD.zip \
+  clickhouse:/var/lib/clickhouse/backups/
 docker compose -f docker-compose.prod.yml exec clickhouse \
   clickhouse-client --query "RESTORE DATABASE logweave FROM Disk('backups', 'logweave-YYYYMMDD.zip')"
 ```
@@ -523,7 +535,7 @@ You have three paths, in order of preference:
 docker compose -f docker-compose.prod.yml exec api cat /data/bootstrap-credentials.txt
 
 # 2. Reset the admin password without losing any data (logs, templates, rules stay intact)
-docker compose -f docker-compose.prod.yml exec api node --import tsx scripts/reset-admin-password.ts admin
+docker compose -f docker-compose.prod.yml exec api node dist/scripts/reset-admin-password.js admin
 
 # 3. Last resort — wipe the users table and let bootstrap regenerate the default admin
 #    (No log/template/rule data is touched. Only the dashboard user accounts are reset.)

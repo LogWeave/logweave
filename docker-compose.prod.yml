@@ -19,6 +19,7 @@ services:
       - clickhouse_data:/var/lib/clickhouse
       - ./docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
       - ./docker/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+      - ./docker/clickhouse/backups.xml:/etc/clickhouse-server/config.d/backups.xml:ro
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-logweave}
       CLICKHOUSE_PASSWORD_SHA256: ${CLICKHOUSE_PASSWORD_SHA256:-}

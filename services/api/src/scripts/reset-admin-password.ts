@@ -1,10 +1,9 @@
-#!/usr/bin/env node --import tsx
 /**
  * Admin password recovery — for when the admin user has forgotten their password
  * and no other admin is around to reset it via the dashboard UI.
  *
  * Usage (inside the API container, after the stack is running):
- *   docker compose -f docker-compose.prod.yml exec api node --import tsx scripts/reset-admin-password.ts [username]
+ *   docker compose -f docker-compose.prod.yml exec api node dist/scripts/reset-admin-password.js [username]
  *
  * If no username is supplied, defaults to "admin".
  *
@@ -21,21 +20,28 @@
  *   - Affect tenant-isolation (the user stays in their original tenant)
  *
  * The user must change the password on next login, just like the bootstrap flow.
+ *
+ * Lives under src/ so it gets compiled into the prod Docker image alongside
+ * the rest of the API. tsx is dev-only and not present in the prod container.
  */
 import { randomBytes } from 'node:crypto'
 import pino from 'pino'
-import { ClickHouseUserStore } from '../src/auth/user-store.js'
-import { createClickHouseClient } from '../src/clients/clickhouse.js'
-import { loadConfig } from '../src/config.js'
-import { DbClient } from '../src/db/client.js'
-import { hashPassword } from '../src/auth/passwords.js'
+import { ClickHouseUserStore } from '../auth/user-store.js'
+import { hashPassword } from '../auth/passwords.js'
+import { createClickHouseClient } from '../clients/clickhouse.js'
+import { loadConfig } from '../config.js'
+import { DbClient } from '../db/client.js'
 
 async function main(): Promise<void> {
   const username = process.argv[2] || 'admin'
   const logger = pino({ level: 'info' })
 
   const config = loadConfig()
-  const ch = createClickHouseClient(config)
+  const ch = createClickHouseClient(
+    config.clickhouseUrl,
+    config.clickhouseUser,
+    config.clickhousePassword,
+  )
   const db = new DbClient(ch)
   const userStore = new ClickHouseUserStore(db, logger)
 
@@ -43,7 +49,9 @@ async function main(): Promise<void> {
   if (matches.length === 0) {
     process.stderr.write(`\n  No user named "${username}" found.\n`)
     process.stderr.write('  Use a real username, or wipe the users table for a fresh bootstrap:\n')
-    process.stderr.write('  docker compose exec clickhouse clickhouse-client --query "TRUNCATE TABLE logweave.dashboard_users"\n\n')
+    process.stderr.write(
+      '  docker compose exec clickhouse clickhouse-client --query "TRUNCATE TABLE logweave.dashboard_users"\n\n',
+    )
     process.exit(1)
   }
   if (matches.length > 1) {
@@ -51,7 +59,9 @@ async function main(): Promise<void> {
     for (const u of matches) {
       process.stderr.write(`    - userId=${u.userId} tenant=${u.tenantId} role=${u.role}\n`)
     }
-    process.stderr.write('  This script only resets a unique username; cannot disambiguate. Use the dashboard UI as another admin.\n\n')
+    process.stderr.write(
+      '  This script only resets a unique username; cannot disambiguate. Use the dashboard UI as another admin.\n\n',
+    )
     process.exit(1)
   }
 
@@ -78,6 +88,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  process.stderr.write(`\n  reset-admin-password failed: ${err instanceof Error ? err.message : String(err)}\n\n`)
+  process.stderr.write(
+    `\n  reset-admin-password failed: ${err instanceof Error ? err.message : String(err)}\n\n`,
+  )
   process.exit(1)
 })
