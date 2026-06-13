@@ -5,10 +5,20 @@ import express from 'express'
 import pino from 'pino'
 import request from 'supertest'
 import { HmacSessionProvider, SESSION_COOKIE_NAME } from '../../src/auth/session.js'
+import type { DbClient } from '../../src/db/client.js'
 import { createAuthMiddleware } from '../../src/middleware/auth.js'
 import { createErrorHandler } from '../../src/middleware/error-handler.js'
 import { watchRoutes } from '../../src/routes/watches.js'
 import { WatchStore } from '../../src/watches/watch-store.js'
+
+interface CapturedCommand {
+  query: string
+  query_params: Record<string, unknown>
+}
+
+function auditRows(commands: CapturedCommand[]): Record<string, unknown>[] {
+  return commands.filter((c) => c.query.includes('audit_log')).map((c) => c.query_params)
+}
 
 const TEST_KEY = 'test-key'
 const TENANT_A = 'tenant-a'
@@ -33,13 +43,23 @@ function viewerCookie(): string {
 function createTestApp(maxWatches = 100) {
   const logger = pino({ level: 'silent' })
   const watchStore = new WatchStore({ maxPerTenant: maxWatches })
+  const commands: CapturedCommand[] = []
+  const db = {
+    query: async () => [],
+    insert: async () => {},
+    command: async (params: CapturedCommand) => {
+      commands.push(params)
+    },
+    ping: async () => true,
+    close: async () => {},
+  } as unknown as DbClient
   const app = express()
   app.use(express.json())
   app.use(cookieParser())
   const auth = createAuthMiddleware(keyMap, sessionProvider)
-  app.use('/v1', auth, watchRoutes({ watchStore, logger }))
+  app.use('/v1', auth, watchRoutes({ watchStore, db, logger }))
   app.use(createErrorHandler(logger))
-  return { app, watchStore }
+  return { app, watchStore, commands }
 }
 
 describe('POST /v1/watches', () => {
@@ -192,6 +212,46 @@ describe('GET /v1/watches', () => {
 
     assert.deepEqual(resA.body.data, [{ templateId: 'tmpl-a' }])
     assert.deepEqual(resB.body.data, [{ templateId: 'tmpl-b' }])
+  })
+})
+
+describe('watch mutation audit trail', () => {
+  it('writes a watch.create audit row with actor and target', async () => {
+    const { app, commands } = createTestApp()
+    await request(app)
+      .post('/v1/watches')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ templateId: 'tmpl-1' })
+
+    const rows = auditRows(commands)
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0]?.action, 'watch.create')
+    assert.equal(rows[0]?.tenant_id, TENANT_A)
+    assert.ok(String(rows[0]?.key_id).length > 0, 'records the actor key id')
+    assert.ok(String(rows[0]?.details).includes('tmpl-1'))
+  })
+
+  it('writes a watch.delete audit row', async () => {
+    const { app, commands } = createTestApp()
+    await request(app)
+      .post('/v1/watches')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+      .send({ templateId: 'tmpl-1' })
+    commands.length = 0
+
+    await request(app).delete('/v1/watches/tmpl-1').set('Authorization', `Bearer ${TEST_KEY}`)
+
+    const rows = auditRows(commands)
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0]?.action, 'watch.delete')
+    assert.ok(String(rows[0]?.details).includes('tmpl-1'))
+  })
+
+  it('does not audit a rejected (400) watch create', async () => {
+    const { app, commands } = createTestApp()
+    await request(app).post('/v1/watches').set('Authorization', `Bearer ${TEST_KEY}`).send({})
+
+    assert.equal(auditRows(commands).length, 0)
   })
 })
 

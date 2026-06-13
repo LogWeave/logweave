@@ -79,14 +79,25 @@ const mockAlertRows = [
   },
 ]
 
-function createMockDb(queryResults?: unknown[]): DbClient {
+interface CapturedCommand {
+  query: string
+  query_params: Record<string, unknown>
+}
+
+function createMockDb(queryResults?: unknown[], commands?: CapturedCommand[]): DbClient {
   return {
     query: async () => queryResults ?? [],
     insert: async () => {},
-    command: async () => {},
+    command: async (params: CapturedCommand) => {
+      commands?.push(params)
+    },
     ping: async () => true,
     close: async () => {},
   } as unknown as DbClient
+}
+
+function auditRows(commands: CapturedCommand[]): Record<string, unknown>[] {
+  return commands.filter((c) => c.query.includes('audit_log')).map((c) => c.query_params)
 }
 
 // ---------------------------------------------------------------------------
@@ -108,14 +119,15 @@ function viewerCookie(): string {
 function createTestApp(opts?: { maxRules?: number; queryResults?: unknown[] }) {
   const logger = pino({ level: 'silent' })
   const ruleStore = new RuleStore({ maxPerTenant: opts?.maxRules })
-  const db = createMockDb(opts?.queryResults)
+  const commands: CapturedCommand[] = []
+  const db = createMockDb(opts?.queryResults, commands)
   const app = express()
   app.use(express.json())
   app.use(cookieParser())
   const auth = createAuthMiddleware(new Map(keyMap), sessionProvider)
   app.use('/v1', auth, ruleRoutes({ ruleStore, db, logger }))
   app.use(createErrorHandler(logger))
-  return { app, ruleStore }
+  return { app, ruleStore, commands }
 }
 
 // ---------------------------------------------------------------------------
@@ -513,6 +525,73 @@ describe('DELETE /v1/rules/:id', () => {
     const res = await request(app).delete('/v1/rules/some-id')
 
     assert.equal(res.status, 401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Audit trail — SOC2 rule.* events
+// ---------------------------------------------------------------------------
+
+describe('rule mutation audit trail', () => {
+  it('writes a rule.create audit row with actor and target', async () => {
+    const { app, commands } = createTestApp()
+    const res = await request(app)
+      .post('/v1/rules')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(VALID_THRESHOLD_BODY)
+
+    const rows = auditRows(commands)
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0]?.action, 'rule.create')
+    assert.equal(rows[0]?.tenant_id, TENANT_A)
+    assert.ok(String(rows[0]?.key_id).length > 0, 'records the actor key id')
+    assert.ok(String(rows[0]?.details).includes(res.body.data.ruleId))
+  })
+
+  it('writes a rule.update audit row', async () => {
+    const { app, commands } = createTestApp()
+    const createRes = await request(app)
+      .post('/v1/rules')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(VALID_THRESHOLD_BODY)
+    const ruleId = createRes.body.data.ruleId
+    commands.length = 0
+
+    await request(app)
+      .put(`/v1/rules/${ruleId}`)
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send({ enabled: false })
+
+    const rows = auditRows(commands)
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0]?.action, 'rule.update')
+    assert.ok(String(rows[0]?.details).includes(ruleId))
+  })
+
+  it('writes a rule.delete audit row', async () => {
+    const { app, commands } = createTestApp()
+    const createRes = await request(app)
+      .post('/v1/rules')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(VALID_THRESHOLD_BODY)
+    const ruleId = createRes.body.data.ruleId
+    commands.length = 0
+
+    await request(app).delete(`/v1/rules/${ruleId}`).set('Authorization', `Bearer ${KEY_A}`)
+
+    const rows = auditRows(commands)
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0]?.action, 'rule.delete')
+  })
+
+  it('does not audit a rejected (400) rule create', async () => {
+    const { app, commands } = createTestApp()
+    await request(app)
+      .post('/v1/rules')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send({ name: 'bad', ruleType: 'threshold', config: {} })
+
+    assert.equal(auditRows(commands).length, 0)
   })
 })
 

@@ -237,6 +237,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
   v1.use(
     watchRoutes({
       watchStore: deps.watchStore,
+      db: deps.db,
       logger: deps.logger,
     }),
   )
