@@ -1,57 +1,30 @@
 import assert from 'node:assert/strict'
-import { afterEach, beforeEach, describe, it, type mock } from 'node:test'
+import { after, before, describe, it } from 'node:test'
 import { ElasticsearchAdapter } from '../../src/connectors/elasticsearch-adapter.js'
 import type {
   ElasticsearchConnectorConfig,
   FetchRawLogsParams,
 } from '../../src/connectors/types.js'
+import { closedBaseUrl, type MockHttpServer, startMockServer } from './mock-server.js'
 
-// ---------------------------------------------------------------------------
-// Setup: mock global fetch
-// ---------------------------------------------------------------------------
+// The adapter routes all requests through safeFetch, which blocks loopback by
+// default. Allowlist 127.0.0.1 so the tests can target a local mock server, and
+// exercise the real adapter -> safeFetch -> socket path.
 
-const originalFetch = globalThis.fetch
-let _fetchMock: ReturnType<typeof mock.fn<typeof fetch>>
+let server: MockHttpServer
+let baseConfig: ElasticsearchConnectorConfig
+const prevAllowlist = process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
 
-function mockFetchWith(handler: (input: string | URL | Request) => Promise<Response>): void {
-  _fetchMock = (globalThis as Record<string, unknown>).fetch = handler as typeof fetch
-}
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
-
-const baseConfig: ElasticsearchConnectorConfig = {
-  type: 'elasticsearch',
-  url: 'http://localhost:9200',
-  index: 'logs-*',
-}
-
-const authConfig: ElasticsearchConnectorConfig = {
-  ...baseConfig,
-  username: 'elastic',
-  password: 'secret',
-}
-
-const apiKeyConfig: ElasticsearchConnectorConfig = {
-  ...baseConfig,
-  apiKey: 'my-api-key',
-}
-
-// ---------------------------------------------------------------------------
-// Restore fetch after each test
-// ---------------------------------------------------------------------------
-
-beforeEach(() => {
-  // Default: return a minimal success response
-  mockFetchWith(async () => jsonResponse({}))
+before(async () => {
+  process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS = '127.0.0.1'
+  server = await startMockServer(() => ({ status: 200, body: {} }))
+  baseConfig = { type: 'elasticsearch', url: server.baseUrl, index: 'logs-*' }
 })
 
-afterEach(() => {
-  globalThis.fetch = originalFetch
+after(async () => {
+  await server.close()
+  if (prevAllowlist === undefined) delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
+  else process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS = prevAllowlist
 })
 
 // ---------------------------------------------------------------------------
@@ -62,15 +35,14 @@ describe('ElasticsearchAdapter.testConnection', () => {
   const adapter = new ElasticsearchAdapter()
 
   it('returns success when cluster is healthy and index exists', async () => {
-    mockFetchWith(async (input) => {
-      const url = String(input)
-      if (url.includes('/_cluster/health')) {
-        return jsonResponse({ status: 'green', cluster_name: 'test' })
+    server.setHandler((req) => {
+      if (req.url?.includes('/_cluster/health')) {
+        return { status: 200, body: { status: 'green', cluster_name: 'test' } }
       }
-      if (url.includes('/_count')) {
-        return jsonResponse({ count: 42 })
+      if (req.url?.includes('/_count')) {
+        return { status: 200, body: { count: 42 } }
       }
-      return jsonResponse({}, 404)
+      return { status: 404, body: {} }
     })
 
     const result = await adapter.testConnection(baseConfig)
@@ -80,7 +52,7 @@ describe('ElasticsearchAdapter.testConnection', () => {
   })
 
   it('returns failure for auth error', async () => {
-    mockFetchWith(async () => jsonResponse({ error: 'Unauthorized' }, 401))
+    server.setHandler(() => ({ status: 401, body: { error: 'Unauthorized' } }))
 
     const result = await adapter.testConnection(baseConfig)
     assert.equal(result.success, false)
@@ -88,12 +60,9 @@ describe('ElasticsearchAdapter.testConnection', () => {
   })
 
   it('returns failure when index not found', async () => {
-    mockFetchWith(async (input) => {
-      const url = String(input)
-      if (url.includes('/_cluster/health')) {
-        return jsonResponse({ status: 'green' })
-      }
-      return jsonResponse({ error: 'index_not_found' }, 404)
+    server.setHandler((req) => {
+      if (req.url?.includes('/_cluster/health')) return { status: 200, body: { status: 'green' } }
+      return { status: 404, body: { error: 'index_not_found' } }
     })
 
     const result = await adapter.testConnection(baseConfig)
@@ -102,47 +71,35 @@ describe('ElasticsearchAdapter.testConnection', () => {
   })
 
   it('returns failure on connection refused', async () => {
-    mockFetchWith(async () => {
-      throw new Error('fetch failed: ECONNREFUSED')
-    })
-
-    const result = await adapter.testConnection(baseConfig)
+    const adapter = new ElasticsearchAdapter()
+    const result = await adapter.testConnection({ ...baseConfig, url: await closedBaseUrl() })
     assert.equal(result.success, false)
     assert.ok(result.message.includes('Cannot reach'))
   })
 
   it('sends basic auth header when username/password provided', async () => {
-    let capturedHeaders: Headers | undefined
-    mockFetchWith(async (input, init) => {
-      if (String(input).includes('/_cluster/health')) {
-        capturedHeaders = new Headers((init as RequestInit)?.headers)
-        return jsonResponse({ status: 'green' })
-      }
-      return jsonResponse({ count: 0 })
+    server.setHandler((req) => {
+      if (req.url?.includes('/_cluster/health')) return { status: 200, body: { status: 'green' } }
+      return { status: 200, body: { count: 0 } }
     })
 
-    await adapter.testConnection(authConfig)
-    assert.ok(capturedHeaders)
-    const authHeader = capturedHeaders.get('authorization') ?? ''
+    server.requests.length = 0
+    await adapter.testConnection({ ...baseConfig, username: 'elastic', password: 'secret' })
+    const authHeader = String(server.requests[0]?.headers.authorization ?? '')
     assert.ok(authHeader.startsWith('Basic '))
     const decoded = Buffer.from(authHeader.replace('Basic ', ''), 'base64').toString()
     assert.equal(decoded, 'elastic:secret')
   })
 
   it('sends API key header when apiKey provided', async () => {
-    let capturedHeaders: Headers | undefined
-    mockFetchWith(async (input, init) => {
-      if (String(input).includes('/_cluster/health')) {
-        capturedHeaders = new Headers((init as RequestInit)?.headers)
-        return jsonResponse({ status: 'green' })
-      }
-      return jsonResponse({ count: 0 })
+    server.setHandler((req) => {
+      if (req.url?.includes('/_cluster/health')) return { status: 200, body: { status: 'green' } }
+      return { status: 200, body: { count: 0 } }
     })
 
-    await adapter.testConnection(apiKeyConfig)
-    assert.ok(capturedHeaders)
-    const authHeader = capturedHeaders.get('authorization') ?? ''
-    assert.equal(authHeader, 'ApiKey my-api-key')
+    server.requests.length = 0
+    await adapter.testConnection({ ...baseConfig, apiKey: 'my-api-key' })
+    assert.equal(String(server.requests[0]?.headers.authorization ?? ''), 'ApiKey my-api-key')
   })
 })
 
@@ -153,20 +110,24 @@ describe('ElasticsearchAdapter.testConnection', () => {
 describe('ElasticsearchAdapter.fetchRawLogs', () => {
   const adapter = new ElasticsearchAdapter()
 
-  const baseParams: FetchRawLogsParams = {
-    config: baseConfig,
-    templateText: 'Connection from <IP> timed out',
-    service: 'payments',
-    timeRange: {
-      start: new Date('2026-01-01T00:00:00Z'),
-      end: new Date('2026-01-01T01:00:00Z'),
-    },
-    limit: 50,
+  function params(overrides: Partial<FetchRawLogsParams> = {}): FetchRawLogsParams {
+    return {
+      config: baseConfig,
+      templateText: 'Connection from <IP> timed out',
+      service: 'payments',
+      timeRange: {
+        start: new Date('2026-01-01T00:00:00Z'),
+        end: new Date('2026-01-01T01:00:00Z'),
+      },
+      limit: 50,
+      ...overrides,
+    }
   }
 
   it('returns matching lines from ES hits', async () => {
-    mockFetchWith(async () =>
-      jsonResponse({
+    server.setHandler(() => ({
+      status: 200,
+      body: {
         hits: {
           total: { value: 2 },
           hits: [
@@ -186,19 +147,19 @@ describe('ElasticsearchAdapter.fetchRawLogs', () => {
             },
           ],
         },
-      }),
-    )
+      },
+    }))
 
-    const result = await adapter.fetchRawLogs(baseParams)
+    const result = await adapter.fetchRawLogs(params())
     assert.equal(result.lines.length, 2)
     assert.equal(result.lines[0]?.source, 'logs-2026.01')
     assert.ok(result.lines[0]?.message.includes('10.0.0.1'))
   })
 
   it('returns empty on non-ok response', async () => {
-    mockFetchWith(async () => jsonResponse({ error: 'bad query' }, 400))
+    server.setHandler(() => ({ status: 400, body: { error: 'bad query' } }))
 
-    const result = await adapter.fetchRawLogs(baseParams)
+    const result = await adapter.fetchRawLogs(params())
     assert.equal(result.lines.length, 0)
     assert.equal(result.truncated, false)
   })
@@ -208,36 +169,22 @@ describe('ElasticsearchAdapter.fetchRawLogs', () => {
       _source: { message: `line ${i}`, '@timestamp': '2026-01-01T00:00:00Z' },
       _index: 'logs',
     }))
+    server.setHandler(() => ({ status: 200, body: { hits: { total: { value: 500 }, hits } } }))
 
-    mockFetchWith(async () =>
-      jsonResponse({
-        hits: { total: { value: 500 }, hits },
-      }),
-    )
-
-    const result = await adapter.fetchRawLogs(baseParams)
+    const result = await adapter.fetchRawLogs(params())
     assert.equal(result.lines.length, 50)
     assert.equal(result.truncated, true)
     assert.equal(result.hasMore, true)
   })
 
   it('sends correct ES query structure', async () => {
-    let capturedBody: string | undefined
-    mockFetchWith(async (input, init) => {
-      if (String(input).includes('/_search')) {
-        capturedBody = (init as RequestInit)?.body as string
-      }
-      return jsonResponse({ hits: { total: { value: 0 }, hits: [] } })
-    })
+    server.setHandler(() => ({ status: 200, body: { hits: { total: { value: 0 }, hits: [] } } }))
 
-    await adapter.fetchRawLogs(baseParams)
-    assert.ok(capturedBody)
-    const query = JSON.parse(capturedBody)
+    await adapter.fetchRawLogs(params())
+    const query = JSON.parse(server.last()?.body ?? '{}')
     assert.ok(query.query.bool.filter)
     assert.equal(query.query.bool.filter.length, 2)
-    // First filter should be range
     assert.ok(query.query.bool.filter[0].range)
-    // Second filter should be regexp
     assert.ok(query.query.bool.filter[1].regexp)
   })
 
@@ -247,13 +194,9 @@ describe('ElasticsearchAdapter.fetchRawLogs', () => {
       messageField: 'log_message',
       timestampField: 'created_at',
     }
-
-    let capturedBody: string | undefined
-    mockFetchWith(async (input, init) => {
-      if (String(input).includes('/_search')) {
-        capturedBody = (init as RequestInit)?.body as string
-      }
-      return jsonResponse({
+    server.setHandler(() => ({
+      status: 200,
+      body: {
         hits: {
           total: { value: 1 },
           hits: [
@@ -266,14 +209,14 @@ describe('ElasticsearchAdapter.fetchRawLogs', () => {
             },
           ],
         },
-      })
-    })
+      },
+    }))
 
-    const result = await adapter.fetchRawLogs({ ...baseParams, config: customConfig })
+    const result = await adapter.fetchRawLogs(params({ config: customConfig }))
     assert.equal(result.lines.length, 1)
     assert.equal(result.lines[0]?.timestamp, '2026-01-01T00:30:00Z')
 
-    const query = JSON.parse(capturedBody ?? '{}')
+    const query = JSON.parse(server.last()?.body ?? '{}')
     assert.ok(query._source.includes('log_message'))
     assert.ok(query._source.includes('created_at'))
   })
