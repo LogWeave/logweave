@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS template_registry (
     embedding_model     LowCardinality(String) DEFAULT ''
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (tenant_id, template_text_hash)
+-- No version column: dedup keeps the last-inserted row per sort key. Embedding
+-- consistency therefore relies on two invariants: (1) a known template is never
+-- re-inserted with an empty embedding (get_or_create only inserts on a SELECT
+-- FINAL miss), and (2) /embed/backfill always inserts after the hot-path row.
+-- Adding any re-embed/re-cluster path must preserve these or add a version column.
 """
 
 _SELECT_SQL = """\

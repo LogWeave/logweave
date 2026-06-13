@@ -240,8 +240,9 @@ class TestEmptyEmbeddingOnHotPath:
     async def test_first_event_for_unseen_template_is_fast(
         self, registry: TemplateRegistry, mock_client: MagicMock
     ) -> None:
-        # Simulate a cold embedding model: if anything embedded inline, this
-        # sleep would blow the budget. The registry must not touch it.
+        # The embedding model must never be invoked on the hot path. The mock
+        # would sleep ~2s if called, so both the call-count guard and the latency
+        # bound fail loudly if embedding is ever re-introduced here.
         def slow_embed(*_args: object, **_kwargs: object) -> list[list[float]]:
             import time
 
@@ -249,12 +250,15 @@ class TestEmptyEmbeddingOnHotPath:
             return [[0.1]]
 
         mock_client.query.return_value = MagicMock(result_rows=[])
-        with patch("clusterer.embedding.EmbeddingService.embed", side_effect=slow_embed):
+        with patch(
+            "clusterer.embedding.EmbeddingService.embed", side_effect=slow_embed
+        ) as mock_embed:
             start = asyncio.get_event_loop().time()
             _, is_new = await registry.get_or_create("t1", "brand new template <*>")
             elapsed_ms = (asyncio.get_event_loop().time() - start) * 1000
 
         assert is_new is True
+        assert mock_embed.call_count == 0, "embedding must not run on the /cluster hot path"
         assert elapsed_ms < 100, f"hot path took {elapsed_ms:.0f}ms — embedding leaked onto it"
 
 
