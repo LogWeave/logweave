@@ -77,7 +77,9 @@ services:
 
   api:
     build:
-      context: services/api
+      # Root context so the image can also build the dashboard workspace package.
+      context: .
+      dockerfile: services/api/Dockerfile
     restart: unless-stopped
     ports:
       - "${LOGWEAVE_PORT:-3000}:3000"

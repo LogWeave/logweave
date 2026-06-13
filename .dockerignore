@@ -1,0 +1,18 @@
+# Root build context (used by services/api/Dockerfile). Keep it lean and never
+# ship host build artifacts or secrets into the image. Note: every workspace
+# member's package.json must remain visible so the dashboard stage's frozen
+# install can resolve the workspace, so we exclude artifacts (node_modules,
+# dist) rather than whole package directories.
+**/node_modules/
+**/dist/
+**/.venv/
+**/__pycache__/
+.git/
+.github/
+**/tests/
+**/*.md
+**/.env
+**/.env.*
+!**/.env.example
+docs/
+**/cloudformation/
