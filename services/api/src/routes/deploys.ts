@@ -5,7 +5,7 @@ import type { DbClient } from '../db/client.js'
 import { insertDeploy, queryDeploys } from '../db/deploy-queries.js'
 import { HttpStatus } from '../http-status.js'
 import { isoTimestamp, respond } from '../lib/respond.js'
-import { getTenantId } from '../middleware/auth.js'
+import { getTenantId, requireAdminForWrites } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import { uuidv7 } from '../uuid.js'
@@ -29,6 +29,10 @@ const listDeploysSchema = z.object({
 
 export function deployRoutes(deps: DeploysDeps): Router {
   const router = Router()
+
+  // Creating deploy markers is a tenant-wide write; admin-only. Viewers keep
+  // read access to GET /deploys.
+  router.use(requireAdminForWrites)
 
   // POST /deploys — create a deploy marker
   router.post('/deploys', validateBody(createDeploySchema), async (req, res, next) => {
