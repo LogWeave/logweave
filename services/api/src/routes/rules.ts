@@ -5,8 +5,10 @@ import { queryAlertHistory } from '../db/alert-queries.js'
 import type { DbClient } from '../db/client.js'
 import { AppError, notFound } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { recordAuditEvent } from '../lib/audit.js'
 import { respond } from '../lib/respond.js'
-import { getTenantId, requireAdminForWrites } from '../middleware/auth.js'
+import { getKeyId, getTenantId, requireAdminForWrites } from '../middleware/auth.js'
+import { getClientIp } from '../middleware/client-ip.js'
 import { validateBody } from '../middleware/validate.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
 import type {
@@ -209,6 +211,18 @@ export function ruleRoutes(deps: RuleDeps): Router {
         )
       }
 
+      recordAuditEvent(deps, {
+        tenantId,
+        keyId: getKeyId(res),
+        action: 'rule.create',
+        sourceIp: getClientIp(req),
+        details: JSON.stringify({
+          ruleId: result.ruleId,
+          name: result.name,
+          ruleType: result.ruleType,
+        }),
+      })
+
       res.status(HttpStatus.CREATED).json({
         data: serializeRule(result),
         meta: { fetchedAt: new Date().toISOString() },
@@ -266,6 +280,14 @@ export function ruleRoutes(deps: RuleDeps): Router {
         throw notFound('Rule not found')
       }
 
+      recordAuditEvent(deps, {
+        tenantId,
+        keyId: getKeyId(res),
+        action: 'rule.update',
+        sourceIp: getClientIp(req),
+        details: JSON.stringify({ ruleId }),
+      })
+
       respond(res, serializeRule(updated), {})
     } catch (err) {
       next(err)
@@ -278,6 +300,15 @@ export function ruleRoutes(deps: RuleDeps): Router {
       const tenantId = getTenantId(res)
       const ruleId = req.params.id as string
       await deps.ruleStore.remove(tenantId, ruleId)
+
+      recordAuditEvent(deps, {
+        tenantId,
+        keyId: getKeyId(res),
+        action: 'rule.delete',
+        sourceIp: getClientIp(req),
+        details: JSON.stringify({ ruleId }),
+      })
+
       res.status(HttpStatus.NO_CONTENT).end()
     } catch (err) {
       next(err)
