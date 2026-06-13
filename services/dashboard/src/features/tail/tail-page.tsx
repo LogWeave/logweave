@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useServices } from '../../api/queries'
+import { AnomalyWarmupBanner } from '../../components/anomaly-warmup-banner'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Select } from '../../components/ui/select'
+import { formatTimeOfDay } from '../../lib/format-time'
+import { useDashboardStore } from '../../stores/dashboard-store'
 import { type TailEvent, type TailFilters, useTail } from './use-tail'
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -13,16 +16,21 @@ const LEVEL_COLORS: Record<string, string> = {
   FATAL: 'text-purple-400',
 }
 
-function EventRow({ event }: { event: TailEvent }) {
+function EventRow({
+  event,
+  timezoneMode,
+}: { event: TailEvent; timezoneMode: 'local' | 'utc' }) {
   const levelColor = LEVEL_COLORS[event.level] ?? 'text-text-secondary'
   const isAnomaly = event.anomalyScore > 0.5
-  const ts = event.timestamp.split('T')[1]?.split('.')[0] ?? event.timestamp
+  const { primary: ts, alternate: tsAlt } = formatTimeOfDay(event.timestamp, timezoneMode)
 
   return (
     <div
       className={`flex items-start gap-2 py-1 px-3 hover:bg-surface-elevated text-xs font-mono ${event.level === 'ERROR' ? 'bg-red-500/5' : event.level === 'WARN' ? 'bg-amber-500/5' : ''}`}
     >
-      <span className="text-text-muted shrink-0 w-16">{ts}</span>
+      <span className="text-text-muted shrink-0 w-16" title={tsAlt}>
+        {ts}
+      </span>
       <span className={`shrink-0 w-12 font-semibold ${levelColor}`}>{event.level}</span>
       <span className="text-brand-400 shrink-0 w-28 truncate" title={event.service}>
         {event.service}
@@ -52,6 +60,8 @@ function EventRow({ event }: { event: TailEvent }) {
 export function TailPage() {
   const [filters, setFilters] = useState<TailFilters>({})
   const [paused, setPaused] = useState(false)
+  const tailTimezone = useDashboardStore((s) => s.tailTimezone)
+  const toggleTailTimezone = useDashboardStore((s) => s.toggleTailTimezone)
   const { data: servicesResponse } = useServices()
   const scrollRef = useRef<HTMLDivElement>(null)
   const autoScrollRef = useRef(true)
@@ -160,6 +170,14 @@ export function TailPage() {
 
         {/* Status indicators */}
         <div className="flex items-center gap-2 text-xs text-text-muted">
+          <button
+            type="button"
+            onClick={toggleTailTimezone}
+            title={`Currently showing ${tailTimezone === 'local' ? 'local time' : 'UTC'}. Click to switch.`}
+            className="px-1.5 py-0.5 rounded border border-border-subtle hover:bg-surface-elevated text-[10px] font-mono uppercase"
+          >
+            {tailTimezone === 'local' ? 'LOCAL' : 'UTC'}
+          </button>
           <span>{events.length} events</span>
           {isConnected && <span>{eventRate}/sec</span>}
           <div className="flex items-center gap-1.5">
@@ -175,6 +193,9 @@ export function TailPage() {
           {error}
         </div>
       )}
+
+      {/* Anomaly warmup banner — hidden once scoring reaches steady state */}
+      <AnomalyWarmupBanner className="mx-3 my-2" />
 
       {/* Event stream */}
       <div
@@ -192,7 +213,7 @@ export function TailPage() {
             Waiting for events...
           </div>
         )}
-        {!paused && events.map((e) => <EventRow key={e.seq} event={e} />)}
+        {!paused && events.map((e) => <EventRow key={e.seq} event={e} timezoneMode={tailTimezone} />)}
         {paused && (
           <div className="p-3 text-center text-text-muted text-xs">
             Paused — {events.length} events buffered

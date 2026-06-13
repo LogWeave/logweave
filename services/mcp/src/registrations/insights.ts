@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
 import { type ApiResponse, READ_ONLY, formatMeta, toolHandler } from '../shared/handler.js'
+import { buildSystemNotes, formatSystemStateBlock, getAnomalyState } from '../shared/system-state.js'
 
 async function levelDistribution(
   client: LogWeaveClient,
@@ -146,6 +147,17 @@ async function incidentPostmortem(
       text += `- ~~${p.templateText}~~ — was ${p.previousCount} occurrences\n`
     }
   }
+
+  // Self-aware system-state block so an LLM agent reading the postmortem
+  // can tell "system says all clear" from "system cannot tell yet".
+  const anomalyState = await getAnomalyState(client)
+  const changesMeta = (changesRes.meta as {
+    baselineStatus?: 'empty' | 'sparse' | 'ok'
+    previousWindowEvents?: number
+    tenantFirstSeenAt?: string | null
+  }) ?? {}
+  const notes = buildSystemNotes(anomalyState, changesMeta)
+  text += formatSystemStateBlock(notes)
 
   return text
 }

@@ -310,6 +310,64 @@ export class AnomalyScorer {
     }
   }
 
+  /**
+   * Snapshot of warmup state for a tenant. Returns the most-progressed phase
+   * across all (tenant, service) pairs because the dashboard headline question
+   * is "does the user see scores yet?", not per-service granularity.
+   *
+   * - `unknown`     — no events seen yet for this tenant (scorer can't make
+   *                   any claim about timing)
+   * - `cold-start`  — at least one service is within coldStartMs of first-seen
+   * - `warmup`      — past cold start but still inside warmupMs (10x threshold)
+   * - `steady`      — past warmup (3x threshold, baselines in use)
+   *
+   * `warmupRemainingMs` is the time until the soonest service exits warmup.
+   * Negative or zero means we're already steady. Returned as 0 in that case.
+   */
+  getTenantWarmupState(tenantId: string): {
+    phase: 'unknown' | 'cold-start' | 'warmup' | 'steady'
+    warmupRemainingMs: number
+    coldStartMs: number
+    warmupMs: number
+  } {
+    const now = this.now()
+    const prefix = `${tenantId}${D}`
+    let phase: 'unknown' | 'cold-start' | 'warmup' | 'steady' = 'unknown'
+    let warmupRemainingMs = 0
+
+    for (const [key, entry] of this.warmupTracker) {
+      if (!key.startsWith(prefix)) continue
+      const age = now - entry.firstSeen
+      let servicePhase: 'cold-start' | 'warmup' | 'steady'
+      if (age < this.coldStartMs) servicePhase = 'cold-start'
+      else if (age < this.warmupMs) servicePhase = 'warmup'
+      else servicePhase = 'steady'
+
+      // Pick the most-progressed phase across this tenant's services.
+      if (
+        phase === 'unknown' ||
+        (phase === 'cold-start' && servicePhase !== 'cold-start') ||
+        (phase === 'warmup' && servicePhase === 'steady')
+      ) {
+        phase = servicePhase
+      }
+
+      if (servicePhase !== 'steady') {
+        const remaining = this.warmupMs - age
+        if (warmupRemainingMs === 0 || remaining < warmupRemainingMs) {
+          warmupRemainingMs = Math.max(0, remaining)
+        }
+      }
+    }
+
+    return {
+      phase,
+      warmupRemainingMs,
+      coldStartMs: this.coldStartMs,
+      warmupMs: this.warmupMs,
+    }
+  }
+
   /** Remove stale interval counters and warmup entries for inactive tenants. */
   private pruneOldCounters(): void {
     const currentTime = this.now()

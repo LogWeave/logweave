@@ -220,6 +220,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
       db: deps.db,
       logger: deps.logger,
       clusterClient: deps.clusterClient,
+      anomalyScorer: deps.anomalyScorer,
     }),
   )
   v1.use(

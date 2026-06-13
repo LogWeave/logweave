@@ -34,6 +34,7 @@ export const queryKeys = {
     ['cost', 'analysis', hours, service, levels] as const,
   costThresholds: () => ['settings', 'cost-thresholds'] as const,
   spikeBaseline: () => ['settings', 'spike-baseline'] as const,
+  anomalyState: () => ['dashboard', 'anomaly-state'] as const,
 } as const
 
 /** Convert level filter array to stable query param string. */
