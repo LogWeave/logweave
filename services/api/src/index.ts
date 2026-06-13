@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { createApp } from './app.js'
 import { ApiKeyStore } from './auth/api-key-store.js'
+import { writeBootstrapCredentials } from './auth/bootstrap-credentials.js'
 import { deriveKeys } from './auth/passwords.js'
 import { HmacSessionProvider } from './auth/session.js'
 import { ClickHouseUserStore } from './auth/user-store.js'
@@ -200,7 +201,15 @@ if (config.encryptionKey) {
     process.stderr.write(`  Password: ${bootstrapPassword}\n`)
     process.stderr.write(`  Tenant:   ${firstTenantId}\n`)
     process.stderr.write('You will be required to change it on first login.\n')
+    process.stderr.write('If you missed this, the same value is at $LOGWEAVE_DATA_DIR/bootstrap-credentials.txt\n')
     process.stderr.write('=================================================================\n\n')
+
+    // Also persist to a file (auto-deleted on first password change). Lets
+    // operators recover the password if they miss the stderr banner.
+    writeBootstrapCredentials(
+      { username: 'admin', password: bootstrapPassword, tenantId: firstTenantId },
+      logger,
+    )
   }
 } else {
   logger.error('=================================================================')

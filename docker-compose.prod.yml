@@ -80,8 +80,11 @@ services:
     restart: unless-stopped
     ports:
       - "${LOGWEAVE_PORT:-3000}:3000"
+    volumes:
+      - api_data:/data
     environment:
       NODE_ENV: production
+      LOGWEAVE_DATA_DIR: /data
       LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123
       LOGWEAVE_CLICKHOUSE_USER: ${LOGWEAVE_CLICKHOUSE_USER:-}
       LOGWEAVE_CLICKHOUSE_PASSWORD: ${LOGWEAVE_CLICKHOUSE_PASSWORD:-}
@@ -118,3 +121,4 @@ services:
 volumes:
   clickhouse_data:
   drain3_checkpoints:
+  api_data:

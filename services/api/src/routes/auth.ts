@@ -3,6 +3,7 @@ import { Secret, TOTP } from 'otpauth'
 import type pino from 'pino'
 import QRCode from 'qrcode'
 import { z } from 'zod'
+import { clearBootstrapCredentials } from '../auth/bootstrap-credentials.js'
 import { LockoutTracker } from '../auth/lockout.js'
 import {
   dummyVerify,
@@ -286,6 +287,11 @@ export function authRoutes(deps: AuthDeps): Router {
 
     const newHash = await hashPassword(newPassword)
     await deps.userStore.updatePassword(user.userId, newHash)
+
+    // First password change wipes the bootstrap-credentials file (no-op if it
+    // doesn't exist or wasn't created in the first place). Keeps the secret
+    // on disk for the minimum possible time.
+    clearBootstrapCredentials(deps.logger)
 
     // Issue new cookie with bumped sessionVersion
     const newCookie = deps.sessionProvider.createSession({

@@ -12,8 +12,10 @@ LogWeave runs as a self-hosted Docker stack. Pick the profile that matches how y
 ### Prerequisites
 
 - Docker Engine 24+ and Docker Compose v2
+- Tested on Linux, macOS, and Windows with Docker Desktop (or WSL2)
 - 6 GB RAM minimum (8 GB recommended)
 - 10 GB disk for ClickHouse data
+- `openssl` (preinstalled on Linux/macOS, available on Windows via Git Bash or WSL2)
 
 ### 1. Clone and configure
 
@@ -23,27 +25,68 @@ cd logweave
 cp .env.production.example .env
 ```
 
-Edit `.env` — the two required values:
+Generate the three secrets first, then paste the literal output into `.env`:
 
 ```bash
-# Generate a secure API key
-LOGWEAVE_API_KEYS={"$(openssl rand -hex 32)":"my-org"}
+# Generate an API key (32-byte hex string)
+openssl rand -hex 32
 
-# Generate an encryption key (enables dashboard login + TOTP)
-LOGWEAVE_ENCRYPTION_KEY=$(openssl rand -hex 16)
+# Generate an encryption key (16-byte hex string)
+openssl rand -hex 16
+
+# Generate a ClickHouse password (16-byte hex string)
+openssl rand -hex 16
+
+# Compute the SHA256 of the ClickHouse password
+echo -n "<paste-the-clickhouse-password-from-above>" | sha256sum | cut -d' ' -f1
+```
+
+Edit `.env` and replace the placeholder values with the literal hex strings you just generated:
+
+```bash
+# Required — your generated API key, mapped to a tenant name
+LOGWEAVE_API_KEYS={"<paste-32-byte-hex-here>":"my-org"}
+
+# Required — your generated encryption key
+LOGWEAVE_ENCRYPTION_KEY=<paste-16-byte-hex-here>
+
+# Required — ClickHouse credentials (kept inside Docker network, not exposed)
+LOGWEAVE_CLICKHOUSE_USER=logweave
+LOGWEAVE_CLICKHOUSE_PASSWORD=<paste-16-byte-hex-here>
+CLICKHOUSE_PASSWORD_SHA256=<paste-sha256-hash-here>
 ```
 
 ### 2. Start the stack
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+First start downloads the ClickHouse image and builds the API + clusterer containers from source. Expect **3-5 minutes** the first time. Subsequent starts are fast.
+
+Verify all three services are healthy:
+
+```bash
+docker compose -f docker-compose.prod.yml ps
+```
+
+You should see `logweave-clickhouse-1`, `logweave-clusterer-1`, and `logweave-api-1` all reporting `Up (healthy)`. If any container is restarting or unhealthy, check its logs: `docker compose -f docker-compose.prod.yml logs <name>`.
 
 ### 3. Open the dashboard
 
 Navigate to `http://localhost:3000`.
 
-**First login:** username `admin`, password `admin`. You will be prompted to change your password immediately.
+**First login:** the API generates a random one-time admin password on first start. Retrieve it one of two ways:
+
+```bash
+# Option A — from the API container logs
+docker compose -f docker-compose.prod.yml logs api | grep -A 1 "LOGWEAVE BOOTSTRAP"
+
+# Option B — from the credentials file (auto-deleted after first password change)
+docker compose -f docker-compose.prod.yml exec api cat /data/bootstrap-credentials.txt
+```
+
+Log in with `admin` and that password. You will be prompted to set a new password immediately. The bootstrap credentials file is automatically deleted once you've set a real password.
 
 ### 4. Connect your AI (MCP)
 
@@ -57,12 +100,14 @@ Add to your editor's MCP config (Claude Code, Cursor, Windsurf):
       "args": ["@logweave/mcp"],
       "env": {
         "LOGWEAVE_API_URL": "http://localhost:3000",
-        "LOGWEAVE_API_KEY": "your-api-key-from-env"
+        "LOGWEAVE_API_KEY": "<paste-the-api-key-from-LOGWEAVE_API_KEYS-in-.env>"
       }
     }
   }
 }
 ```
+
+The `LOGWEAVE_API_KEY` is the 32-byte hex string you generated in step 1 — the one inside `LOGWEAVE_API_KEYS={"<this-part>":"my-org"}`.
 
 Then ask your AI: *"What error patterns are happening in my services?"*
 
@@ -109,22 +154,41 @@ cd logweave
 cp .env.production.example .env
 ```
 
-Edit `.env`:
+Generate the secrets first (run each command, copy the output):
+
+```bash
+# API key (32 bytes hex)
+openssl rand -hex 32
+
+# Encryption key (16 bytes hex)
+openssl rand -hex 16
+
+# ClickHouse password (16 bytes hex)
+CH_PASS=$(openssl rand -hex 16) && echo "$CH_PASS"
+
+# SHA256 of the ClickHouse password (must match)
+echo -n "$CH_PASS" | sha256sum | cut -d' ' -f1
+
+# Checkpoint HMAC key (recommended)
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Edit `.env` and paste the literal hex strings — do NOT leave `$(...)` substitutions in the file:
 
 ```bash
 # REQUIRED — one key per service/integration (not per user — users log in with password)
-LOGWEAVE_API_KEYS={"$(openssl rand -hex 32)":"my-org"}
+LOGWEAVE_API_KEYS={"<paste-api-key>":"my-org"}
 
 # REQUIRED — enables dashboard login, TOTP, and connector encryption
-LOGWEAVE_ENCRYPTION_KEY=$(openssl rand -hex 16)
+LOGWEAVE_ENCRYPTION_KEY=<paste-encryption-key>
 
 # REQUIRED for production — ClickHouse authentication
 LOGWEAVE_CLICKHOUSE_USER=logweave
-LOGWEAVE_CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)
-CLICKHOUSE_PASSWORD_SHA256=$(echo -n "your-password-here" | sha256sum | cut -d' ' -f1)
+LOGWEAVE_CLICKHOUSE_PASSWORD=<paste-ch-password>
+CLICKHOUSE_PASSWORD_SHA256=<paste-sha256-of-ch-password>
 
 # RECOMMENDED — checkpoint integrity
-LOGWEAVE_CHECKPOINT_HMAC_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+LOGWEAVE_CHECKPOINT_HMAC_KEY=<paste-hmac-key>
 ```
 
 ### 3. Configure Caddy
@@ -164,7 +228,17 @@ curl https://logweave.acme.com/healthz
 
 Navigate to `https://logweave.acme.com` in your browser.
 
-**First login:** username `admin`, password `admin`. You will be prompted to change your password immediately.
+**First login:** the API generates a random one-time admin password on first start. Retrieve it on the server one of two ways:
+
+```bash
+# Option A — from the API container logs
+docker compose -f docker-compose.prod.yml logs api | grep -A 1 "LOGWEAVE BOOTSTRAP"
+
+# Option B — from the credentials file (auto-deleted after first password change)
+docker compose -f docker-compose.prod.yml exec api cat /data/bootstrap-credentials.txt
+```
+
+Log in with `admin` and the password from either source. You will be prompted to set a new password immediately. The bootstrap credentials file is automatically deleted once you've set a real password — after that point the original password is gone.
 
 ---
 
@@ -439,3 +513,25 @@ Increase the memory limit in `docker-compose.prod.yml` or add swap.
 - Confirm `LOGWEAVE_API_URL` uses `https://` not `http://`
 - Check the API key is in `LOGWEAVE_API_KEYS` on the server
 - If the server is inside a private VPC with no public ingress, developers need VPN or SSH tunnel access
+
+**Forgot the admin password and no other admin to reset it:**
+
+You have three paths, in order of preference:
+
+```bash
+# 1. If the credentials file still exists (you haven't changed the password yet)
+docker compose -f docker-compose.prod.yml exec api cat /data/bootstrap-credentials.txt
+
+# 2. Reset the admin password without losing any data (logs, templates, rules stay intact)
+docker compose -f docker-compose.prod.yml exec api node --import tsx scripts/reset-admin-password.ts admin
+
+# 3. Last resort — wipe the users table and let bootstrap regenerate the default admin
+#    (No log/template/rule data is touched. Only the dashboard user accounts are reset.)
+docker compose -f docker-compose.prod.yml exec clickhouse clickhouse-client --query "TRUNCATE TABLE logweave.dashboard_users"
+docker compose -f docker-compose.prod.yml restart api
+# Then check the API logs for the new bootstrap password (see step 3 of the install)
+```
+
+**An admin needs to reset another user's password:**
+
+Use the dashboard: **Settings → Team → click the user → Reset Password**. No CLI needed.
