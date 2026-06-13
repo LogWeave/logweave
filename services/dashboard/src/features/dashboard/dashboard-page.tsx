@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom'
+import { AnomalyWarmupBanner } from '../../components/anomaly-warmup-banner'
 import { ErrorBoundary } from '../../components/error-boundary'
 import { useUrlSync } from '../../hooks/use-url-sync'
 import { OnboardingCard } from '../onboarding/onboarding-card'
@@ -18,6 +19,11 @@ export function DashboardPage() {
       {/* Onboarding — shown until all steps complete or dismissed */}
       <ErrorBoundary name="Onboarding">
         <OnboardingCard />
+      </ErrorBoundary>
+
+      {/* Anomaly warmup — hidden once scoring reaches steady state */}
+      <ErrorBoundary name="Anomaly Warmup">
+        <AnomalyWarmupBanner />
       </ErrorBoundary>
 
       {/* Row 1: KPI strip — priority tier layout */}

@@ -585,4 +585,73 @@ describe('AnomalyScorer', () => {
     assert.ok(lastScore > 0, `expected new-template path to fire, got ${lastScore}`)
     assert.ok(Math.abs(lastScore - 1.25) < 0.01, `expected ~1.25, got ${lastScore}`)
   })
+
+  describe('getTenantWarmupState', () => {
+    it('returns unknown when no events seen for tenant', () => {
+      const { scorer } = createHarness()
+      const state = scorer.getTenantWarmupState('never-seen')
+      assert.equal(state.phase, 'unknown')
+      assert.equal(state.warmupRemainingMs, 0)
+    })
+
+    it('returns cold-start during the first coldStartMs window', () => {
+      const { scorer, registerWarmup } = createHarness({
+        coldStartMs: 600_000,
+        warmupMs: 3_600_000,
+      })
+      registerWarmup('t1', 'api', 60_000) // 1 min ago — well inside cold start
+      const state = scorer.getTenantWarmupState('t1')
+      assert.equal(state.phase, 'cold-start')
+      assert.ok(state.warmupRemainingMs > 0, 'should report some remaining time')
+    })
+
+    it('returns warmup between coldStartMs and warmupMs', () => {
+      const { scorer, registerWarmup } = createHarness({
+        coldStartMs: 600_000,
+        warmupMs: 3_600_000,
+      })
+      registerWarmup('t1', 'api', 30 * 60_000) // 30 min ago — past cold start, still warming
+      const state = scorer.getTenantWarmupState('t1')
+      assert.equal(state.phase, 'warmup')
+      // 60 min warmup - 30 min elapsed = ~30 min remaining
+      assert.ok(state.warmupRemainingMs > 28 * 60_000)
+      assert.ok(state.warmupRemainingMs < 32 * 60_000)
+    })
+
+    it('returns steady once warmupMs has elapsed', () => {
+      const { scorer, registerWarmup } = createHarness({
+        coldStartMs: 600_000,
+        warmupMs: 3_600_000,
+      })
+      registerWarmup('t1', 'api', 2 * 3_600_000) // 2h ago — past warmup
+      const state = scorer.getTenantWarmupState('t1')
+      assert.equal(state.phase, 'steady')
+      assert.equal(state.warmupRemainingMs, 0)
+    })
+
+    it('picks the most-progressed phase across services (steady wins over warmup)', () => {
+      const { scorer, registerWarmup } = createHarness({
+        coldStartMs: 600_000,
+        warmupMs: 3_600_000,
+      })
+      registerWarmup('t1', 'api', 30 * 60_000) // warming up
+      registerWarmup('t1', 'worker', 2 * 3_600_000) // steady
+      const state = scorer.getTenantWarmupState('t1')
+      assert.equal(state.phase, 'steady', 'steady should dominate across services')
+    })
+
+    it('isolates per-tenant — other tenant cold-start does not affect ours', () => {
+      const { scorer, registerWarmup } = createHarness()
+      registerWarmup('other-tenant', 'api', 60_000) // other tenant is cold-start
+      const state = scorer.getTenantWarmupState('t1')
+      assert.equal(state.phase, 'unknown')
+    })
+
+    it('exposes the configured coldStartMs and warmupMs', () => {
+      const { scorer } = createHarness({ coldStartMs: 7777, warmupMs: 9999 })
+      const state = scorer.getTenantWarmupState('any')
+      assert.equal(state.coldStartMs, 7777)
+      assert.equal(state.warmupMs, 9999)
+    })
+  })
 })

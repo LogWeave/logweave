@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useServices } from '../../api/queries'
+import { AnomalyWarmupBanner } from '../../components/anomaly-warmup-banner'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Select } from '../../components/ui/select'
@@ -175,6 +176,9 @@ export function TailPage() {
           {error}
         </div>
       )}
+
+      {/* Anomaly warmup banner — hidden once scoring reaches steady state */}
+      <AnomalyWarmupBanner className="mx-3 my-2" />
 
       {/* Event stream */}
       <div

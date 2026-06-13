@@ -1,5 +1,20 @@
 export type BaselineStatus = 'empty' | 'sparse' | 'ok'
 
+/**
+ * Anomaly scorer warmup state for the current tenant. The dashboard uses this
+ * to show a banner explaining why scores are 0 immediately after a fresh start.
+ * See ADR-014 for the underlying 7-day baseline rationale.
+ */
+export interface AnomalyState {
+  phase: 'unknown' | 'cold-start' | 'warmup' | 'steady'
+  /** Milliseconds until the soonest service exits warmup. 0 when steady or unknown. */
+  warmupRemainingMs: number
+  /** Configured cold-start window length in ms (for reference). */
+  coldStartMs: number
+  /** Configured warmup window length in ms (for reference). */
+  warmupMs: number
+}
+
 export interface ApiResponse<T> {
   data: T
   meta: {

@@ -78,6 +78,7 @@ export interface DashboardDeps {
   db: DbClient
   logger: pino.Logger
   clusterClient?: import('../pipeline/cluster-client.js').ClusterClient
+  anomalyScorer?: import('../pipeline/anomaly-scorer.js').AnomalyScorer
 }
 
 // ClickHouse JSONEachRow returns numbers as strings. The DB layer types them
@@ -638,6 +639,32 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
       }
     },
   )
+
+  /**
+   * GET /dashboard/anomaly-state
+   *
+   * Returns the anomaly scorer's warmup state for the current tenant. Used by
+   * the dashboard to show a "warming up" banner so users don't think anomaly
+   * detection is broken during the cold-start + warmup window (10 min + 60 min
+   * after the first event for a tenant+service pair). See ADR-014.
+   */
+  router.get('/dashboard/anomaly-state', async (_req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      if (!deps.anomalyScorer) {
+        respond(
+          res,
+          { phase: 'unknown' as const, warmupRemainingMs: 0, coldStartMs: 0, warmupMs: 0 },
+          { count: 1 },
+        )
+        return
+      }
+      const state = deps.anomalyScorer.getTenantWarmupState(tenantId)
+      respond(res, state, { count: 1 })
+    } catch (err) {
+      next(err)
+    }
+  })
 
   return router
 }

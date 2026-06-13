@@ -6,6 +6,7 @@ import { levelApiParam, levelParam, queryKeys } from './query-keys'
 import type {
   AlertHistoryEntry,
   AlertRule,
+  AnomalyState,
   ApiKeyCreateResponse,
   ApiKeyEntry,
   ApiResponse,
@@ -543,5 +544,23 @@ export function useRevokeApiKey() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys() })
     },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Anomaly state
+// ---------------------------------------------------------------------------
+
+/**
+ * Polls the anomaly scorer's warmup state for the current tenant. Used by
+ * the AnomalyWarmupBanner to explain when scores are still building up.
+ */
+export function useAnomalyState() {
+  return useQuery({
+    queryKey: queryKeys.anomalyState(),
+    queryFn: () => api.get<ApiResponse<AnomalyState>>('/v1/dashboard/anomaly-state'),
+    // Poll once a minute — the phase only changes on the order of minutes.
+    refetchInterval: 60_000,
+    staleTime: 60_000,
   })
 }
