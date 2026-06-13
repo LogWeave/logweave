@@ -213,6 +213,55 @@ class TestCacheCounters:
         assert registry._cache_misses == 1
 
 
+class TestEmptyEmbeddingOnHotPath:
+    """New templates are inserted without embeddings so the /cluster hot path
+    never blocks on the embedding model's cold start (HP-Perf-1)."""
+
+    def test_insert_template_writes_empty_embedding(
+        self, registry: TemplateRegistry, mock_client: MagicMock
+    ) -> None:
+        registry._insert_template("t1", "New error <*>", "uuid-1")
+
+        params = mock_client.command.call_args.kwargs["parameters"]
+        assert params["embedding"] == []
+        assert params["embedding_model"] == ""
+
+    def test_batch_insert_writes_empty_embeddings(
+        self, registry: TemplateRegistry, mock_client: MagicMock
+    ) -> None:
+        registry._batch_insert_templates("t1", [("tmpl a", "id-a"), ("tmpl b", "id-b")])
+
+        rows = mock_client.insert.call_args[0][1]
+        assert len(rows) == 2
+        for row in rows:
+            assert row[3] == []  # embedding
+            assert row[4] == ""  # embedding_model
+
+    async def test_first_event_for_unseen_template_is_fast(
+        self, registry: TemplateRegistry, mock_client: MagicMock
+    ) -> None:
+        # The embedding model must never be invoked on the hot path. The mock
+        # would sleep ~2s if called, so both the call-count guard and the latency
+        # bound fail loudly if embedding is ever re-introduced here.
+        def slow_embed(*_args: object, **_kwargs: object) -> list[list[float]]:
+            import time
+
+            time.sleep(2.0)
+            return [[0.1]]
+
+        mock_client.query.return_value = MagicMock(result_rows=[])
+        with patch(
+            "clusterer.embedding.EmbeddingService.embed", side_effect=slow_embed
+        ) as mock_embed:
+            start = asyncio.get_event_loop().time()
+            _, is_new = await registry.get_or_create("t1", "brand new template <*>")
+            elapsed_ms = (asyncio.get_event_loop().time() - start) * 1000
+
+        assert is_new is True
+        assert mock_embed.call_count == 0, "embedding must not run on the /cluster hot path"
+        assert elapsed_ms < 100, f"hot path took {elapsed_ms:.0f}ms — embedding leaked onto it"
+
+
 class TestEnsureSchema:
     def test_creates_table(self, registry: TemplateRegistry, mock_client: MagicMock) -> None:
         registry.ensure_schema()
