@@ -27,6 +27,11 @@ export interface ApiResponse<T> {
     baselineStatus?: BaselineStatus
     /** Present on `/v1/dashboard/changes` only. Total event count in the prior window. */
     previousWindowEvents?: number
+    /**
+     * Present on `/v1/dashboard/changes` only. ISO timestamp of the earliest
+     * data for the tenant. ChangesPanel uses this to estimate "ready in N min".
+     */
+    tenantFirstSeenAt?: string | null
   }
 }
 

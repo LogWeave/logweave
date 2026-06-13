@@ -57,6 +57,12 @@ function createCapturingDb(mockData: unknown = []): {
   const db = {
     query: async (params: { query: string; query_params: Record<string, unknown> }) => {
       captured.push(params)
+      // queryBaselineSnapshot fires a secondary tenantFirstSeenAt query. Return
+      // a sensible default so tests that only mock the prev_events row don't
+      // break when the helper makes its second SQL call.
+      if (params.query.includes('@query: tenantFirstSeenAt')) {
+        return [{ first_seen: '1970-01-01 00:00:00.000' }]
+      }
       return mockData
     },
     insert: async () => {},
@@ -392,5 +398,29 @@ describe('queryBaselineSnapshot', () => {
     const result = await queryBaselineSnapshot(db, 'tenant-a', { hours: 1 })
     assert.equal(result.status, 'empty')
     assert.equal(result.previousWindowEvents, 0)
+  })
+
+  it('returns tenantFirstSeenAt as null when zero-date sentinel is returned', async () => {
+    const { db } = createCapturingDb([{ prev_events: 0 }])
+    const result = await queryBaselineSnapshot(db, 'tenant-a', { hours: 1 })
+    assert.equal(result.tenantFirstSeenAt, null)
+  })
+
+  it('returns tenantFirstSeenAt as an ISO timestamp when data exists', async () => {
+    // Hand-rolled mock that returns different rows for the two queries.
+    const db = {
+      query: async (params: { query: string }) => {
+        if (params.query.includes('@query: tenantFirstSeenAt')) {
+          return [{ first_seen: '2026-06-01 12:30:45.000' }]
+        }
+        return [{ prev_events: 100 }]
+      },
+      insert: async () => {},
+      command: async () => {},
+      ping: async () => true,
+      close: async () => {},
+    } as unknown as DbClient
+    const result = await queryBaselineSnapshot(db, 'tenant-a', { hours: 1 })
+    assert.equal(result.tenantFirstSeenAt, '2026-06-01T12:30:45.000Z')
   })
 })

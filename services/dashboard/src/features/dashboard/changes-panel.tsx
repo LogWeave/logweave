@@ -95,7 +95,26 @@ export function ChangesPanel({ className }: { className?: string }) {
   const hasAnyData = (overviewResponse?.data?.totalEvents ?? 0) > 0
   const baselineStatus = response?.meta?.baselineStatus
   const previousWindowEvents = response?.meta?.previousWindowEvents ?? 0
+  const tenantFirstSeenAt = response?.meta?.tenantFirstSeenAt
   const setSelectedTemplateId = useDashboardStore((s) => s.setSelectedTemplateId)
+
+  // Compute time-until-baseline-window-ready for the empty-baseline copy.
+  // Change detection compares the current N-hour window vs the prior N-hour
+  // window, so we need 2N hours of ingestion before the comparison is meaningful.
+  // We have `hours` (window size) from response meta and `tenantFirstSeenAt`
+  // from the new field. If we know both, we can give the user a concrete ETA.
+  const baselineEtaMessage = (() => {
+    const windowHours = response?.meta?.hours
+    if (!windowHours || !tenantFirstSeenAt) return null
+    const requiredMs = windowHours * 2 * 60 * 60 * 1000
+    const elapsedMs = Date.now() - new Date(tenantFirstSeenAt).getTime()
+    const remainingMs = requiredMs - elapsedMs
+    if (remainingMs <= 0) return null
+    const minutes = Math.ceil(remainingMs / 60_000)
+    if (minutes < 60) return `Comparison available in ~${minutes} min.`
+    const hours = Math.ceil(minutes / 60)
+    return `Comparison available in ~${hours}h.`
+  })()
 
   if (isLoading) {
     return (
@@ -123,13 +142,21 @@ export function ChangesPanel({ className }: { className?: string }) {
         {isError ? (
           <QueryError onRetry={() => refetch()} />
         ) : totalCount === 0 ? (
-          <p className="text-xs text-text-muted py-4 text-center">
-            {!hasAnyData
-              ? 'Waiting for log data to start detecting changes.'
-              : baselineStatus === 'empty'
-                ? 'No baseline data yet — change detection compares the current window to the equivalent prior window, which is empty. Check back once ingestion has covered both periods.'
-                : 'All quiet — no spikes, new patterns, or resolutions in this window.'}
-          </p>
+          <div className="text-xs text-text-muted py-4 text-center space-y-1">
+            {!hasAnyData ? (
+              <p>Waiting for the first log events to arrive.</p>
+            ) : baselineStatus === 'empty' ? (
+              <>
+                <p>Not enough history yet to detect changes.</p>
+                <p className="text-text-muted/70">
+                  Change detection needs ingestion to cover both the current window and the equivalent prior window.
+                  {baselineEtaMessage ? ` ${baselineEtaMessage}` : ''}
+                </p>
+              </>
+            ) : (
+              <p>All quiet — no spikes, new patterns, or resolutions in this window.</p>
+            )}
+          </div>
         ) : (
           <div className="max-h-[300px] overflow-y-auto space-y-2">
             {baselineStatus === 'sparse' && (

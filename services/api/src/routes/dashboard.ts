@@ -469,6 +469,7 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
           count: newEvents.length + spikeEvents.length + resolvedEvents.length,
           baselineStatus: baseline.status,
           previousWindowEvents: baseline.previousWindowEvents,
+          tenantFirstSeenAt: baseline.tenantFirstSeenAt,
           ...(since ? { since } : {}),
         },
       )

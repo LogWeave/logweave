@@ -65,6 +65,13 @@ export type BaselineStatus = 'empty' | 'sparse' | 'ok'
 export interface BaselineSnapshot {
   status: BaselineStatus
   previousWindowEvents: number
+  /**
+   * ISO timestamp of the earliest `template_stats` bucket for the tenant
+   * (across all services). Lets the dashboard compute "comparison ready in
+   * ~N minutes" instead of just showing static empty-baseline copy. Returns
+   * null when the tenant has never ingested.
+   */
+  tenantFirstSeenAt: string | null
 }
 
 // -- Time window computation for since-based queries --
@@ -529,5 +536,38 @@ WHERE tenant_id = {tenant_id:String}
   else if (previousWindowEvents < SPARSE_BASELINE_THRESHOLD) status = 'sparse'
   else status = 'ok'
 
-  return { status, previousWindowEvents }
+  const tenantFirstSeenAt = await queryTenantFirstSeenAt(db, tenantId)
+
+  return { status, previousWindowEvents, tenantFirstSeenAt }
+}
+
+/**
+ * ISO timestamp of the earliest template_stats bucket for the tenant, across
+ * all services. Returns null if the tenant has never ingested. Used by the
+ * What Changed panel to estimate how long until a comparison window is ready.
+ *
+ * Cheap: single MIN aggregate against the (tenant_id, service, interval_start)
+ * primary key order — ClickHouse short-circuits to the first matching part.
+ */
+async function queryTenantFirstSeenAt(
+  db: DbClient,
+  tenantId: string,
+): Promise<string | null> {
+  const rows = await db.query<{ first_seen: string }>(
+    tenantQuery(
+      `/* @query: tenantFirstSeenAt */
+SELECT min(interval_start) AS first_seen
+FROM logweave.template_stats
+WHERE tenant_id = {tenant_id:String}`,
+      tenantId,
+      {},
+    ),
+  )
+  const raw = rows[0]?.first_seen
+  if (!raw) return null
+  // ClickHouse returns DateTime64 as 'YYYY-MM-DD HH:MM:SS.mmm' — guard the
+  // zero-date case (no rows -> '1970-01-01 00:00:00.000') which means tenant
+  // has nothing.
+  if (raw.startsWith('1970-')) return null
+  return new Date(`${raw.replace(' ', 'T')}Z`).toISOString()
 }
