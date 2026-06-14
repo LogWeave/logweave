@@ -13,7 +13,7 @@
 import TransportStream from 'winston-transport'
 import { BufferManager } from './buffer.js'
 import { retryFetch } from './retry.js'
-import type { BatchPayload, LogEvent, TransportOptions } from './types.js'
+import type { BatchPayload, LogEvent, TransportOptions, TransportStats } from './types.js'
 
 const DEFAULT_ENDPOINT = 'http://localhost:3000/v1/ingest/batch'
 const DEFAULT_BUFFER_SIZE = 1000
@@ -39,6 +39,7 @@ export class LogWeaveTransport extends TransportStream {
   private readonly buffer: BufferManager
   private closeController: AbortController | null = null
   private closing = false
+  private droppedEvents = 0
 
   constructor(opts: TransportOptions) {
     super(opts as never)
@@ -74,9 +75,36 @@ export class LogWeaveTransport extends TransportStream {
 
     this.buffer = new BufferManager({
       bufferSize: opts.bufferSize ?? DEFAULT_BUFFER_SIZE,
+      maxRetainedEvents: opts.maxRetainedEvents,
       flushIntervalMs: opts.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS,
       onFlush: (events) => this.sendBatch(events),
+      onDrop: (events, error) => this.handleDrop(events, error),
     })
+  }
+
+  /**
+   * Snapshot of runtime counters for observability.
+   */
+  getStats(): TransportStats {
+    return {
+      bufferedEvents: this.buffer.size(),
+      droppedEvents: this.droppedEvents,
+    }
+  }
+
+  /**
+   * Central drop handler: counts the loss and forwards to the user's onDrop.
+   * Used both for retention-cap evictions and retry-exhausted batches.
+   */
+  private handleDrop(events: readonly LogEvent[], error: Error): void {
+    this.droppedEvents += events.length
+    if (this.onDrop) {
+      try {
+        this.onDrop(events, error)
+      } catch {
+        // onDrop must never throw back into the transport
+      }
+    }
   }
 
   /**
@@ -141,12 +169,8 @@ export class LogWeaveTransport extends TransportStream {
       },
     )
 
-    if (response === null && this.onDrop && !this.closeController?.signal.aborted) {
-      try {
-        this.onDrop(events, new Error(`[LogWeave] batch of ${events.length} events dropped`))
-      } catch {
-        // onDrop must never throw back into the transport
-      }
+    if (response === null && !this.closeController?.signal.aborted) {
+      this.handleDrop(events, new Error(`[LogWeave] batch of ${events.length} events dropped`))
     }
   }
 

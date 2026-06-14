@@ -32,6 +32,53 @@ describe('LogWeaveTransport', () => {
     assert.equal(callbackCalled, true, 'callback must be called synchronously')
   })
 
+  it('bounds memory under a hanging API: caps the buffer and drops the overflow (HP-Perf-2)', () => {
+    // A fetch that never resolves keeps one flush in-flight while events keep
+    // arriving — the OOM scenario. timeoutMs is large so nothing aborts during
+    // the synchronous push loop.
+    const neverResolve: typeof globalThis.fetch = () => new Promise(() => {})
+    let onDropEvents = 0
+    transport = new LogWeaveTransport({
+      apiKey: 'test-key',
+      service: 'test-service',
+      bufferSize: 1000,
+      maxRetainedEvents: 50_000,
+      flushIntervalMs: 60_000,
+      timeoutMs: 60_000,
+      fetch: neverResolve,
+      onDrop: (events) => {
+        onDropEvents += events.length
+      },
+    })
+
+    for (let i = 0; i < 100_000; i++) {
+      transport.log({ level: 'info', message: `m${i}`, [Symbol.for('level')]: 'info' }, () => {})
+    }
+
+    const stats = transport.getStats()
+    // 100k pushed − 1000 swapped into the stuck in-flight flush − 50k retained.
+    assert.equal(stats.bufferedEvents, 50_000, 'buffer must be capped at maxRetainedEvents')
+    assert.ok(stats.bufferedEvents <= 50_000, 'buffer must never exceed the cap')
+    assert.equal(stats.droppedEvents, 49_000, 'overflow must be dropped')
+    assert.equal(onDropEvents, 49_000, 'onDrop must fire for every dropped event')
+  })
+
+  it('getStats reports zero drops on the happy path', () => {
+    const mock = mockFetch(200)
+    transport = new LogWeaveTransport({
+      apiKey: 'test-key',
+      service: 'test-service',
+      bufferSize: 100,
+      flushIntervalMs: 60_000,
+      fetch: mock.fetch,
+    })
+
+    transport.log({ level: 'info', message: 'a', [Symbol.for('level')]: 'info' }, () => {})
+    const stats = transport.getStats()
+    assert.equal(stats.droppedEvents, 0)
+    assert.equal(stats.bufferedEvents, 1)
+  })
+
   it('close() flushes remaining events', async () => {
     const mock = mockFetch(200)
     transport = new LogWeaveTransport({

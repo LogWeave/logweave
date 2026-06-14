@@ -197,6 +197,51 @@ describe('BufferManager', () => {
     assert.equal(resolved, true, 'should resolve after flush completes')
   })
 
+  it('caps retained events and drops oldest when a flush is stuck', async () => {
+    const dropped: LogEvent[] = []
+    // onFlush never resolves — simulates a slow/down API holding one flush
+    // in-flight while events keep arriving.
+    buffer = new BufferManager({
+      bufferSize: 10,
+      maxRetainedEvents: 50,
+      flushIntervalMs: 60_000,
+      onFlush: () => new Promise<void>(() => {}),
+      onDrop: (events) => {
+        for (const e of events) dropped.push(e)
+      },
+    })
+
+    for (let i = 0; i < 1000; i++) {
+      buffer.push(makeEvent(i))
+    }
+
+    // First 10 went into the stuck in-flight flush; the rest pile into active,
+    // which is capped at 50. Everything above that is dropped oldest-first.
+    assert.equal(buffer.size(), 50, 'active buffer must never exceed the cap')
+    assert.equal(buffer.getDroppedCount(), dropped.length, 'dropped count matches onDrop events')
+    // 1000 pushed, 10 swapped into the stuck flush, 50 retained → 940 dropped.
+    assert.equal(buffer.getDroppedCount(), 940)
+    // Oldest dropped first: the retained events are the most recent 50.
+    assert.equal(buffer.drain()[49]?.message, 'test message 999')
+  })
+
+  it('does not drop when within the cap', () => {
+    const dropped: LogEvent[] = []
+    buffer = new BufferManager({
+      bufferSize: 10_000,
+      maxRetainedEvents: 100,
+      flushIntervalMs: 60_000,
+      onFlush: async () => {},
+      onDrop: (events) => dropped.push(...events),
+    })
+
+    for (let i = 0; i < 100; i++) buffer.push(makeEvent(i))
+
+    assert.equal(buffer.getDroppedCount(), 0)
+    assert.equal(dropped.length, 0)
+    assert.equal(buffer.size(), 100)
+  })
+
   it('drain() returns remaining events and clears the buffer', async () => {
     const onFlush = mock.fn(async (_events: readonly LogEvent[]) => {})
 
