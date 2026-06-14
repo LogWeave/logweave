@@ -395,7 +395,7 @@ Create an alert rule. This is a **write operation**.
 | `metric` | `"error_count"`, `"warn_count"`, or `"log_count"` | threshold | **Required for threshold.** Metric to monitor |
 | `service` | string | threshold | **Required for threshold.** Service name to monitor |
 | `operator` | `">"`, `">="`, `"<"`, or `"<="` | threshold | **Required for threshold.** Comparison operator |
-| `value` | number | threshold | **Required for threshold.** Threshold value |
+| `value` | number | threshold | **Required for threshold.** Threshold value (must be positive) |
 | `window_minutes` | number | threshold | **Required for threshold.** Evaluation window in minutes (1-60) |
 | `template_id` | string | template_watch | **Required for template_watch.** Template ID to watch (get it from `error_patterns` or `search_templates`) |
 | `template_text` | string | template_watch | **Required for template_watch.** Template text for display — copy from the pattern listing |
