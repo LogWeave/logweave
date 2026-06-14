@@ -15,6 +15,12 @@ export interface TransportOptions {
   readonly environment?: string
   /** Max events to buffer before flushing. Default: 1000 */
   readonly bufferSize?: number
+  /**
+   * Hard cap on retained events when the API is slow/down. Beyond this the
+   * oldest buffered events are dropped (and onDrop fires) so the SDK can never
+   * OOM the host application. Default: 50000.
+   */
+  readonly maxRetainedEvents?: number
   /** Flush interval in milliseconds. Default: 5000 */
   readonly flushIntervalMs?: number
   /** HTTP request timeout in milliseconds. Default: 2000 */
@@ -32,6 +38,19 @@ export interface TransportOptions {
    * The callback must not throw; if it does, the error is silently caught.
    */
   readonly onDrop?: (events: readonly LogEvent[], error: Error) => void
+}
+
+/**
+ * Runtime counters for observability, returned by LogWeaveTransport.getStats().
+ */
+export interface TransportStats {
+  /** Events in the active buffer waiting to be sent (excludes an in-flight batch). */
+  readonly bufferedEvents: number
+  /**
+   * Total events dropped over the transport's lifetime — both retention-cap
+   * evictions and batches abandoned after retry exhaustion.
+   */
+  readonly droppedEvents: number
 }
 
 /**

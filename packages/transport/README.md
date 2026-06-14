@@ -92,6 +92,7 @@ new LogWeaveTransport({
 | `endpoint` | `string` | `http://localhost:3000/v1/ingest/batch` | LogWeave API endpoint |
 | `environment` | `string` | — | Environment tag (e.g. `production`) |
 | `bufferSize` | `number` | `1000` | Events before auto-flush |
+| `maxRetainedEvents` | `number` | `50000` | Hard cap on buffered events when the API is slow/down — beyond it the oldest events are dropped so the SDK can't OOM your app |
 | `flushIntervalMs` | `number` | `5000` | Flush timer interval (ms) |
 | `timeoutMs` | `number` | `2000` | HTTP request timeout per attempt |
 | `maxRetries` | `number` | `3` | Max retries on 5xx or network errors |
@@ -137,6 +138,24 @@ new LogWeaveTransport({
 ```
 
 The `events` array is `readonly` — you can inspect but not modify the dropped events.
+
+`onDrop` fires in two situations:
+
+- **Retry exhaustion** — a batch couldn't be delivered after all retries.
+- **Retention cap** — when the API is slow or down a flush stays in-flight and
+  new events accumulate. Once `maxRetainedEvents` is reached the **oldest**
+  buffered events are dropped first (most-recent context is kept), bounding
+  memory so the SDK can never OOM your application.
+
+## Observability
+
+`getStats()` returns a snapshot of runtime counters:
+
+```typescript
+const { bufferedEvents, droppedEvents } = transport.getStats()
+// bufferedEvents — events in the active buffer (excludes an in-flight batch)
+// droppedEvents  — total events dropped (retention-cap + retry exhaustion)
+```
 
 ## Event Shape
 
