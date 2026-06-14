@@ -1,6 +1,6 @@
 # LogWeave MCP Tools Reference
 
-The LogWeave MCP server exposes 22 production tools and 3 dev-only tools via the
+The LogWeave MCP server exposes 26 production tools and 3 dev-only tools via the
 [Model Context Protocol](https://modelcontextprotocol.io). Connect any MCP-capable
 LLM client (Claude, Cursor, etc.) and it can query your log intelligence data directly.
 
@@ -84,6 +84,25 @@ Show the DEBUG/INFO/WARN/ERROR breakdown.
 
 **Use when:** Looking for leading indicators of problems. A rising WARN percentage
 often precedes error spikes.
+
+---
+
+### `cost_optimizer`
+
+Identify the log patterns driving your volume (and cost).
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `hours` | number (optional) | 24 | Time window in hours (max 720) |
+| `service` | string (optional) | all | Filter to a specific service |
+
+**Returns:** Patterns ranked by volume percentage, split into noise candidates
+(high-volume DEBUG/TRACE) and review candidates (high-volume INFO/WARN), each with an
+actionable suggestion for reducing log spend.
+
+**Use when:** Trimming log costs or finding the noisiest patterns to suppress or sample.
+
+> Ask your AI: "Which log patterns are costing me the most, and what can I cut?"
 
 ---
 
@@ -360,6 +379,26 @@ this uses statistical time-series correlation, not trace-level co-occurrence.
 
 ---
 
+### `incident_postmortem`
+
+Generate a structured post-mortem timeline for an incident on a service.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `service` | string | *(required)* | Service that experienced the incident |
+| `since` | string (optional) | - | ISO8601 start of the window (e.g. a deploy time or alert trigger) |
+| `hours` | number (optional) | 2 | Window length in hours. Ignored if `since` is provided |
+
+**Returns:** A single report combining deploy markers, pattern changes (new/spiking),
+service outlier detection, and cross-service correlations for the incident window.
+
+**Use when:** Reconstructing what happened after an incident — when it started, what
+changed, and which services were affected. Anchor with `since` to a deploy or alert time.
+
+> Ask your AI: "Write a post-mortem for payments-api starting at the 14:05 deploy"
+
+---
+
 ## 6. Alerts & Rules
 
 ### `list_rules`
@@ -520,17 +559,6 @@ Find events by a custom metadata tag.
 identifier. Only works if the tenant has configured tag extraction in Settings.
 
 > Ask your AI: "Find all events for customer ACME-123"
-
----
-
-## 8. Admin / Pipeline
-
-### `clustering_health`
-
-*(Listed in section 1, repeated here for discoverability.)*
-
-Check the clustering pipeline health -- ClickHouse connectivity, circuit breaker state,
-and ingest metrics. See [clustering_health](#clustering_health) above.
 
 ---
 
