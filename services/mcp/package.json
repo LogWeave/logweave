@@ -24,7 +24,7 @@
     "prepublishOnly": "tsc -p tsconfig.build.json",
     "dev": "node --import tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test:unit": "node --import tsx --test tests/dev-tools.test.ts tests/patterns.test.ts tests/system-state.test.ts",
+    "test:unit": "node --import tsx --test tests/dev-tools.test.ts tests/patterns.test.ts tests/rules.test.ts tests/system-state.test.ts",
     "test:e2e": "node --import tsx --test tests/e2e.test.ts"
   },
   "keywords": [
