@@ -183,6 +183,13 @@ export async function ingestBatch(
     }
   }
 
+  // All items were skipped while building rows (e.g. a clusterer contract breach
+  // left no usable results). Nothing to persist — return rather than letting an
+  // empty batchInsert throw and be misreported as a retryable 503.
+  if (rows.length === 0) {
+    return { accepted: 0, clustered, unclustered, new_templates: newTemplates }
+  }
+
   // Phase 4: Write (single batch INSERT). Must succeed before we publish to
   // the event bus or bump metrics — otherwise live-tail viewers see events
   // that aren't actually persisted, and counts inflate when ingest fails and
