@@ -59,7 +59,9 @@ const tailFilterSchema = z.object({
   level: z.string().optional(),
   minLevel: z.string().optional(),
   templateId: z.string().optional(),
-  minAnomaly: z.coerce.number().min(0).max(1).optional(),
+  // Anomaly scores are unbounded above (0 = normal, ≥1.0 = elevated). Do NOT
+  // cap the filter at 1.0 — that hid all genuinely anomalous events.
+  minAnomaly: z.coerce.number().min(0).optional(),
 })
 
 const pollSchema = tailFilterSchema.extend({
