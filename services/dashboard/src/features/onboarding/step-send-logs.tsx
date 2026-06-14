@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Check, ClipboardCopy } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { queryKeys } from '../../api/query-keys'
 import { config } from '../../config'
 import { cn } from '../../lib/cn'
@@ -41,6 +42,7 @@ export function StepSendLogs({ complete }: StepSendLogsProps) {
 
   const apiUrl = config.apiUrl || 'http://localhost:3000'
   const apiKey = config.apiKey
+  const hasApiKey = apiKey.length > 0
 
   // Poll for first event
   useEffect(() => {
@@ -133,6 +135,18 @@ export function StepSendLogs({ complete }: StepSendLogsProps) {
                     {lang}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* No-key warning — the snippet falls back to a YOUR_API_KEY placeholder */}
+            {!hasApiKey && (
+              <div className="rounded-[var(--radius-md)] border border-warning-500/30 bg-warning-500/10 px-3 py-2 text-xs text-warning-400">
+                No API key is configured. Replace{' '}
+                <code className="font-mono">YOUR_API_KEY</code> with a key from{' '}
+                <Link to="/settings#api-keys" className="font-medium underline hover:text-warning-300">
+                  API Keys settings
+                </Link>
+                .
               </div>
             )}
 

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   useDeleteSlackSettings,
@@ -33,6 +34,15 @@ export function SettingsPage() {
   const tagSettings = tagResponse?.data
   const saveTagsMutation = useSaveTagSettings()
   const [newTagKey, setNewTagKey] = useState('')
+
+  // Honor #anchor deep links (e.g. /settings#api-keys from the onboarding banner).
+  // BrowserRouter doesn't scroll to hash targets on client-side navigation.
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (!hash) return
+    const el = document.getElementById(hash.slice(1))
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [hash])
 
   const handleSave = () => {
     if (!webhookUrl.startsWith('https://hooks.slack.com/')) {

@@ -70,7 +70,7 @@ export function ApiKeysSettings() {
 
   return (
     <>
-      <Card>
+      <Card id="api-keys" className="scroll-mt-4">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>API Keys</CardTitle>
