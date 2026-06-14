@@ -380,22 +380,57 @@ or "tenant default").
 
 ### `create_rule`
 
-Create a threshold alert rule. This is a **write operation**.
+Create an alert rule. This is a **write operation**.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `name` | string | *(required)* | Human-readable rule name |
-| `metric` | `"error_count"`, `"warn_count"`, or `"log_count"` | *(required)* | Metric to monitor |
-| `service` | string | *(required)* | Service name to monitor |
-| `operator` | `">"`, `">="`, `"<"`, or `"<="` | *(required)* | Comparison operator |
-| `value` | number | *(required)* | Threshold value |
-| `window_minutes` | number | *(required)* | Evaluation window in minutes (1-60) |
-| `channels` | string[] (optional) | tenant default | Slack webhook URLs for notifications |
+`rule_type` is **required** and selects which other parameters apply:
 
-**Returns:** Confirmation with rule name, rule ID, condition summary, enabled status,
-and channel assignment.
+- `"threshold"` — alert when a service metric crosses a value.
+- `"template_watch"` — alert whenever a specific log pattern appears.
 
-**Use when:** Setting up monitoring thresholds.
+| Parameter | Type | Applies to | Description |
+|-----------|------|------------|-------------|
+| `name` | string | both | **Required.** Human-readable rule name |
+| `rule_type` | `"threshold"` or `"template_watch"` | both | **Required.** Selects the rule variant |
+| `channels` | string[] (optional) | both | Webhook URLs or PagerDuty routing keys (`pagerduty://<key>`). Empty = tenant default |
+| `metric` | `"error_count"`, `"warn_count"`, or `"log_count"` | threshold | **Required for threshold.** Metric to monitor |
+| `service` | string | threshold | **Required for threshold.** Service name to monitor |
+| `operator` | `">"`, `">="`, `"<"`, or `"<="` | threshold | **Required for threshold.** Comparison operator |
+| `value` | number | threshold | **Required for threshold.** Threshold value |
+| `window_minutes` | number | threshold | **Required for threshold.** Evaluation window in minutes (1-60) |
+| `template_id` | string | template_watch | **Required for template_watch.** Template ID to watch (get it from `error_patterns` or `search_templates`) |
+| `template_text` | string | template_watch | **Required for template_watch.** Template text for display — copy from the pattern listing |
+
+Omitting `rule_type`, or omitting a variant's required fields, returns a `400`.
+
+**Threshold example** (alert if `payments-api` exceeds 10 errors in a 5-minute window):
+
+```json
+{
+  "name": "payments error spike",
+  "rule_type": "threshold",
+  "metric": "error_count",
+  "service": "payments-api",
+  "operator": ">",
+  "value": 10,
+  "window_minutes": 5
+}
+```
+
+**Template-watch example** (alert whenever a known pattern reappears):
+
+```json
+{
+  "name": "watch OOM kills",
+  "rule_type": "template_watch",
+  "template_id": "0192f8a1-6c3e-7b21-9a4d-1f2e3d4c5b6a",
+  "template_text": "Container <*> killed: out of memory"
+}
+```
+
+**Returns:** Confirmation with rule name, rule ID, type, condition/pattern summary,
+enabled status, and channel assignment.
+
+**Use when:** Setting up monitoring thresholds, or watching for a specific known pattern.
 
 > Ask your AI: "Create a rule to alert if payments-api has more than 10 errors in 5 minutes"
 
