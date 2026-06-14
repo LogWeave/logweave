@@ -405,7 +405,7 @@ Mini time-series for specific templates (for inline charts).
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `hours` | int | 24 | Time window (1-720) |
-| `template_ids` | string | - | **Required.** Comma-separated template IDs (1-20) |
+| `templateIds` | string | - | **Required.** Comma-separated template IDs (1-20) |
 | `level` | string | - | Comma-separated level filter |
 
 **Response data**: `{ [templateId]: [{ intervalStart, count }] }`
@@ -446,7 +446,7 @@ Detect new, spiking, and resolved templates. Can anchor to a deploy marker.
 |-------|------|---------|-------------|
 | `hours` | int | 24 | Time window (1-720) |
 | `since` | string | - | ISO datetime; overrides `hours` |
-| `deploy_id` | string | - | Deploy marker ID; resolves to its timestamp |
+| `deployId` | string | - | Deploy marker ID; resolves to its timestamp |
 | `service` | string | - | Filter by service |
 | `threshold` | number | 3 | Spike ratio threshold (1-100) |
 | `limit` | int | 20 | Max results per category (1-100) |
@@ -490,7 +490,7 @@ HTTP status code distribution for a template.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `hours` | int | 24 | Time window (1-720) |
-| `template_id` | string | - | **Required.** Template ID |
+| `templateId` | string | - | **Required.** Template ID |
 | `since` | string | - | ISO datetime lower bound |
 | `until` | string | - | ISO datetime upper bound |
 
@@ -555,7 +555,7 @@ Individual log events for a template (drill-down).
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `hours` | int | 24 | Time window (1-720) |
-| `status_code` | int | - | Filter by HTTP status code |
+| `statusCode` | int | - | Filter by HTTP status code |
 | `since` | string | - | ISO datetime lower bound |
 | `until` | string | - | ISO datetime upper bound |
 | `limit` | int | 20 | Max results (1-100) |
@@ -608,7 +608,7 @@ Fetch raw log lines from S3 connector matching a template pattern.
 | `service` | string | - | **Required.** Service name |
 | `hours` | int | 1 | Time window (1-24) |
 | `limit` | int | 50 | Max lines (1-100) |
-| `connector_id` | string | - | Specific connector; uses first available if omitted |
+| `connectorId` | string | - | Specific connector; uses first available if omitted |
 
 **Response data**:
 
@@ -785,9 +785,9 @@ Server-Sent Events (SSE) stream of live log events.
 | `token` | string | - | **Required.** Tail token |
 | `service` | string | - | Filter by service |
 | `level` | string | - | Filter by exact level |
-| `min_level` | string | - | Minimum severity level |
-| `template_id` | string | - | Filter by template ID |
-| `min_anomaly` | number | - | Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound) |
+| `minLevel` | string | - | Minimum severity level |
+| `templateId` | string | - | Filter by template ID |
+| `minAnomaly` | number | - | Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound) |
 
 **SSE events**: Each `data:` line contains a `TailEvent` JSON object. Supports `Last-Event-ID` for reconnection replay.
 
@@ -810,9 +810,9 @@ Cursor-based polling alternative to SSE (for MCP tools).
 | `cursor` | int | - | Sequence number; returns events after this cursor |
 | `service` | string | - | Filter by service |
 | `level` | string | - | Filter by exact level |
-| `min_level` | string | - | Minimum severity level |
-| `template_id` | string | - | Filter by template ID |
-| `min_anomaly` | number | - | Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound) |
+| `minLevel` | string | - | Minimum severity level |
+| `templateId` | string | - | Filter by template ID |
+| `minAnomaly` | number | - | Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound) |
 
 **Response** (200):
 
@@ -968,7 +968,7 @@ Query alert history.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `hours` | int | 24 | Time window (1-720) |
-| `rule_id` | string | - | Filter by rule ID |
+| `ruleId` | string | - | Filter by rule ID |
 | `service` | string | - | Filter by service |
 | `limit` | int | 100 | Max results (1-500) |
 
