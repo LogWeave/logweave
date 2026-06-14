@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { config } from '../../config'
+import { api } from '../../lib/api-client'
 
 export interface TailEvent {
   seq: number
@@ -72,18 +73,14 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
     setError(undefined)
     setEvents([])
 
-    // Exchange API key for a short-lived SSE token (key never appears in URL)
+    // Exchange the session for a short-lived SSE token (never appears in the URL
+    // until it's the opaque tail token). Use the shared API client so this works
+    // in the default cookie-session deployment — it sends credentials and the
+    // CSRF token, and falls back to Bearer only when a dev API key is configured.
     let sseToken: string | undefined
     try {
-      const base = config.apiUrl || window.location.origin
-      const tokenRes = await fetch(`${base}/v1/tail/token`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${config.apiKey}` },
-      })
-      if (tokenRes.ok) {
-        const tokenData = await tokenRes.json()
-        sseToken = tokenData.data?.token
-      }
+      const tokenData = await api.post<{ data?: { token?: string } }>('/v1/tail/token')
+      sseToken = tokenData.data?.token
     } catch {
       // Token exchange failed — will fall through to error state
     }
