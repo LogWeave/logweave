@@ -110,15 +110,17 @@ export function tailRoutes(deps: TailDeps): Router {
   // GET /tail/poll — cursor-based polling for MCP tool
   router.get('/tail/poll', validateQuery(pollSchema), (req: Request, res: Response) => {
     const tenantId = getTenantId(res)
-    const tailMode = deps.settingsStore.get(tenantId).tailMode
+    // Default to 'metadata' like the SSE path so the MCP live_tail tool works on
+    // a fresh install. Only an explicit 'disabled' setting suppresses events.
+    const tailMode = deps.settingsStore.get(tenantId).tailMode ?? 'metadata'
 
-    if (!tailMode || tailMode === 'disabled') {
+    if (tailMode === 'disabled') {
       respond(
         res,
         { events: [], cursor: 0 },
         {
           count: 0,
-          message: 'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.',
+          message: 'Live tail is disabled for this tenant.',
         },
       )
       return
@@ -208,7 +210,7 @@ export function tailSseRoute(deps: TailDeps): Router {
         new AppError(
           HttpStatus.FORBIDDEN,
           'TAIL_DISABLED',
-          'Live tail is not enabled for this tenant. Set tail_mode via PUT /v1/settings.',
+          'Live tail is disabled for this tenant.',
         ),
       )
       return
