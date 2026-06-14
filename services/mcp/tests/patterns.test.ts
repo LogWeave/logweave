@@ -75,3 +75,29 @@ describe('error_patterns / search_templates limit clamp', () => {
     })
   }
 })
+
+describe('other patterns tools enforce their documented limit ceilings', () => {
+  const { server, schemas } = captureTools()
+  registerPatterns(server, fakeClient)
+
+  it('template_events rejects limit above 100', () => {
+    const shape = schemas.get('template_events')
+    assert.ok(shape)
+    const result = z.object(shape).safeParse({ template_id: 't1', limit: 101 })
+    assert.equal(result.success, false)
+  })
+
+  it('search_by_tag rejects limit above 200', () => {
+    const shape = schemas.get('search_by_tag')
+    assert.ok(shape)
+    const result = z.object(shape).safeParse({ key: 'k', value: 'v', limit: 201 })
+    assert.equal(result.success, false)
+  })
+
+  it('search_by_tag accepts limit at its 200 ceiling', () => {
+    const shape = schemas.get('search_by_tag')
+    assert.ok(shape)
+    const result = z.object(shape).safeParse({ key: 'k', value: 'v', limit: 200 })
+    assert.equal(result.success, true)
+  })
+})
