@@ -1,8 +1,12 @@
 import type pino from 'pino'
 import type { DbClient } from '../db/client.js'
 import { batchInsert } from '../db/insert.js'
+import { serviceUnavailable } from '../errors.js'
 import type { EventBus } from '../events/event-bus.js'
 import * as metrics from '../metrics.js'
+
+/** Retry-After (seconds) advertised when ClickHouse is unavailable for ingest. */
+const INGEST_RETRY_AFTER_SECONDS = 30
 import type { TailBuffer } from '../tail/buffer.js'
 import { levelMeetsSeverity } from '../tail/types.js'
 import type { LogMetadataRow } from '../types.js'
@@ -179,12 +183,36 @@ export async function ingestBatch(
     }
   }
 
+  // All items were skipped while building rows (e.g. a clusterer contract breach
+  // left no usable results). Nothing to persist — return rather than letting an
+  // empty batchInsert throw and be misreported as a retryable 503.
+  if (rows.length === 0) {
+    return { accepted: 0, clustered, unclustered, new_templates: newTemplates }
+  }
+
   // Phase 4: Write (single batch INSERT). Must succeed before we publish to
   // the event bus or bump metrics — otherwise live-tail viewers see events
   // that aren't actually persisted, and counts inflate when ingest fails and
   // the client retries.
+  //
+  // Ingest is synchronous with no durable queue (beta scope): a ClickHouse
+  // outage means these events are not persisted. Surface that as a clean 503 +
+  // Retry-After so @logweave/transport backs off and retries rather than
+  // dropping the batch on a generic 5xx. See docs/install.md "Durability".
   const insertStart = Date.now()
-  await batchInsert(deps.db, rows)
+  try {
+    await batchInsert(deps.db, rows)
+  } catch (err) {
+    metrics.increment(metrics.INGEST_WRITE_FAILED, rows.length)
+    deps.logger.error(
+      { err, tenantId, rows: rows.length },
+      'ClickHouse ingest write failed — returning 503 Retry-After',
+    )
+    throw serviceUnavailable(
+      'Log storage is temporarily unavailable. Retry after the indicated delay.',
+      INGEST_RETRY_AFTER_SECONDS,
+    )
+  }
   const insertMs = Date.now() - insertStart
 
   // Phase 4.1: Publish to event bus (live tail, future: NATS cross-instance)

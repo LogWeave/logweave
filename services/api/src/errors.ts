@@ -5,6 +5,8 @@ export class AppError extends Error {
     public readonly statusCode: HttpStatusCode,
     public readonly code: string,
     message: string,
+    /** Seconds to advertise via the Retry-After header (503/429 responses). */
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message)
     this.name = 'AppError'
@@ -31,8 +33,13 @@ export function rateLimited(message: string): AppError {
   return new AppError(HttpStatus.TOO_MANY_REQUESTS, 'RATE_LIMITED', message)
 }
 
-export function serviceUnavailable(message: string): AppError {
-  return new AppError(HttpStatus.SERVICE_UNAVAILABLE, 'SERVICE_UNAVAILABLE', message)
+export function serviceUnavailable(message: string, retryAfterSeconds?: number): AppError {
+  return new AppError(
+    HttpStatus.SERVICE_UNAVAILABLE,
+    'SERVICE_UNAVAILABLE',
+    message,
+    retryAfterSeconds,
+  )
 }
 
 export interface ErrorResponseBody {

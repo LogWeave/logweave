@@ -7,6 +7,9 @@ export function createErrorHandler(logger: pino.Logger) {
   return (err: Error, _req: Request, res: Response, _next: NextFunction): void => {
     if (err instanceof AppError) {
       logger.warn({ err, statusCode: err.statusCode, code: err.code }, err.message)
+      if (err.retryAfterSeconds !== undefined) {
+        res.setHeader('Retry-After', String(err.retryAfterSeconds))
+      }
       const body: ErrorResponseBody = {
         error: { code: err.code, message: err.message },
       }
