@@ -1,7 +1,13 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
-import { type ApiResponse, READ_ONLY, formatMeta, toolHandler } from '../shared/handler.js'
+import {
+  type ApiResponse,
+  READ_ONLY,
+  formatMeta,
+  toolHandler,
+  truncate,
+} from '../shared/handler.js'
 
 async function errorPatterns(
   client: LogWeaveClient,
@@ -24,7 +30,7 @@ async function errorPatterns(
   let text = `## Error Patterns (${rows.length} results)\n\n`
   for (const r of rows) {
     const badge = r.isNewToday ? ' [NEW]' : ''
-    text += `- **${r.templateText}** [id: ${r.templateId}]${badge}\n`
+    text += `- **${truncate(r.templateText)}** [id: ${r.templateId}]${badge}\n`
     text += `  Service: ${r.service} | Count: ${r.occurrenceCount} | Errors: ${r.errorCount}\n`
   }
 
@@ -46,7 +52,7 @@ async function templateDetail(
   const services = (d.servicesAffected as string[]) ?? []
 
   let text = `## Template Detail\n\n`
-  text += `- Pattern: **${d.templateText}**\n`
+  text += `- Pattern: **${truncate(d.templateText)}**\n`
   text += `- Services: ${services.join(', ')}\n`
   text += `- Occurrences: ${d.occurrenceCount} (${d.errorCount} errors)\n`
   text += `- Avg duration: ${Number(d.avgDurationMs).toFixed(1)}ms\n`
@@ -107,7 +113,7 @@ async function searchTemplates(
   let text = `## Search Results for "${args.query}"${modeLabel} (${rows.length} matches)\n\n`
   for (const r of rows) {
     const services = (r.servicesAffected as string[]).join(', ')
-    text += `- **${r.templateText}** [id: ${r.templateId}] — ${r.occurrenceCount} occurrences (${services})\n`
+    text += `- **${truncate(r.templateText)}** [id: ${r.templateId}] — ${r.occurrenceCount} occurrences (${services})\n`
   }
 
   text += formatMeta(res.meta)
@@ -232,7 +238,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
       inputSchema: {
         hours: z.number().optional().describe('Time window in hours (default: 24)'),
         service: z.string().optional().describe('Filter to a specific service name'),
-        limit: z.number().optional().describe('Max results to return (default: 100)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe('Max results to return (default: 100, max: 100)'),
       },
       annotations: READ_ONLY,
     },
@@ -272,7 +284,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
       inputSchema: {
         query: z.string().describe('Search text (minimum 3 characters)'),
         hours: z.number().optional().describe('Time window in hours (default: 24)'),
-        limit: z.number().optional().describe('Max results to return (default: 100)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe('Max results to return (default: 100, max: 100)'),
         mode: z.enum(['substring', 'semantic']).optional().describe('Search mode (default: substring)'),
       },
       annotations: READ_ONLY,
@@ -313,7 +331,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
         template_id: z.string().describe('Template ID'),
         status_code: z.number().optional().describe('Filter to a specific HTTP status code (e.g. 500)'),
         hours: z.number().optional().describe('Time window in hours (default: 24)'),
-        limit: z.number().optional().describe('Max events to return (default: 20, max: 100)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe('Max events to return (default: 20, max: 100)'),
       },
       annotations: READ_ONLY,
     },
@@ -337,7 +361,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
         key: z.string().describe('Tag key to search (e.g. "customer_id", "order_id")'),
         value: z.string().describe('Tag value to match (e.g. "ACME-123")'),
         hours: z.number().optional().describe('Time window in hours (default: 24)'),
-        limit: z.number().optional().describe('Max results (default: 50, max: 200)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(200)
+          .optional()
+          .describe('Max results (default: 50, max: 200)'),
       },
       annotations: READ_ONLY,
     },

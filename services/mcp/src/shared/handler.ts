@@ -5,6 +5,15 @@ export interface ApiResponse {
   meta: Record<string, unknown>
 }
 
+// Template text is unbounded; a single response can carry many rows. Cap each
+// rendered value so one tool call can't flood the model's context window.
+export const TEMPLATE_TEXT_MAX = 200
+
+export function truncate(value: unknown, max = TEMPLATE_TEXT_MAX): string {
+  const text = String(value ?? '')
+  return text.length > max ? `${text.slice(0, max)}…` : text
+}
+
 export function formatMeta(meta: Record<string, unknown>): string {
   const parts: string[] = []
   if (meta.timeRange) parts.push(`Time range: ${meta.timeRange}`)
