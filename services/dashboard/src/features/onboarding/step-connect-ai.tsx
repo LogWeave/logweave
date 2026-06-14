@@ -1,6 +1,7 @@
 import { Check, ClipboardCopy, MessageSquareText } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { config } from '../../config'
 import { cn } from '../../lib/cn'
 import { mcpSnippet } from './snippets'
@@ -80,8 +81,11 @@ export function StepConnectAi({ complete }: StepConnectAiProps) {
       <div>
         {!hasApiKey && (
           <div className="mb-2 rounded-[var(--radius-md)] border border-warning-500/30 bg-warning-500/10 px-3 py-2 text-xs text-warning-400">
-            Replace <code className="font-mono">YOUR_API_KEY</code> with a key from your{' '}
-            <code className="font-mono">LOGWEAVE_API_KEYS</code> environment variable.
+            Replace <code className="font-mono">YOUR_API_KEY</code> with a key from{' '}
+            <Link to="/settings#api-keys" className="font-medium underline hover:text-warning-300">
+              API Keys settings
+            </Link>
+            .
           </div>
         )}
         <p className="text-xs text-text-muted mb-2">
