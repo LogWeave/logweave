@@ -56,11 +56,16 @@ describe('LogWeaveTransport', () => {
     }
 
     const stats = transport.getStats()
-    // 100k pushed − 1000 swapped into the stuck in-flight flush − 50k retained.
-    assert.equal(stats.bufferedEvents, 50_000, 'buffer must be capped at maxRetainedEvents')
+    // 100k pushed − 1000 swapped into the stuck in-flight flush = 99k retained
+    // or dropped. The buffer is bounded by the cap; everything else was dropped.
     assert.ok(stats.bufferedEvents <= 50_000, 'buffer must never exceed the cap')
-    assert.equal(stats.droppedEvents, 49_000, 'overflow must be dropped')
-    assert.equal(onDropEvents, 49_000, 'onDrop must fire for every dropped event')
+    assert.equal(
+      stats.droppedEvents,
+      100_000 - 1000 - stats.bufferedEvents,
+      'every pushed event is either in-flight, buffered, or dropped (conservation)',
+    )
+    assert.ok(stats.droppedEvents >= 49_000, 'the overflow must be dropped')
+    assert.equal(onDropEvents, stats.droppedEvents, 'onDrop must fire for every dropped event')
   })
 
   it('getStats reports zero drops on the happy path', () => {

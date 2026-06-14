@@ -44,7 +44,7 @@ export interface TransportOptions {
  * Runtime counters for observability, returned by LogWeaveTransport.getStats().
  */
 export interface TransportStats {
-  /** Events currently held in the buffer, waiting to be sent. */
+  /** Events in the active buffer waiting to be sent (excludes an in-flight batch). */
   readonly bufferedEvents: number
   /**
    * Total events dropped over the transport's lifetime — both retention-cap

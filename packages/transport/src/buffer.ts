@@ -43,6 +43,7 @@ export class BufferManager {
   private readonly bufferSize: number
   private readonly flushIntervalMs: number
   private readonly maxRetainedEvents: number
+  private readonly lowWaterMark: number
   private readonly onFlush: (events: readonly LogEvent[]) => Promise<void>
   private readonly onDrop: ((events: readonly LogEvent[], error: Error) => void) | undefined
 
@@ -50,6 +51,11 @@ export class BufferManager {
     this.bufferSize = options.bufferSize
     this.flushIntervalMs = options.flushIntervalMs
     this.maxRetainedEvents = options.maxRetainedEvents ?? DEFAULT_MAX_RETAINED_EVENTS
+    // When the cap is hit, evict down to this low-water mark in one shot rather
+    // than dropping one event per push — keeps the same hard memory bound while
+    // amortizing the O(n) array shift, so sustained overload doesn't put O(cap)
+    // work on every (synchronous) log call.
+    this.lowWaterMark = Math.max(1, Math.floor(this.maxRetainedEvents * 0.9))
     this.onFlush = options.onFlush
     this.onDrop = options.onDrop
     this.resetTimer()
@@ -59,15 +65,14 @@ export class BufferManager {
    * Push an event into the active buffer.
    * If the buffer reaches capacity, triggers an immediate flush. If the
    * retention cap is exceeded (flush stuck on a slow/down API), the oldest
-   * events are dropped to bound memory.
+   * events are dropped down to the low-water mark to bound memory.
    */
   push(event: LogEvent): void {
     if (this.destroyed) return
     this.active.push(event)
 
     if (this.active.length > this.maxRetainedEvents) {
-      const overflow = this.active.length - this.maxRetainedEvents
-      const dropped = this.active.splice(0, overflow)
+      const dropped = this.active.splice(0, this.active.length - this.lowWaterMark)
       this.droppedCount += dropped.length
       if (this.onDrop) {
         try {

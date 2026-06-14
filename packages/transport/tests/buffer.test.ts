@@ -215,14 +215,15 @@ describe('BufferManager', () => {
       buffer.push(makeEvent(i))
     }
 
-    // First 10 went into the stuck in-flight flush; the rest pile into active,
-    // which is capped at 50. Everything above that is dropped oldest-first.
-    assert.equal(buffer.size(), 50, 'active buffer must never exceed the cap')
+    // First 10 swapped into the stuck in-flight flush; the rest pile into active,
+    // which is bounded by the cap (eviction batches down to the low-water mark).
+    assert.ok(buffer.size() <= 50, 'active buffer must never exceed the cap')
     assert.equal(buffer.getDroppedCount(), dropped.length, 'dropped count matches onDrop events')
-    // 1000 pushed, 10 swapped into the stuck flush, 50 retained → 940 dropped.
-    assert.equal(buffer.getDroppedCount(), 940)
-    // Oldest dropped first: the retained events are the most recent 50.
-    assert.equal(buffer.drain()[49]?.message, 'test message 999')
+    // 1000 pushed, 10 in-flight, the rest retained-or-dropped (conservation).
+    assert.equal(buffer.getDroppedCount(), 1000 - 10 - buffer.size())
+    // Oldest dropped first: the newest event is always retained at the tail.
+    const remaining = buffer.drain()
+    assert.equal(remaining[remaining.length - 1]?.message, 'test message 999')
   })
 
   it('does not drop when within the cap', () => {
