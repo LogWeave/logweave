@@ -240,7 +240,7 @@ describe('POST /v1/ingest/batch', () => {
     assert.ok(rows[1]?.timestamp.startsWith('20'), 'Expected ingest time as fallback')
   })
 
-  it('returns 500 with safe error when ClickHouse INSERT fails', async () => {
+  it('returns 503 + Retry-After when ClickHouse is unavailable', async () => {
     const { app } = createTestApp({
       insertError: new Error('Connection refused: clickhouse:8123'),
     })
@@ -250,9 +250,11 @@ describe('POST /v1/ingest/batch', () => {
       .set('Authorization', `Bearer ${API_KEY}`)
       .send({ events: [validEvent()] })
 
-    assert.equal(res.status, 500)
-    assert.equal(res.body.error.code, 'INTERNAL_ERROR')
-    assert.equal(res.body.error.message, 'Internal server error')
+    // 503 + Retry-After lets @logweave/transport back off and retry cleanly
+    // instead of treating a transient storage outage as a permanent failure.
+    assert.equal(res.status, 503)
+    assert.equal(res.body.error.code, 'SERVICE_UNAVAILABLE')
+    assert.equal(res.headers['retry-after'], '30')
     // Must not leak internal details
     assert.ok(
       !JSON.stringify(res.body).includes('Connection refused'),

@@ -397,6 +397,20 @@ service:
       exporters: [otlphttp]
 ```
 
+### Durability (beta limitation)
+
+Ingest is **synchronous with no durable queue** in the current beta. Each batch is
+parsed, clustered, and written to ClickHouse within the request. If ClickHouse is
+unavailable, the API responds **`503 Service Unavailable` with a `Retry-After: 30`
+header** — it does **not** queue the events. The `@logweave/transport` SDK honors
+`Retry-After` and retries the batch; events are only lost if the outage outlasts
+the SDK's retry budget (and OTLP/`curl` callers must implement their own retry).
+
+If you need guaranteed durability today, **put a buffering collector in front of
+LogWeave** — e.g. [Vector](https://vector.dev) or the OpenTelemetry Collector with a
+persistent queue/disk buffer pointed at `/v1/ingest/batch` — so the buffer absorbs
+storage outages until ClickHouse recovers. Native durable ingest is planned for V1.
+
 ---
 
 ## Backups

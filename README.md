@@ -203,6 +203,11 @@ LogWeave runs as a single `docker compose up` — three containers, nothing else
 | **HTTP API** (`POST /v1/ingest/batch`) | Any language — curl, Go, Python, Java |
 | **OpenTelemetry** (`POST /v1/logs`) | OTel Collector integration |
 
+> **Beta durability note:** ingest is synchronous with no durable queue. If ClickHouse
+> is down, the API returns `503` + `Retry-After` (the `@logweave/transport` SDK retries
+> automatically) rather than queueing. For guaranteed delivery, front LogWeave with a
+> buffering collector (e.g. Vector). See [Durability](docs/install.md#durability-beta-limitation).
+
 ## Documentation
 
 - [Self-Hosted Install Guide](docs/install.md) — 5-minute setup with Docker Compose

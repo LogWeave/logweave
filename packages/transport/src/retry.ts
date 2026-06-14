@@ -96,7 +96,9 @@ export async function retryFetch(
           await sleepFn(retrySeconds * 1000)
         } else {
           const delay = Math.random() * 1000 * 2 ** attempt
-          console.warn(`[LogWeave] rate limited (429), retrying with backoff ${Math.round(delay)}ms`)
+          console.warn(
+            `[LogWeave] rate limited (429), retrying with backoff ${Math.round(delay)}ms`,
+          )
           await sleepFn(delay)
         }
 
@@ -110,7 +112,22 @@ export async function retryFetch(
         return null
       }
 
-      // 5xx — server error, will retry on next loop iteration
+      // 5xx — server error. Honor Retry-After if present (the LogWeave API
+      // returns 503 + Retry-After when ClickHouse is unavailable) so we back off
+      // as instructed instead of hammering with short exponential delays.
+      // Without the header, fall through to exponential backoff next iteration.
+      if (response.status >= 500) {
+        const retryAfterHeader = response.headers.get('retry-after')
+        const retrySeconds = retryAfterHeader ? Math.min(Number(retryAfterHeader), 30) : 0
+        if (retrySeconds > 0) {
+          console.warn(
+            `[LogWeave] server unavailable (${response.status}), retrying after ${retrySeconds}s`,
+          )
+          await sleepFn(retrySeconds * 1000)
+          if (signal?.aborted) return null
+          continue
+        }
+      }
     } catch {
       // Network error or timeout — will retry on next loop iteration
       if (signal?.aborted) {

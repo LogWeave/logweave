@@ -245,6 +245,44 @@ describe('retryFetch', () => {
     assert.equal(result, null, 'should drop batch after exhausting retries')
   })
 
+  it('honors Retry-After on a 503 (ClickHouse outage)', async () => {
+    const mock = mockFetchSequence([
+      { status: 503, headers: { 'retry-after': '30' } },
+      { status: 200 },
+    ])
+    const delays: number[] = []
+    const trackingSleep = async (ms: number): Promise<void> => {
+      delays.push(ms)
+    }
+
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: trackingSleep },
+    )
+
+    assert.equal(mock.calls.length, 2, 'should retry once after 503')
+    assert.notEqual(result, null)
+    assert.equal(result!.status, 200)
+    assert.equal(delays[0], 30_000, 'should sleep for the server-advertised Retry-After')
+  })
+
+  it('falls back to exponential backoff on a 503 without Retry-After', async () => {
+    const mock = mockFetchSequence([{ status: 503 }, { status: 200 }])
+    const delays: number[] = []
+    const trackingSleep = async (ms: number): Promise<void> => {
+      delays.push(ms)
+    }
+
+    await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: trackingSleep },
+    )
+
+    assert.ok(delays[0]! >= 0 && delays[0]! <= 1000, `expected backoff 0-1000ms, got ${delays[0]}`)
+  })
+
   it('respects abort signal and stops retrying', async () => {
     const mock = mockFetch(500)
     const controller = new AbortController()
