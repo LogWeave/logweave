@@ -85,24 +85,27 @@ describe('GET /v1/tail/poll', () => {
     assert.ok(res.body.data.cursor > 0)
   })
 
-  it('returns disabled message when tail_mode=disabled', async () => {
-    const { app } = createTestApp({ tailMode: 'disabled' })
+  it('returns disabled message only when tail_mode is explicitly disabled', async () => {
+    const { app } = createTestApp({ tailMode: 'disabled', bufferEvents: 10 })
 
     const res = await request(app).get('/v1/tail/poll').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.data.events, [])
     assert.ok(res.body.meta.message)
-    assert.ok(res.body.meta.message.includes('not enabled'))
+    assert.ok(res.body.meta.message.includes('disabled'))
   })
 
-  it('returns disabled message when tail_mode not set', async () => {
-    const { app } = createTestApp()
+  it('defaults to metadata and returns events when tail_mode is not set', async () => {
+    // Fresh install: no tailMode set. The poll path must default to 'metadata'
+    // (matching local-bus + SSE) so the MCP live_tail tool works without setup.
+    const { app } = createTestApp({ bufferEvents: 10 })
 
     const res = await request(app).get('/v1/tail/poll').set('Authorization', `Bearer ${KEY_A}`)
 
     assert.equal(res.status, 200)
-    assert.ok(res.body.meta.message)
+    assert.ok(res.body.data.events.length > 0)
+    assert.equal(res.body.meta.message, undefined)
   })
 
   it('filters by service', async () => {

@@ -17,7 +17,7 @@ const keyMap = new Map([[API_KEY, TENANT_ID]])
 
 // Captures the filter options the route hands to the buffer so we can assert
 // min_anomaly is passed through uncapped.
-function createTestApp() {
+function createTestApp(settings: { tailMode?: string } = {}) {
   const logger = pino({ level: 'silent' })
   const recentCalls: Array<Record<string, unknown>> = []
 
@@ -34,7 +34,7 @@ function createTestApp() {
   } as unknown as TailBuffer
 
   const settingsStore = {
-    get: () => ({ tailMode: 'enabled' }),
+    get: () => settings,
   } as unknown as TenantSettingsStore
 
   const deps = {
@@ -74,5 +74,43 @@ describe('GET /v1/tail/poll min_anomaly filter', () => {
       .set('Authorization', `Bearer ${API_KEY}`)
 
     assert.equal(res.status, 400)
+  })
+})
+
+describe('GET /v1/tail/poll tail_mode default', () => {
+  // On a fresh install no tailMode is set. The poll path must default to
+  // 'metadata' (matching local-bus + the SSE path) so the MCP live_tail tool
+  // returns events without any "enable tail in settings" step.
+  it('queries the buffer when tailMode is unset (defaults to metadata)', async () => {
+    const { app, recentCalls } = createTestApp({})
+    const res = await request(app)
+      .get('/v1/tail/poll')
+      .set('Authorization', `Bearer ${API_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(recentCalls.length, 1)
+    // No "live tail is disabled" guidance on the fresh-install happy path.
+    assert.equal(res.body.meta?.message, undefined)
+  })
+
+  it('queries the buffer when tailMode is metadata', async () => {
+    const { app, recentCalls } = createTestApp({ tailMode: 'metadata' })
+    const res = await request(app)
+      .get('/v1/tail/poll')
+      .set('Authorization', `Bearer ${API_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(recentCalls.length, 1)
+  })
+
+  it('returns no events and does not query the buffer when tailMode is disabled', async () => {
+    const { app, recentCalls } = createTestApp({ tailMode: 'disabled' })
+    const res = await request(app)
+      .get('/v1/tail/poll')
+      .set('Authorization', `Bearer ${API_KEY}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(recentCalls.length, 0)
+    assert.deepEqual(res.body.data.events, [])
   })
 })
