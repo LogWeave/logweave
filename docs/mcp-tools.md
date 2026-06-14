@@ -453,7 +453,7 @@ Poll the live event buffer for real-time events.
 | `level` | string (optional) | all | Filter to exact log level (e.g. ERROR) |
 | `min_level` | string (optional) | all | Minimum severity threshold (e.g. WARN shows WARN+ERROR+FATAL) |
 | `template_id` | string (optional) | all | Filter to a specific template pattern |
-| `min_anomaly` | number (optional) | 0 | Minimum anomaly score (0-1) |
+| `min_anomaly` | number (optional) | 0 | Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound) |
 | `seconds` | number (optional) | 30 | How far back on first call (max 60) |
 | `limit` | number (optional) | 50 | Max events to return (max 200) |
 | `cursor` | number (optional) | -- | Sequence number from previous call (avoids duplicates) |

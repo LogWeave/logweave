@@ -787,7 +787,7 @@ Server-Sent Events (SSE) stream of live log events.
 | `level` | string | - | Filter by exact level |
 | `min_level` | string | - | Minimum severity level |
 | `template_id` | string | - | Filter by template ID |
-| `min_anomaly` | number | - | Minimum anomaly score (0-1) |
+| `min_anomaly` | number | - | Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound) |
 
 **SSE events**: Each `data:` line contains a `TailEvent` JSON object. Supports `Last-Event-ID` for reconnection replay.
 
@@ -812,7 +812,7 @@ Cursor-based polling alternative to SSE (for MCP tools).
 | `level` | string | - | Filter by exact level |
 | `min_level` | string | - | Minimum severity level |
 | `template_id` | string | - | Filter by template ID |
-| `min_anomaly` | number | - | Minimum anomaly score (0-1) |
+| `min_anomaly` | number | - | Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound) |
 
 **Response** (200):
 

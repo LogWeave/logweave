@@ -145,7 +145,10 @@ export function registerRaw(server: McpServer, client: LogWeaveClient): void {
         level: z.string().optional().describe('Filter to exact log level (e.g. ERROR)'),
         min_level: z.string().optional().describe('Minimum severity threshold (e.g. WARN shows WARN+ERROR+FATAL)'),
         template_id: z.string().optional().describe('Filter to a specific template pattern'),
-        min_anomaly: z.number().optional().describe('Minimum anomaly score (0-1)'),
+        min_anomaly: z
+          .number()
+          .optional()
+          .describe('Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound)'),
         seconds: z.number().optional().describe('How far back on first call (default: 30, max: 60)'),
         limit: z.number().optional().describe('Max events to return (default: 50, max: 200)'),
         cursor: z.number().optional().describe('Sequence number from previous call — get only new events'),
