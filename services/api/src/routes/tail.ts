@@ -120,7 +120,7 @@ export function tailRoutes(deps: TailDeps): Router {
         { events: [], cursor: 0 },
         {
           count: 0,
-          message: 'Live tail is disabled for this tenant. Set tailMode to "metadata" to enable it.',
+          message: 'Live tail is disabled for this tenant.',
         },
       )
       return
@@ -210,7 +210,7 @@ export function tailSseRoute(deps: TailDeps): Router {
         new AppError(
           HttpStatus.FORBIDDEN,
           'TAIL_DISABLED',
-          'Live tail is disabled for this tenant. Set tailMode to "metadata" to enable it.',
+          'Live tail is disabled for this tenant.',
         ),
       )
       return

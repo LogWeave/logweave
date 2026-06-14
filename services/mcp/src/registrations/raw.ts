@@ -138,8 +138,8 @@ export function registerRaw(server: McpServer, client: LogWeaveClient): void {
       description:
         'Poll the live event buffer to see what is happening right now. Returns recent events ' +
         'from the ingest pipeline. Use cursor from previous calls to get only new events (avoids duplicates). ' +
-        'Filter by service, level, template_id, or anomaly score. Requires tail to be enabled for the tenant. ' +
-        'Use this during incident investigation to watch patterns emerge in real-time.',
+        'Filter by service, level, template_id, or anomaly score. Live tail is enabled by default; ' +
+        'a tenant can disable it. Use this during incident investigation to watch patterns emerge in real-time.',
       inputSchema: {
         service: z.string().optional().describe('Filter to a specific service'),
         level: z.string().optional().describe('Filter to exact log level (e.g. ERROR)'),
