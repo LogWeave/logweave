@@ -449,6 +449,7 @@ Detect new, spiking, and resolved templates. Can anchor to a deploy marker.
 | `deployId` | string | - | Deploy marker ID; resolves to its timestamp |
 | `service` | string | - | Filter by service |
 | `threshold` | number | 3 | Spike ratio threshold (1-100) |
+| `minBaseline` | int | 10 | Min previous-window count for a template to qualify as a spike (0-10000) |
 | `limit` | int | 20 | Max results per category (1-100) |
 | `level` | string | - | Comma-separated level filter |
 
