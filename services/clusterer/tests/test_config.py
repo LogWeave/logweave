@@ -15,6 +15,7 @@ def test_settings_defaults():
     assert s.request_timeout_seconds == 0.45
     assert s.max_tenants == 200
     assert s.checkpoint_hmac_key.get_secret_value() == ""
+    assert s.internal_secret.get_secret_value() == ""
 
 
 def test_settings_from_env(monkeypatch):

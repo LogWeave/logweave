@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import hmac
 import logging
 import re
 import time
@@ -122,6 +123,15 @@ async def lifespan(app: FastAPI):
             "verification is disabled. Set this in production."
         )
 
+    app.state.internal_secret = settings.internal_secret.get_secret_value()
+    if not app.state.internal_secret:
+        logger.warning(
+            "LOGWEAVE_INTERNAL_SECRET is not set — the destructive endpoints "
+            "/cluster/reset and /embed/backfill are unauthenticated and rely "
+            "solely on network isolation. Set it (and the API's matching value) "
+            "in production."
+        )
+
     pipeline = ClusterPipeline(
         drain_service=drain_service,
         registry=registry,
@@ -215,6 +225,21 @@ class ExceptionHandlerMiddleware(BaseHTTPMiddleware):
 app = FastAPI(title="LogWeave Clusterer", version="0.1.0", lifespan=lifespan)
 app.add_middleware(ExceptionHandlerMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+
+
+def _require_internal_secret(request: Request) -> None:
+    """Enforce the API->clusterer shared secret on destructive endpoints.
+
+    No-op when no secret is configured (dev / network-isolated deploys); a
+    startup warning is emitted in that case. When configured, requires a
+    matching X-Internal-Secret header (constant-time compare).
+    """
+    expected: str = getattr(request.app.state, "internal_secret", "")
+    if not expected:
+        return
+    provided = request.headers.get("x-internal-secret", "")
+    if not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @app.get("/health")
@@ -321,7 +346,8 @@ async def cluster_preview(request: PreviewRequest) -> PreviewResponse:
 
 
 @app.post("/cluster/reset", response_model=ResetResponse)
-async def cluster_reset(request: ResetRequest) -> ResetResponse:
+async def cluster_reset(request: ResetRequest, http_request: Request) -> ResetResponse:
+    _require_internal_secret(http_request)
     pipeline: ClusterPipeline = app.state.pipeline
     semaphore: asyncio.Semaphore = app.state.semaphore
 
@@ -381,8 +407,11 @@ async def embed(request: EmbedRequest) -> EmbedResponse:
 async def embed_backfill(request: Request) -> dict[str, str]:
     """Backfill embeddings for templates with empty vectors. Non-blocking.
 
-    Internal endpoint — only accessible from within the Docker network.
+    Internal, expensive endpoint. Requires a matching X-Internal-Secret header
+    when LOGWEAVE_INTERNAL_SECRET is configured; otherwise relies on network
+    isolation (a startup warning is emitted).
     """
+    _require_internal_secret(request)
     if app.state.backfill_running:
         return {"status": "already_running"}
 

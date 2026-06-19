@@ -455,6 +455,68 @@ describe('ClusterClient', () => {
 })
 
 // ---------------------------------------------------------------------------
+// resetTenant() tests
+// ---------------------------------------------------------------------------
+
+/** Mock fetch that captures the RequestInit it was called with. */
+function capturingFetch(status: number, body: unknown) {
+  const captured: { init?: RequestInit } = {}
+  const fetchFn: typeof globalThis.fetch = async (
+    _url: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    captured.init = init
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  return { fetchFn, captured }
+}
+
+function headerValue(init: RequestInit | undefined, name: string): string | undefined {
+  const headers = (init?.headers ?? {}) as Record<string, string>
+  return headers[name]
+}
+
+describe('ClusterClient.resetTenant()', () => {
+  it('omits X-Internal-Secret when no secret is configured', async () => {
+    const { logger } = createTestLogger()
+    const { fetchFn, captured } = capturingFetch(200, { cleared: true })
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, fetchFn)
+
+    const cleared = await client.resetTenant('tenant-a')
+
+    assert.equal(cleared, true)
+    assert.equal(headerValue(captured.init, 'X-Internal-Secret'), undefined)
+  })
+
+  it('sends X-Internal-Secret when a secret is configured', async () => {
+    const { logger } = createTestLogger()
+    const { fetchFn, captured } = capturingFetch(200, { cleared: true })
+    const client = new ClusterClient(
+      CLUSTERER_URL,
+      TIMEOUT_MS,
+      logger,
+      fetchFn,
+      undefined,
+      's3cr3t',
+    )
+
+    await client.resetTenant('tenant-a')
+
+    assert.equal(headerValue(captured.init, 'X-Internal-Secret'), 's3cr3t')
+  })
+
+  it('returns false on non-OK response', async () => {
+    const { logger } = createTestLogger()
+    const client = new ClusterClient(CLUSTERER_URL, TIMEOUT_MS, logger, mockFetch(401, {}))
+
+    assert.equal(await client.resetTenant('tenant-a'), false)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // embed() tests
 // ---------------------------------------------------------------------------
 

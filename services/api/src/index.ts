@@ -61,7 +61,14 @@ const db = new DbClient(clickhouse)
 const internalEvents = initInternalEvents({ service: 'api', db })
 internalEvents.emitConfigLoaded(config)
 const clustererHealth = new ClustererHealthChecker(config.clustererUrl, config.clustererTimeoutMs)
-const clusterClient = new ClusterClient(config.clustererUrl, config.clustererTimeoutMs, logger)
+const clusterClient = new ClusterClient(
+  config.clustererUrl,
+  config.clustererTimeoutMs,
+  logger,
+  undefined,
+  undefined,
+  config.clustererInternalSecret,
+)
 const anomalyScorer = new AnomalyScorer({ db, logger })
 const watchStore = new WatchStore({ db, logger })
 const settingsStore = new TenantSettingsStore({ db, logger })

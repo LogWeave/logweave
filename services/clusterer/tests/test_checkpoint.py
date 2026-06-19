@@ -7,7 +7,10 @@ from clusterer.checkpoint import CheckpointManager
 
 @pytest.fixture
 def mgr(tmp_path: Path) -> CheckpointManager:
-    return CheckpointManager(str(tmp_path))
+    # Keyed by default: loading checkpoints requires an HMAC key (fail-closed),
+    # so the supported configuration is keyed. Tests that exercise the keyless
+    # path construct a keyless manager inline.
+    return CheckpointManager(str(tmp_path), hmac_key="default-fixture-key")
 
 
 class TestSaveAndLoad:
@@ -56,6 +59,25 @@ class TestLoadAll:
         assert mgr.load_all() == {}
 
 
+class TestListTenants:
+    def test_oldest_first_by_mtime(self, mgr: CheckpointManager, tmp_path: Path) -> None:
+        import os
+
+        for name, mtime in (("newest", 3000), ("oldest", 1000), ("middle", 2000)):
+            mgr.save(name, b"data")
+            path = tmp_path / f"{name}.drain3"
+            os.utime(path, (mtime, mtime))
+        assert mgr.list_tenants() == ["oldest", "middle", "newest"]
+
+    def test_skips_invalid_tenant_names(self, mgr: CheckpointManager, tmp_path: Path) -> None:
+        mgr.save("valid", b"data")
+        (tmp_path / "not a tenant.drain3").write_bytes(b"data")
+        assert mgr.list_tenants() == ["valid"]
+
+    def test_empty_dir(self, mgr: CheckpointManager) -> None:
+        assert mgr.list_tenants() == []
+
+
 class TestCleanupStaleTmp:
     def test_removes_all_tmp_files(self, mgr: CheckpointManager, tmp_path: Path) -> None:
         # Stale .tmp with a .drain3 present
@@ -99,19 +121,23 @@ class TestHmac:
         path.write_bytes(b"short")
         assert hmac_mgr.load("tenant_a") is None
 
-    def test_no_hmac_key_backward_compat(self, mgr: CheckpointManager) -> None:
-        """Without hmac_key, save/load works as before (no HMAC appended)."""
-        data = b"plain_state"
-        mgr.save("tenant_a", data)
-        loaded = mgr.load("tenant_a")
-        assert loaded == data
+    def test_no_hmac_key_refuses_load(self, tmp_path: Path) -> None:
+        """Fail-closed: without hmac_key, save still writes but load refuses.
 
-    def test_hmac_file_larger_than_plain(
-        self, hmac_mgr: CheckpointManager, mgr: CheckpointManager, tmp_path: Path
-    ) -> None:
+        The bytes feed jsonpickle deserialization (RCE-capable), so an
+        unverifiable checkpoint must never be returned — the tenant starts fresh.
+        """
+        keyless = CheckpointManager(str(tmp_path))
+        data = b"plain_state"
+        keyless.save("tenant_a", data)
+        assert (tmp_path / "tenant_a.drain3").exists()
+        assert keyless.load("tenant_a") is None
+
+    def test_hmac_file_larger_than_plain(self, hmac_mgr: CheckpointManager, tmp_path: Path) -> None:
         """HMAC-protected file should be 32 bytes larger."""
+        keyless = CheckpointManager(str(tmp_path))
         data = b"test_state"
-        mgr.save("plain", data)
+        keyless.save("plain", data)
         hmac_mgr.save("hmac", data)
         plain_size = (tmp_path / "plain.drain3").stat().st_size
         hmac_size = (tmp_path / "hmac.drain3").stat().st_size

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = Field(default=0.45, gt=0.0)
     max_tenants: int = Field(default=200, ge=1)
     checkpoint_hmac_key: SecretStr = SecretStr("")
+    # Shared secret for the API->clusterer trust boundary. When set, the
+    # destructive/expensive endpoints (/cluster/reset, /embed/backfill) require a
+    # matching X-Internal-Secret header. Empty => endpoints are unauthenticated
+    # (relies on network isolation; a startup warning is emitted).
+    internal_secret: SecretStr = SecretStr("")
 
 
 @lru_cache

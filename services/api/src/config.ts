@@ -73,15 +73,15 @@ export function parseTrustProxy(value: string | undefined): boolean | number | s
 
 const configSchema = z.object({
   port: z.coerce.number().int().min(1).max(65535).default(3000),
-  trustProxy: z
-    .string()
-    .optional()
-    .transform(parseTrustProxy),
+  trustProxy: z.string().optional().transform(parseTrustProxy),
   clickhouseUrl: z.string().min(1),
   clickhouseUser: z.string().optional(),
   clickhousePassword: z.string().optional(),
   clustererUrl: z.string().min(1),
   clustererTimeoutMs: z.coerce.number().int().min(50).max(30_000).default(500),
+  // Shared secret forwarded to the clusterer on destructive endpoints
+  // (X-Internal-Secret). Must match LOGWEAVE_INTERNAL_SECRET on the clusterer.
+  clustererInternalSecret: z.string().optional(),
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   shutdownTimeoutMs: z.coerce.number().int().min(1000).max(30_000).default(10_000),
   recoveryEnabled: z
@@ -124,6 +124,7 @@ export function loadConfig(): Config {
     clickhousePassword: process.env.LOGWEAVE_CLICKHOUSE_PASSWORD || undefined,
     clustererUrl: process.env.LOGWEAVE_CLUSTERER_URL,
     clustererTimeoutMs: process.env.LOGWEAVE_CLUSTERER_TIMEOUT_MS,
+    clustererInternalSecret: process.env.LOGWEAVE_INTERNAL_SECRET || undefined,
     logLevel: process.env.LOGWEAVE_LOG_LEVEL,
     shutdownTimeoutMs: process.env.LOGWEAVE_SHUTDOWN_TIMEOUT_MS,
     recoveryEnabled: process.env.LOGWEAVE_RECOVERY_ENABLED,

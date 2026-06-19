@@ -54,35 +54,49 @@ class CheckpointManager:
     def load(self, tenant_id: str) -> bytes | None:
         """Load checkpoint for tenant. Returns None if missing or corrupt.
 
-        If hmac_key is set, verifies HMAC before returning data.
+        Fail-closed: when no hmac_key is configured we refuse to return
+        checkpoint bytes at all. The caller deserializes these via jsonpickle
+        (arbitrary-code-execution on load), so an unverified checkpoint must
+        never reach that path. A keyless deployment therefore starts fresh
+        rather than trusting on-disk state.
+
+        When hmac_key is set, verifies the HMAC before returning data.
         """
         path = self._dir / f"{tenant_id}{_EXTENSION}"
         if not path.exists():
             return None
+
+        if not self._hmac_key:
+            logger.error(
+                "Refusing to load checkpoint for tenant %s: "
+                "LOGWEAVE_CHECKPOINT_HMAC_KEY is not set, so checkpoint integrity "
+                "cannot be verified before jsonpickle deserialization. Starting fresh. "
+                "Set the key to enable checkpoint restore.",
+                tenant_id,
+            )
+            return None
+
         data = path.read_bytes()
         if not data:
             logger.warning("Corrupt checkpoint for tenant %s (empty file), skipping", tenant_id)
             return None
 
-        if self._hmac_key:
-            if len(data) < _HMAC_SIZE:
-                logger.warning(
-                    "Checkpoint for tenant %s too short for HMAC verification, skipping",
-                    tenant_id,
-                )
-                return None
-            state = data[:-_HMAC_SIZE]
-            stored_hmac = data[-_HMAC_SIZE:]
-            expected_hmac = self._compute_hmac(state)
-            if not hmac.compare_digest(stored_hmac, expected_hmac):
-                logger.warning(
-                    "HMAC verification failed for tenant %s checkpoint, skipping",
-                    tenant_id,
-                )
-                return None
-            return state
-
-        return data
+        if len(data) < _HMAC_SIZE:
+            logger.warning(
+                "Checkpoint for tenant %s too short for HMAC verification, skipping",
+                tenant_id,
+            )
+            return None
+        state = data[:-_HMAC_SIZE]
+        stored_hmac = data[-_HMAC_SIZE:]
+        expected_hmac = self._compute_hmac(state)
+        if not hmac.compare_digest(stored_hmac, expected_hmac):
+            logger.warning(
+                "HMAC verification failed for tenant %s checkpoint, skipping",
+                tenant_id,
+            )
+            return None
+        return state
 
     def load_all(self) -> dict[str, bytes]:
         """Load all tenant checkpoints. Skips corrupt files with a warning."""
@@ -103,6 +117,26 @@ class CheckpointManager:
                     exc_info=True,
                 )
         return result
+
+    def list_tenants(self) -> list[str]:
+        """Return tenant_ids with a valid checkpoint file, oldest-first by mtime.
+
+        Used by capped restore so the memory ceiling holds across restarts:
+        the caller restores only the first ``max_tenants`` and skips the rest.
+        """
+        entries: list[tuple[float, str]] = []
+        for path in self._dir.glob(f"*{_EXTENSION}"):
+            tenant_id = path.name.removesuffix(_EXTENSION)
+            if not TENANT_ID_PATTERN.match(tenant_id):
+                logger.warning("Skipping checkpoint with invalid tenant_id: %s", path.name)
+                continue
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            entries.append((mtime, tenant_id))
+        entries.sort()
+        return [tenant_id for _, tenant_id in entries]
 
     def delete(self, tenant_id: str) -> bool:
         """Delete checkpoint for a tenant. Returns True if file existed."""
