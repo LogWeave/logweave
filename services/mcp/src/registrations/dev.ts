@@ -24,7 +24,9 @@ export async function registerDev(server: McpServer, config: DevToolsConfig): Pr
     tenantCount = await countDistinctTenants(config)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    process.stderr.write(`Dev tools: could not verify tenant count, refusing to register (${msg})\n`)
+    process.stderr.write(
+      `Dev tools: could not verify tenant count, refusing to register (${msg})\n`,
+    )
     return false
   }
   if (tenantCount > 1) {

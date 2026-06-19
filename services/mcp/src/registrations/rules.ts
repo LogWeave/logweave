@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
-import { type ApiResponse, READ_ONLY, WRITE_OP, toolHandler } from '../shared/handler.js'
+import { type ApiResponse, READ_ONLY, toolHandler, WRITE_OP } from '../shared/handler.js'
 
 async function listRules(client: LogWeaveClient): Promise<string> {
   const res = (await client.get('/rules')) as ApiResponse
@@ -54,8 +54,10 @@ async function createRule(
   },
 ): Promise<string> {
   if (args.rule_type === 'template_watch') {
-    if (!args.template_id) return 'Error: template_id is required for template_watch rules. Get the ID from error_patterns or search_templates.'
-    if (!args.template_text) return 'Error: template_text is required for template_watch rules. Copy it from the pattern listing in error_patterns or search_templates.'
+    if (!args.template_id)
+      return 'Error: template_id is required for template_watch rules. Get the ID from error_patterns or search_templates.'
+    if (!args.template_text)
+      return 'Error: template_text is required for template_watch rules. Copy it from the pattern listing in error_patterns or search_templates.'
 
     const body = {
       name: args.name,
@@ -146,7 +148,8 @@ async function listAlerts(
 
     if (a.ruleType === 'threshold' || a.ruleType === 'threshold_breach') {
       text += `- Value: ${a.metricValue} (threshold: ${a.thresholdValue})\n`
-      if (details.metric) text += `- Metric: ${details.metric} ${details.operator} ${a.thresholdValue} (${details.windowMinutes}min)\n`
+      if (details.metric)
+        text += `- Metric: ${details.metric} ${details.operator} ${a.thresholdValue} (${details.windowMinutes}min)\n`
     } else {
       text += `- Anomaly score: ${a.metricValue}\n`
     }
@@ -188,24 +191,44 @@ export function registerRules(server: McpServer, client: LogWeaveClient): void {
         name: z.string().describe('Human-readable rule name'),
         rule_type: z
           .enum(['threshold', 'template_watch'])
-          .describe('Rule type: "threshold" for metric-based alerts, "template_watch" to alert on a specific log pattern'),
+          .describe(
+            'Rule type: "threshold" for metric-based alerts, "template_watch" to alert on a specific log pattern',
+          ),
         // threshold fields
         metric: z
           .enum(['error_count', 'warn_count', 'log_count'])
           .optional()
           .describe('(threshold only) Metric to monitor'),
         service: z.string().optional().describe('(threshold only) Service name to monitor'),
-        operator: z.enum(['>', '>=', '<', '<=']).optional().describe('(threshold only) Comparison operator'),
+        operator: z
+          .enum(['>', '>=', '<', '<='])
+          .optional()
+          .describe('(threshold only) Comparison operator'),
         value: z.number().optional().describe('(threshold only) Threshold value'),
-        window_minutes: z.number().optional().describe('(threshold only) Evaluation window in minutes (1-60)'),
+        window_minutes: z
+          .number()
+          .optional()
+          .describe('(threshold only) Evaluation window in minutes (1-60)'),
         // template_watch fields
-        template_id: z.string().optional().describe('(template_watch only) Template ID to watch — get this from error_patterns or search_templates'),
-        template_text: z.string().optional().describe('(template_watch only, required) Template text for display — copy from the pattern listing. The API rejects template_watch rules without it.'),
+        template_id: z
+          .string()
+          .optional()
+          .describe(
+            '(template_watch only) Template ID to watch — get this from error_patterns or search_templates',
+          ),
+        template_text: z
+          .string()
+          .optional()
+          .describe(
+            '(template_watch only, required) Template text for display — copy from the pattern listing. The API rejects template_watch rules without it.',
+          ),
         // shared
         channels: z
           .array(z.string())
           .optional()
-          .describe('Webhook URLs or PagerDuty routing keys for notifications (empty = tenant default)'),
+          .describe(
+            'Webhook URLs or PagerDuty routing keys for notifications (empty = tenant default)',
+          ),
       },
       annotations: WRITE_OP,
     },

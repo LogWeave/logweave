@@ -1,8 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
-import { type ApiResponse, READ_ONLY, formatMeta, toolHandler } from '../shared/handler.js'
-import { buildSystemNotes, formatSystemStateBlock, getAnomalyState } from '../shared/system-state.js'
+import { type ApiResponse, formatMeta, READ_ONLY, toolHandler } from '../shared/handler.js'
+import {
+  buildSystemNotes,
+  formatSystemStateBlock,
+  getAnomalyState,
+} from '../shared/system-state.js'
 
 async function changes(
   client: LogWeaveClient,
@@ -112,12 +116,19 @@ async function diagnoseService(
 
   const health = healthRes.data as Record<string, unknown>
   const outlier = outlierRes.data as Record<string, unknown>
-  const changes = changesRes.data as { new?: Array<Record<string, unknown>>; spike?: Array<Record<string, unknown>>; resolved?: Array<Record<string, unknown>> }
+  const changes = changesRes.data as {
+    new?: Array<Record<string, unknown>>
+    spike?: Array<Record<string, unknown>>
+    resolved?: Array<Record<string, unknown>>
+  }
 
   let text = `## Diagnostic: ${args.service}\n\n`
 
   // Outlier status
-  const diagnoseVerdict = outlier.verdict === 'insufficient_data' ? 'INSUFFICIENT DATA (baseline building)' : (outlier.verdict as string).toUpperCase()
+  const diagnoseVerdict =
+    outlier.verdict === 'insufficient_data'
+      ? 'INSUFFICIENT DATA (baseline building)'
+      : (outlier.verdict as string).toUpperCase()
   text += `### Status: ${diagnoseVerdict}`
   if (outlier.zScore != null) {
     text += ` (z-score: ${(outlier.zScore as number).toFixed(1)})`
@@ -175,11 +186,12 @@ async function diagnoseService(
   // explicitly says "we cannot tell yet" so the LLM relays the right thing
   // to the user.
   const diagnoseAnomalyState = await getAnomalyState(client)
-  const diagnoseChangesMeta = (changesRes.meta as {
-    baselineStatus?: 'empty' | 'sparse' | 'ok'
-    previousWindowEvents?: number
-    tenantFirstSeenAt?: string | null
-  }) ?? {}
+  const diagnoseChangesMeta =
+    (changesRes.meta as {
+      baselineStatus?: 'empty' | 'sparse' | 'ok'
+      previousWindowEvents?: number
+      tenantFirstSeenAt?: string | null
+    }) ?? {}
   text += formatSystemStateBlock(buildSystemNotes(diagnoseAnomalyState, diagnoseChangesMeta))
 
   return text
@@ -196,15 +208,27 @@ export function registerChanges(server: McpServer, client: LogWeaveClient): void
         'Use this after deploys or to understand what is different from normal. ' +
         'Do not use for listing all errors — use error_patterns instead.',
       inputSchema: {
-        hours: z.number().optional().describe('Time window in hours (default: 24). Ignored if since or deploy_id is set.'),
+        hours: z
+          .number()
+          .optional()
+          .describe('Time window in hours (default: 24). Ignored if since or deploy_id is set.'),
         service: z.string().optional().describe('Filter to a specific service name'),
-        since: z.string().optional().describe('ISO8601 timestamp to anchor comparison (e.g. deploy time)'),
-        deploy_id: z.string().optional().describe('Deploy ID from logweave_deploys to anchor comparison'),
+        since: z
+          .string()
+          .optional()
+          .describe('ISO8601 timestamp to anchor comparison (e.g. deploy time)'),
+        deploy_id: z
+          .string()
+          .optional()
+          .describe('Deploy ID from logweave_deploys to anchor comparison'),
       },
       annotations: READ_ONLY,
     },
     toolHandler((args) =>
-      changes(client, args as { hours?: number; service?: string; since?: string; deploy_id?: string }),
+      changes(
+        client,
+        args as { hours?: number; service?: string; since?: string; deploy_id?: string },
+      ),
     ),
   )
 
@@ -221,9 +245,7 @@ export function registerChanges(server: McpServer, client: LogWeaveClient): void
       },
       annotations: READ_ONLY,
     },
-    toolHandler((args) =>
-      deploys(client, args as { service?: string; limit?: number }),
-    ),
+    toolHandler((args) => deploys(client, args as { service?: string; limit?: number })),
   )
 
   server.registerTool(
@@ -240,8 +262,6 @@ export function registerChanges(server: McpServer, client: LogWeaveClient): void
       },
       annotations: READ_ONLY,
     },
-    toolHandler((args) =>
-      diagnoseService(client, args as { service: string; hours?: number }),
-    ),
+    toolHandler((args) => diagnoseService(client, args as { service: string; hours?: number })),
   )
 }

@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
-import { type ApiResponse, READ_ONLY, formatMeta, toolHandler } from '../shared/handler.js'
+import { type ApiResponse, formatMeta, READ_ONLY, toolHandler } from '../shared/handler.js'
 
 async function traceDetails(
   client: LogWeaveClient,
@@ -105,9 +105,14 @@ async function serviceOutlier(
 
   const d = res.data as Record<string, unknown>
 
-  const verdictLabel = d.verdict === 'outlier' ? '**OUTLIER**' :
-    d.verdict === 'elevated' ? '**ELEVATED**' :
-    d.verdict === 'insufficient_data' ? '**INSUFFICIENT DATA**' : 'Normal'
+  const verdictLabel =
+    d.verdict === 'outlier'
+      ? '**OUTLIER**'
+      : d.verdict === 'elevated'
+        ? '**ELEVATED**'
+        : d.verdict === 'insufficient_data'
+          ? '**INSUFFICIENT DATA**'
+          : 'Normal'
 
   let text = `## Service Outlier: ${d.service}\n\n`
   text += `- Verdict: ${verdictLabel}\n`
@@ -145,9 +150,7 @@ export function registerCorrelations(server: McpServer, client: LogWeaveClient):
       },
       annotations: READ_ONLY,
     },
-    toolHandler((args) =>
-      traceDetails(client, args as { trace_id: string; hours?: number }),
-    ),
+    toolHandler((args) => traceDetails(client, args as { trace_id: string; hours?: number })),
   )
 
   server.registerTool(
@@ -200,12 +203,13 @@ export function registerCorrelations(server: McpServer, client: LogWeaveClient):
         'Use this to quickly check if a service is misbehaving. Use service_health for deeper investigation.',
       inputSchema: {
         service: z.string().describe('Service name to check'),
-        hours: z.number().optional().describe('Current window in hours for comparison (default: 1, max: 168)'),
+        hours: z
+          .number()
+          .optional()
+          .describe('Current window in hours for comparison (default: 1, max: 168)'),
       },
       annotations: READ_ONLY,
     },
-    toolHandler((args) =>
-      serviceOutlier(client, args as { service: string; hours?: number }),
-    ),
+    toolHandler((args) => serviceOutlier(client, args as { service: string; hours?: number })),
   )
 }

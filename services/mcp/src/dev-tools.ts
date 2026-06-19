@@ -88,10 +88,7 @@ async function checkService(name: string, url: string): Promise<string> {
 // dev_query — run a read-only SELECT against ClickHouse
 // ---------------------------------------------------------------------------
 
-export async function devQuery(
-  config: DevToolsConfig,
-  args: { sql: string },
-): Promise<string> {
+export async function devQuery(config: DevToolsConfig, args: { sql: string }): Promise<string> {
   const sql = args.sql.trim()
 
   // Safety: only allow SELECT and SHOW/DESCRIBE/EXPLAIN
@@ -231,7 +228,7 @@ FROM logweave.deploys
     // Also get level distribution
     const levelRes = await globalThis.fetch(config.clickhouseUrl, {
       method: 'POST',
-      body: "SELECT level, count() AS cnt FROM logweave.log_metadata GROUP BY level ORDER BY cnt DESC\nFORMAT TabSeparatedWithNames",
+      body: 'SELECT level, count() AS cnt FROM logweave.log_metadata GROUP BY level ORDER BY cnt DESC\nFORMAT TabSeparatedWithNames',
       signal: AbortSignal.timeout(CH_TIMEOUT_MS),
     })
 

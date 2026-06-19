@@ -46,9 +46,35 @@ export function scenario1_incident(): RawEvent[] {
     for (let i = 0; i < 3; i++) {
       const traceId = randomTraceId()
       events.push(
-        { message: `Processing payment for order ${1000 + i}`, level: 'INFO', service: 'payments', timestamp: minutesAgo(m), trace_id: traceId, status_code: 200, duration_ms: 50 + Math.random() * 100, route: '/api/v1/charge' },
-        { message: `Token validated for user ${100 + i}`, level: 'INFO', service: 'auth', timestamp: minutesAgo(m), trace_id: traceId, status_code: 200, duration_ms: 10 + Math.random() * 20 },
-        { message: `Forwarded request to payments`, level: 'INFO', service: 'gateway', timestamp: minutesAgo(m), trace_id: traceId, status_code: 200, duration_ms: 60 + Math.random() * 120, route: '/checkout' },
+        {
+          message: `Processing payment for order ${1000 + i}`,
+          level: 'INFO',
+          service: 'payments',
+          timestamp: minutesAgo(m),
+          trace_id: traceId,
+          status_code: 200,
+          duration_ms: 50 + Math.random() * 100,
+          route: '/api/v1/charge',
+        },
+        {
+          message: `Token validated for user ${100 + i}`,
+          level: 'INFO',
+          service: 'auth',
+          timestamp: minutesAgo(m),
+          trace_id: traceId,
+          status_code: 200,
+          duration_ms: 10 + Math.random() * 20,
+        },
+        {
+          message: `Forwarded request to payments`,
+          level: 'INFO',
+          service: 'gateway',
+          timestamp: minutesAgo(m),
+          trace_id: traceId,
+          status_code: 200,
+          duration_ms: 60 + Math.random() * 120,
+          route: '/checkout',
+        },
       )
     }
   }
@@ -59,15 +85,51 @@ export function scenario1_incident(): RawEvent[] {
       // Use shared trace IDs so related_patterns can find the cascade
       const traceId = CASCADE_TRACE_IDS[i % CASCADE_TRACE_IDS.length]
       events.push(
-        { message: `Connection to ${randomIp()} timed out after ${3000 + Math.random() * 2000}ms`, level: 'ERROR', service: 'payments', timestamp: minutesAgo(m), trace_id: traceId, status_code: 504, duration_ms: 5000, route: '/api/v1/charge' },
-        { message: `Token validation failed for downstream service`, level: 'ERROR', service: 'auth', timestamp: minutesAgo(m), trace_id: traceId, status_code: 503 },
-        { message: `Upstream payments returned 503`, level: 'ERROR', service: 'gateway', timestamp: minutesAgo(m), trace_id: traceId, status_code: 503, route: '/checkout' },
+        {
+          message: `Connection to ${randomIp()} timed out after ${3000 + Math.random() * 2000}ms`,
+          level: 'ERROR',
+          service: 'payments',
+          timestamp: minutesAgo(m),
+          trace_id: traceId,
+          status_code: 504,
+          duration_ms: 5000,
+          route: '/api/v1/charge',
+        },
+        {
+          message: `Token validation failed for downstream service`,
+          level: 'ERROR',
+          service: 'auth',
+          timestamp: minutesAgo(m),
+          trace_id: traceId,
+          status_code: 503,
+        },
+        {
+          message: `Upstream payments returned 503`,
+          level: 'ERROR',
+          service: 'gateway',
+          timestamp: minutesAgo(m),
+          trace_id: traceId,
+          status_code: 503,
+          route: '/checkout',
+        },
       )
     }
     // Some normal traffic mixed in
     events.push(
-      { message: `Health check passed`, level: 'INFO', service: 'payments', timestamp: minutesAgo(m), status_code: 200 },
-      { message: `Health check passed`, level: 'INFO', service: 'auth', timestamp: minutesAgo(m), status_code: 200 },
+      {
+        message: `Health check passed`,
+        level: 'INFO',
+        service: 'payments',
+        timestamp: minutesAgo(m),
+        status_code: 200,
+      },
+      {
+        message: `Health check passed`,
+        level: 'INFO',
+        service: 'auth',
+        timestamp: minutesAgo(m),
+        status_code: 200,
+      },
     )
   }
 
@@ -75,8 +137,22 @@ export function scenario1_incident(): RawEvent[] {
   for (let m = 5; m > 0; m--) {
     for (let i = 0; i < 3; i++) {
       events.push(
-        { message: `Processing payment for order ${2000 + i}`, level: 'INFO', service: 'payments', timestamp: minutesAgo(m), status_code: 200, duration_ms: 50 + Math.random() * 100, route: '/api/v1/charge' },
-        { message: `Token validated for user ${200 + i}`, level: 'INFO', service: 'auth', timestamp: minutesAgo(m), status_code: 200 },
+        {
+          message: `Processing payment for order ${2000 + i}`,
+          level: 'INFO',
+          service: 'payments',
+          timestamp: minutesAgo(m),
+          status_code: 200,
+          duration_ms: 50 + Math.random() * 100,
+          route: '/api/v1/charge',
+        },
+        {
+          message: `Token validated for user ${200 + i}`,
+          level: 'INFO',
+          service: 'auth',
+          timestamp: minutesAgo(m),
+          status_code: 200,
+        },
       )
     }
   }
@@ -235,7 +311,10 @@ export async function waitForMV(ms = 3000): Promise<void> {
 }
 
 /** Call an API endpoint and return parsed JSON. */
-export async function apiGet(path: string, params?: Record<string, string | number>): Promise<unknown> {
+export async function apiGet(
+  path: string,
+  params?: Record<string, string | number>,
+): Promise<unknown> {
   const url = new URL(`${API_URL}/v1${path}`)
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -252,7 +331,10 @@ export async function apiGet(path: string, params?: Record<string, string | numb
   return res.json()
 }
 
-export async function apiGetRaw(path: string, params?: Record<string, string | number>): Promise<Response> {
+export async function apiGetRaw(
+  path: string,
+  params?: Record<string, string | number>,
+): Promise<Response> {
   const url = new URL(`${API_URL}/v1${path}`)
   if (params) {
     for (const [k, v] of Object.entries(params)) {

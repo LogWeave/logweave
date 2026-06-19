@@ -1,28 +1,23 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
-import { type ApiResponse, READ_ONLY, formatMeta, toolHandler } from '../shared/handler.js'
+import { type ApiResponse, formatMeta, READ_ONLY, toolHandler } from '../shared/handler.js'
 
 async function rawLogs(
   client: LogWeaveClient,
   args: { template_id: string; service: string; hours?: number; limit?: number },
 ): Promise<string> {
-  const res = (await client.get(
-    `/templates/${encodeURIComponent(args.template_id)}/raw-logs`,
-    {
-      service: args.service,
-      hours: args.hours,
-      limit: args.limit,
-    },
-  )) as ApiResponse
+  const res = (await client.get(`/templates/${encodeURIComponent(args.template_id)}/raw-logs`, {
+    service: args.service,
+    hours: args.hours,
+    limit: args.limit,
+  })) as ApiResponse
 
   const d = res.data as Record<string, unknown>
   const lines = (d.lines as Array<Record<string, unknown>>) ?? []
 
   if (lines.length === 0) {
-    const msg = res.meta.message
-      ? String(res.meta.message)
-      : 'No matching raw log lines found.'
+    const msg = res.meta.message ? String(res.meta.message) : 'No matching raw log lines found.'
     return `${msg}${formatMeta(res.meta)}`
   }
 
@@ -120,14 +115,19 @@ export function registerRaw(server: McpServer, client: LogWeaveClient): void {
         'Always specify both template_id (from error_patterns, changes, or search_templates) and service.',
       inputSchema: {
         template_id: z.string().describe('Template ID to match against raw logs'),
-        service: z.string().describe('Service name — required to locate the correct log source path'),
+        service: z
+          .string()
+          .describe('Service name — required to locate the correct log source path'),
         hours: z.number().optional().describe('Time window in hours (default: 1, max: 24)'),
         limit: z.number().optional().describe('Max lines to return (default: 20, max: 100)'),
       },
       annotations: READ_ONLY,
     },
     toolHandler((args) =>
-      rawLogs(client, args as { template_id: string; service: string; hours?: number; limit?: number }),
+      rawLogs(
+        client,
+        args as { template_id: string; service: string; hours?: number; limit?: number },
+      ),
     ),
   )
 
@@ -143,23 +143,41 @@ export function registerRaw(server: McpServer, client: LogWeaveClient): void {
       inputSchema: {
         service: z.string().optional().describe('Filter to a specific service'),
         level: z.string().optional().describe('Filter to exact log level (e.g. ERROR)'),
-        min_level: z.string().optional().describe('Minimum severity threshold (e.g. WARN shows WARN+ERROR+FATAL)'),
+        min_level: z
+          .string()
+          .optional()
+          .describe('Minimum severity threshold (e.g. WARN shows WARN+ERROR+FATAL)'),
         template_id: z.string().optional().describe('Filter to a specific template pattern'),
         min_anomaly: z
           .number()
           .optional()
           .describe('Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound)'),
-        seconds: z.number().optional().describe('How far back on first call (default: 30, max: 60)'),
+        seconds: z
+          .number()
+          .optional()
+          .describe('How far back on first call (default: 30, max: 60)'),
         limit: z.number().optional().describe('Max events to return (default: 50, max: 200)'),
-        cursor: z.number().optional().describe('Sequence number from previous call — get only new events'),
+        cursor: z
+          .number()
+          .optional()
+          .describe('Sequence number from previous call — get only new events'),
       },
       annotations: READ_ONLY,
     },
     toolHandler((args) =>
-      liveTail(client, args as {
-        service?: string; level?: string; min_level?: string; template_id?: string;
-        min_anomaly?: number; seconds?: number; limit?: number; cursor?: number
-      }),
+      liveTail(
+        client,
+        args as {
+          service?: string
+          level?: string
+          min_level?: string
+          template_id?: string
+          min_anomaly?: number
+          seconds?: number
+          limit?: number
+          cursor?: number
+        },
+      ),
     ),
   )
 }

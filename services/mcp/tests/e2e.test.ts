@@ -11,9 +11,9 @@
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
 import {
-  CASCADE_TRACE_IDS,
   apiGet,
   apiGetRaw,
+  CASCADE_TRACE_IDS,
   ingestBatch,
   postDeploy,
   scenario1_incident,
@@ -97,7 +97,10 @@ describe('MCP E2E: overview + health', () => {
   it('overview: returns totalEvents > 0 and lists services', async () => {
     const res = (await apiGet('/overview', { hours: 3 })) as OverviewResponse
     assert.ok(res.data.totalEvents > 100, `totalEvents should be >100, got ${res.data.totalEvents}`)
-    assert.ok(res.data.serviceCount >= 4, `serviceCount should be >=4, got ${res.data.serviceCount}`)
+    assert.ok(
+      res.data.serviceCount >= 4,
+      `serviceCount should be >=4, got ${res.data.serviceCount}`,
+    )
   })
 
   it('overview: error rate is non-zero', async () => {
@@ -113,7 +116,9 @@ describe('MCP E2E: overview + health', () => {
   })
 
   it('service_health: notifications shows burst activity', async () => {
-    const res = (await apiGet('/services/notifications/health', { hours: 3 })) as ServiceHealthResponse
+    const res = (await apiGet('/services/notifications/health', {
+      hours: 3,
+    })) as ServiceHealthResponse
     assert.equal(res.data.service, 'notifications')
     assert.ok(res.data.errorCount > 0, 'notifications should have errors from burst')
   })
@@ -144,14 +149,20 @@ interface SearchResponse {
 describe('MCP E2E: pattern discovery', () => {
   it('error_patterns: finds connection timeout template', async () => {
     // The MCP error_patterns tool queries /dashboard/templates with level=ERROR filter
-    const res = (await apiGet('/dashboard/templates', { hours: 3, level: 'ERROR' })) as TemplatesResponse
+    const res = (await apiGet('/dashboard/templates', {
+      hours: 3,
+      level: 'ERROR',
+    })) as TemplatesResponse
     assert.ok(res.data.length > 0, 'should find error patterns')
     const timeoutPattern = res.data.find((p) => p.templateText.toLowerCase().includes('timed out'))
     assert.ok(timeoutPattern, 'should find a timeout pattern')
   })
 
   it('error_patterns: finds pool exhausted template', async () => {
-    const res = (await apiGet('/dashboard/templates', { hours: 3, level: 'ERROR' })) as TemplatesResponse
+    const res = (await apiGet('/dashboard/templates', {
+      hours: 3,
+      level: 'ERROR',
+    })) as TemplatesResponse
     const poolPattern = res.data.find((p) => p.templateText.toLowerCase().includes('pool'))
     assert.ok(poolPattern, 'should find a connection pool pattern')
   })
@@ -163,12 +174,20 @@ describe('MCP E2E: pattern discovery', () => {
 
   it('template_detail: returns sparkline for a known template', async () => {
     // First find a template with errors
-    const search = (await apiGet('/dashboard/templates', { hours: 3, level: 'ERROR' })) as TemplatesResponse
+    const search = (await apiGet('/dashboard/templates', {
+      hours: 3,
+      level: 'ERROR',
+    })) as TemplatesResponse
     assert.ok(search.data.length > 0, 'need at least one error pattern')
     const templateId = search.data[0].templateId
 
     const detail = (await apiGet(`/templates/${templateId}/detail`, { hours: 3 })) as {
-      data: { templateId: string; templateText: string; occurrenceCount: number; sparkline: unknown[] }
+      data: {
+        templateId: string
+        templateText: string
+        occurrenceCount: number
+        sparkline: unknown[]
+      }
     }
     assert.equal(detail.data.templateId, templateId)
     assert.ok(detail.data.occurrenceCount > 0, 'should have occurrences')
@@ -193,7 +212,10 @@ describe('MCP E2E: correlation + tracing', () => {
 
   it('related_patterns: timeout links to other cascade patterns', async () => {
     // Find the timeout template from payments
-    const search = (await apiGet('/dashboard/templates', { hours: 3, level: 'ERROR' })) as TemplatesResponse
+    const search = (await apiGet('/dashboard/templates', {
+      hours: 3,
+      level: 'ERROR',
+    })) as TemplatesResponse
     const timeoutPattern = search.data.find(
       (p) => p.templateText.toLowerCase().includes('timed out') && p.service === 'payments',
     )
@@ -234,7 +256,10 @@ describe('MCP E2E: deploys + changes', () => {
     }
     const total = res.data.new.length + res.data.spike.length + res.data.resolved.length
     assert.ok(total > 0, `changes should show activity, got ${total} events`)
-    assert.ok(res.data.new.length > 0 || res.data.spike.length > 0, 'should have new or spike changes')
+    assert.ok(
+      res.data.new.length > 0 || res.data.spike.length > 0,
+      'should have new or spike changes',
+    )
   })
 })
 
@@ -251,7 +276,12 @@ describe('MCP E2E: incident_postmortem', () => {
       apiGet('/dashboard/changes', { service: 'payments', hours: 3 }) as Promise<{
         data: { new: Array<{ templateText: string }>; spike: Array<{ templateText: string }> }
       }>,
-      apiGet('/dashboard/templates', { service: 'payments', hours: 3, level: 'ERROR', limit: 10 }) as Promise<{
+      apiGet('/dashboard/templates', {
+        service: 'payments',
+        hours: 3,
+        level: 'ERROR',
+        limit: 10,
+      }) as Promise<{
         data: Array<{ templateId: string; templateText: string; occurrenceCount: number }>
       }>,
       apiGet('/deploys', { service: 'payments', limit: 5 }) as Promise<{

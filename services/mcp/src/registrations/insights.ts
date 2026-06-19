@@ -1,8 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
-import { type ApiResponse, READ_ONLY, formatMeta, toolHandler } from '../shared/handler.js'
-import { buildSystemNotes, formatSystemStateBlock, getAnomalyState } from '../shared/system-state.js'
+import { type ApiResponse, formatMeta, READ_ONLY, toolHandler } from '../shared/handler.js'
+import {
+  buildSystemNotes,
+  formatSystemStateBlock,
+  getAnomalyState,
+} from '../shared/system-state.js'
 
 async function levelDistribution(
   client: LogWeaveClient,
@@ -88,7 +92,9 @@ async function incidentPostmortem(
   const spikes = changes.spike ?? []
   const resolved = changes.resolved ?? []
 
-  const correlatedServiceNames = [...new Set(correlations.map((c) => c.service as string).filter(Boolean))]
+  const correlatedServiceNames = [
+    ...new Set(correlations.map((c) => c.service as string).filter(Boolean)),
+  ]
   const blastRadius = correlatedServiceNames.length + 1
 
   let text = `## Incident Post-Mortem: ${args.service}\n\n`
@@ -151,11 +157,12 @@ async function incidentPostmortem(
   // Self-aware system-state block so an LLM agent reading the postmortem
   // can tell "system says all clear" from "system cannot tell yet".
   const anomalyState = await getAnomalyState(client)
-  const changesMeta = (changesRes.meta as {
-    baselineStatus?: 'empty' | 'sparse' | 'ok'
-    previousWindowEvents?: number
-    tenantFirstSeenAt?: string | null
-  }) ?? {}
+  const changesMeta =
+    (changesRes.meta as {
+      baselineStatus?: 'empty' | 'sparse' | 'ok'
+      previousWindowEvents?: number
+      tenantFirstSeenAt?: string | null
+    }) ?? {}
   const notes = buildSystemNotes(anomalyState, changesMeta)
   text += formatSystemStateBlock(notes)
 
@@ -171,8 +178,22 @@ async function costOptimizer(
     service: args.service,
   })) as {
     data: {
-      summary: { totalPatternsAnalyzed: number; noiseCount: number; reviewCount: number; keepCount: number; potentialReductionPct: number }
-      patterns: Array<{ classification: string; template: string; service: string; volumePct: number; level: string; count: number; suggestion: string }>
+      summary: {
+        totalPatternsAnalyzed: number
+        noiseCount: number
+        reviewCount: number
+        keepCount: number
+        potentialReductionPct: number
+      }
+      patterns: Array<{
+        classification: string
+        template: string
+        service: string
+        volumePct: number
+        level: string
+        count: number
+        suggestion: string
+      }>
       thresholds: { noiseDebugPct: number; reviewInfoPct: number; reviewWarnPct: number }
     }
     meta: Record<string, unknown>
@@ -216,7 +237,13 @@ async function comparePeriods(
 ): Promise<string> {
   const { service, recent_hours = 2, baseline_hours = 2 } = args
 
-  type TemplateRow = { templateId: string; template: string; count: number; errorCount: number; service: string }
+  type TemplateRow = {
+    templateId: string
+    template: string
+    count: number
+    errorCount: number
+    service: string
+  }
 
   const params: Record<string, string | number | undefined> = { service }
 
@@ -227,8 +254,8 @@ async function comparePeriods(
     client.get('/dashboard/templates', { ...params, hours: recent_hours }),
   ])
 
-  const combined = ((combinedData as { data: TemplateRow[] }).data) ?? []
-  const recent = ((recentData as { data: TemplateRow[] }).data) ?? []
+  const combined = (combinedData as { data: TemplateRow[] }).data ?? []
+  const recent = (recentData as { data: TemplateRow[] }).data ?? []
 
   const combinedMap = new Map(combined.map((t) => [t.templateId, t]))
   const recentMap = new Map(recent.map((t) => [t.templateId, t]))
@@ -243,7 +270,13 @@ async function comparePeriods(
   // Resolved: active in baseline window but absent from recent window
   const resolvedPatterns = combined.filter((t) => !recentMap.has(t.templateId))
 
-  const changed: Array<{ template: string; service: string; recentCount: number; baselineCount: number; ratio: number }> = []
+  const changed: Array<{
+    template: string
+    service: string
+    recentCount: number
+    baselineCount: number
+    ratio: number
+  }> = []
 
   for (const t of recent) {
     const c = combinedMap.get(t.templateId)
@@ -316,9 +349,7 @@ export function registerInsights(server: McpServer, client: LogWeaveClient): voi
       },
       annotations: READ_ONLY,
     },
-    toolHandler((args) =>
-      levelDistribution(client, args as { hours?: number; service?: string }),
-    ),
+    toolHandler((args) => levelDistribution(client, args as { hours?: number; service?: string })),
   )
 
   server.registerTool(
@@ -335,7 +366,9 @@ export function registerInsights(server: McpServer, client: LogWeaveClient): voi
         since: z
           .string()
           .optional()
-          .describe('ISO8601 timestamp to start the window from (e.g. deploy time or alert trigger)'),
+          .describe(
+            'ISO8601 timestamp to start the window from (e.g. deploy time or alert trigger)',
+          ),
         hours: z
           .number()
           .optional()
@@ -344,10 +377,7 @@ export function registerInsights(server: McpServer, client: LogWeaveClient): voi
       annotations: READ_ONLY,
     },
     toolHandler((args) =>
-      incidentPostmortem(
-        client,
-        args as { service: string; since?: string; hours?: number },
-      ),
+      incidentPostmortem(client, args as { service: string; since?: string; hours?: number }),
     ),
   )
 
@@ -364,9 +394,7 @@ export function registerInsights(server: McpServer, client: LogWeaveClient): voi
       },
       annotations: READ_ONLY,
     },
-    toolHandler((args) =>
-      costOptimizer(client, args as { hours?: number; service?: string }),
-    ),
+    toolHandler((args) => costOptimizer(client, args as { hours?: number; service?: string })),
   )
 
   server.registerTool(
@@ -380,12 +408,20 @@ export function registerInsights(server: McpServer, client: LogWeaveClient): voi
       inputSchema: {
         service: z.string().optional().describe('Filter by service name'),
         recent_hours: z.number().default(2).describe('Recent period length in hours (default: 2)'),
-        baseline_hours: z.number().default(2).describe('Baseline period length in hours (default: 2, starts right after recent period)'),
+        baseline_hours: z
+          .number()
+          .default(2)
+          .describe(
+            'Baseline period length in hours (default: 2, starts right after recent period)',
+          ),
       },
       annotations: READ_ONLY,
     },
     toolHandler((args) =>
-      comparePeriods(client, args as { service?: string; recent_hours?: number; baseline_hours?: number }),
+      comparePeriods(
+        client,
+        args as { service?: string; recent_hours?: number; baseline_hours?: number },
+      ),
     ),
   )
 }

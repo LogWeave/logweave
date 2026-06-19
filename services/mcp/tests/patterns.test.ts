@@ -50,27 +50,27 @@ describe('error_patterns / search_templates limit clamp', () => {
     it(`${tool} rejects limit above 100`, () => {
       const shape = schemas.get(tool)
       assert.ok(shape, `${tool} should be registered`)
-      const result = z.object(shape).safeParse(
-        tool === 'search_templates' ? { query: 'error', limit: 999 } : { limit: 999 },
-      )
+      const result = z
+        .object(shape)
+        .safeParse(tool === 'search_templates' ? { query: 'error', limit: 999 } : { limit: 999 })
       assert.equal(result.success, false, 'limit=999 must be rejected')
     })
 
     it(`${tool} accepts limit at the 100 ceiling`, () => {
       const shape = schemas.get(tool)
       assert.ok(shape)
-      const result = z.object(shape).safeParse(
-        tool === 'search_templates' ? { query: 'error', limit: 100 } : { limit: 100 },
-      )
+      const result = z
+        .object(shape)
+        .safeParse(tool === 'search_templates' ? { query: 'error', limit: 100 } : { limit: 100 })
       assert.equal(result.success, true)
     })
 
     it(`${tool} allows limit to be omitted`, () => {
       const shape = schemas.get(tool)
       assert.ok(shape)
-      const result = z.object(shape).safeParse(
-        tool === 'search_templates' ? { query: 'error' } : {},
-      )
+      const result = z
+        .object(shape)
+        .safeParse(tool === 'search_templates' ? { query: 'error' } : {})
       assert.equal(result.success, true)
     })
   }
