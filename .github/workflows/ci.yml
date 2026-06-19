@@ -63,7 +63,7 @@ jobs:
         with:
           node-version: "24"
           cache: "pnpm"
-          cache-dependency-path: services/api/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Biome check
@@ -74,6 +74,60 @@ jobs:
         run: pnpm test:unit
       - name: Security audit
         run: pnpm audit --audit-level=high
+
+  transport:
+    name: Transport SDK (lint + test)
+    runs-on: ubuntu-latest
+    # @logweave/transport is published to npm — gate it on every change.
+    if: hashFiles('packages/transport/package.json') != ''
+    defaults:
+      run:
+        working-directory: packages/transport
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Biome check
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Run tests
+        run: pnpm test
+
+  mcp:
+    name: MCP Server (lint + test)
+    runs-on: ubuntu-latest
+    # @logweave/mcp is published to npm — gate it on every change.
+    if: hashFiles('services/mcp/package.json') != ''
+    defaults:
+      run:
+        working-directory: services/mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Biome check
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Run tests
+        run: pnpm test
 
   api-integration-s3:
     name: API integration — S3 adapter (Floci)
@@ -107,7 +161,7 @@ jobs:
         with:
           node-version: "24"
           cache: "pnpm"
-          cache-dependency-path: services/api/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run S3 adapter integration test
