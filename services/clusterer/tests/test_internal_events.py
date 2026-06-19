@@ -128,11 +128,13 @@ def test_summarize_config_redacts_non_allowlisted() -> None:
             "port": 8000,
             "drain3_sim_th": 0.4,
             "checkpoint_hmac_key": "supersecretkey",
+            "internal_secret": "topsecretvalue",
         }
     )
     assert out["port"] == 8000
     assert out["drain3_sim_th"] == "<redacted:type=float>"
     assert out["checkpoint_hmac_key"] == "<redacted:len=14>"
+    assert out["internal_secret"] == "<redacted:len=14>"
 
 
 # ------------------------------ emit --------------------------------- #

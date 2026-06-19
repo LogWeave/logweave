@@ -124,13 +124,12 @@ class TestCluster:
 
 class TestRestoreCheckpoints:
     @pytest.mark.asyncio
-    async def test_loads_all_and_restores(self) -> None:
+    async def test_loads_listed_tenants_and_restores(self) -> None:
         drain = _make_drain()
         checkpoint = MagicMock()
-        checkpoint.load_all.return_value = {
-            "tenant_a": b"state_a",
-            "tenant_b": b"state_b",
-        }
+        checkpoint.list_tenants.return_value = ["tenant_a", "tenant_b"]
+        states = {"tenant_a": b"state_a", "tenant_b": b"state_b"}
+        checkpoint.load.side_effect = lambda t: states[t]
 
         pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
         await pipeline.restore_checkpoints()
@@ -143,12 +142,41 @@ class TestRestoreCheckpoints:
     async def test_empty_checkpoints(self) -> None:
         drain = _make_drain()
         checkpoint = MagicMock()
-        checkpoint.load_all.return_value = {}
+        checkpoint.list_tenants.return_value = []
 
         pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
         await pipeline.restore_checkpoints()
 
         drain.load_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_tenant_when_load_returns_none(self) -> None:
+        drain = _make_drain()
+        checkpoint = MagicMock()
+        checkpoint.list_tenants.return_value = ["good", "refused"]
+        checkpoint.load.side_effect = lambda t: b"state" if t == "good" else None
+
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.restore_checkpoints()
+
+        drain.load_state.assert_called_once_with("good", b"state")
+
+    @pytest.mark.asyncio
+    async def test_enforces_max_tenants_cap(self) -> None:
+        drain = _make_drain()
+        drain.max_tenants = 2
+        checkpoint = MagicMock()
+        checkpoint.list_tenants.return_value = ["a", "b", "c", "d"]
+        checkpoint.load.side_effect = lambda t: f"state_{t}".encode()
+
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.restore_checkpoints()
+
+        # Only the first max_tenants are restored; the rest are never even read.
+        assert drain.load_state.call_count == 2
+        assert checkpoint.load.call_count == 2
+        drain.load_state.assert_any_call("a", b"state_a")
+        drain.load_state.assert_any_call("b", b"state_b")
 
 
 class TestCheckpointCycle:

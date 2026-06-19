@@ -85,15 +85,24 @@ class ClusterPipeline:
         return existed
 
     async def restore_checkpoints(self) -> None:
-        """Load all checkpoints from disk and restore DrainService state.
+        """Load checkpoints from disk and restore DrainService state, up to max_tenants.
 
-        Skips and logs on per-tenant restore errors (e.g., corrupt checkpoint
-        data). The tenant will start with a fresh Drain3 tree.
+        The cap is enforced during restore (oldest-first by checkpoint mtime) so
+        the memory ceiling holds across restarts — checkpoints beyond the cap are
+        not even read into memory. Skips and logs on per-tenant restore errors
+        (e.g., corrupt checkpoint data); that tenant starts with a fresh tree.
         """
-        checkpoints = await asyncio.to_thread(self._checkpoint.load_all)
+        tenant_ids = await asyncio.to_thread(self._checkpoint.list_tenants)
+        cap = self._drain.max_tenants
+        to_restore = tenant_ids[:cap]
+        skipped = len(tenant_ids) - len(to_restore)
+
         restored = 0
-        for tenant_id, state in checkpoints.items():
+        for tenant_id in to_restore:
             try:
+                state = await asyncio.to_thread(self._checkpoint.load, tenant_id)
+                if state is None:
+                    continue
                 self._drain.load_state(tenant_id, state)
                 restored += 1
             except Exception:
@@ -104,13 +113,13 @@ class ClusterPipeline:
                 )
         if restored:
             logger.info("Restored %d tenant checkpoint(s)", restored)
-            if restored > self._drain.max_tenants:
-                logger.warning(
-                    "Restored %d tenants exceeds max_tenants limit of %d — "
-                    "new tenants will be rejected until count drops",
-                    restored,
-                    self._drain.max_tenants,
-                )
+        if skipped:
+            logger.warning(
+                "Skipped %d checkpoint(s) beyond max_tenants cap of %d — "
+                "oldest checkpoints were restored first; the rest start fresh",
+                skipped,
+                cap,
+            )
 
     async def run_checkpoint_cycle(self) -> None:
         """Save all dirty tenants. Skips + logs on per-tenant errors."""

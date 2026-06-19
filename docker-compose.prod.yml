@@ -60,7 +60,13 @@ services:
       LOGWEAVE_DRAIN3_MAX_CLUSTERS: ${LOGWEAVE_DRAIN3_MAX_CLUSTERS:-10000}
       LOGWEAVE_MAX_CONCURRENT_REQUESTS: ${LOGWEAVE_MAX_CONCURRENT_REQUESTS:-4}
       LOGWEAVE_MAX_TENANTS: ${LOGWEAVE_MAX_TENANTS:-200}
+      # Required to restore Drain3 checkpoints across restarts. If unset, the
+      # clusterer refuses to load on-disk checkpoints (jsonpickle integrity
+      # cannot be verified) and starts fresh. Generate with: openssl rand -hex 32
       LOGWEAVE_CHECKPOINT_HMAC_KEY: ${LOGWEAVE_CHECKPOINT_HMAC_KEY:-}
+      # Shared secret guarding the destructive endpoints (/cluster/reset,
+      # /embed/backfill). Must match the api service value below.
+      LOGWEAVE_INTERNAL_SECRET: ${LOGWEAVE_INTERNAL_SECRET:-}
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -92,6 +98,9 @@ services:
       LOGWEAVE_CLICKHOUSE_USER: ${LOGWEAVE_CLICKHOUSE_USER:-}
       LOGWEAVE_CLICKHOUSE_PASSWORD: ${LOGWEAVE_CLICKHOUSE_PASSWORD:-}
       LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
+      # Forwarded to the clusterer's destructive endpoints; must match the
+      # clusterer service value above.
+      LOGWEAVE_INTERNAL_SECRET: ${LOGWEAVE_INTERNAL_SECRET:-}
       LOGWEAVE_API_KEYS: ${LOGWEAVE_API_KEYS}
       LOGWEAVE_ENCRYPTION_KEY: ${LOGWEAVE_ENCRYPTION_KEY:-}
       # Runs behind Caddy in this compose file, so trust one proxy hop by default.

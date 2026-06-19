@@ -165,6 +165,70 @@ class TestErrorHandling:
         )
         assert response.status_code == 504
 
+
+class TestInternalSecret:
+    """The destructive /cluster/reset endpoint enforces X-Internal-Secret when set."""
+
+    @pytest.mark.asyncio
+    async def test_reset_allowed_when_no_secret_configured(self, client, mock_pipeline) -> None:
+        from clusterer.main import app
+
+        app.state.internal_secret = ""
+        mock_pipeline.reset_tenant.return_value = True
+        response = await client.post("/cluster/reset", json={"tenant_id": "t1"})
+        assert response.status_code == 200
+        assert response.json()["cleared"] is True
+
+    @pytest.mark.asyncio
+    async def test_reset_rejected_without_header_when_secret_set(
+        self, client, mock_pipeline
+    ) -> None:
+        from clusterer.main import app
+
+        app.state.internal_secret = "s3cr3t"
+        try:
+            mock_pipeline.reset_tenant.return_value = True
+            response = await client.post("/cluster/reset", json={"tenant_id": "t1"})
+            assert response.status_code == 401
+            mock_pipeline.reset_tenant.assert_not_called()
+        finally:
+            app.state.internal_secret = ""
+
+    @pytest.mark.asyncio
+    async def test_reset_rejected_with_wrong_header(self, client, mock_pipeline) -> None:
+        from clusterer.main import app
+
+        app.state.internal_secret = "s3cr3t"
+        try:
+            mock_pipeline.reset_tenant.return_value = True
+            response = await client.post(
+                "/cluster/reset",
+                json={"tenant_id": "t1"},
+                headers={"X-Internal-Secret": "wrong"},
+            )
+            assert response.status_code == 401
+        finally:
+            app.state.internal_secret = ""
+
+    @pytest.mark.asyncio
+    async def test_reset_allowed_with_correct_header(self, client, mock_pipeline) -> None:
+        from clusterer.main import app
+
+        app.state.internal_secret = "s3cr3t"
+        try:
+            mock_pipeline.reset_tenant.return_value = True
+            response = await client.post(
+                "/cluster/reset",
+                json={"tenant_id": "t1"},
+                headers={"X-Internal-Secret": "s3cr3t"},
+            )
+            assert response.status_code == 200
+            assert response.json()["cleared"] is True
+        finally:
+            app.state.internal_secret = ""
+
+
+class TestSemaphore:
     @pytest.mark.asyncio
     async def test_semaphore_full_returns_503(self, mock_pipeline) -> None:
         """When all semaphore slots are taken, new requests get 503."""

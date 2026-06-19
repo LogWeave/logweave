@@ -125,9 +125,13 @@ def _build_pipeline(
     registry: InMemoryRegistry,
     checkpoint_dir: str,
 ) -> ClusterPipeline:
-    """Create a fresh pipeline with real DrainService + CheckpointManager."""
+    """Create a fresh pipeline with real DrainService + CheckpointManager.
+
+    A fixed HMAC key is supplied so the kill/restart gate exercises the
+    supported (keyed) checkpoint path — keyless deployments fail closed on load.
+    """
     drain_service = DrainService(sim_th=0.4, depth=4)
-    checkpoint_mgr = CheckpointManager(checkpoint_dir)
+    checkpoint_mgr = CheckpointManager(checkpoint_dir, hmac_key="integration-test-key")
     checkpoint_mgr.ensure_dir()
     return ClusterPipeline(
         drain_service=drain_service,

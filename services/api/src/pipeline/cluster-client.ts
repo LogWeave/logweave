@@ -52,6 +52,7 @@ export class ClusterClient {
   private callsSinceOpen = 0
   private readonly circuitThreshold: number
   private readonly probeInterval: number
+  private readonly internalSecret: string
 
   constructor(
     url: string,
@@ -59,11 +60,13 @@ export class ClusterClient {
     logger: pino.Logger,
     fetchFn: FetchFn = globalThis.fetch,
     options?: CircuitBreakerOptions,
+    internalSecret?: string,
   ) {
     this.url = url
     this.timeoutMs = timeoutMs
     this.logger = logger
     this.fetchFn = fetchFn
+    this.internalSecret = internalSecret ?? ''
     this.circuitThreshold = options?.circuitThreshold ?? 5
     this.probeInterval = options?.probeInterval ?? 10
 
@@ -244,9 +247,13 @@ export class ClusterClient {
    */
   async resetTenant(tenantId: string): Promise<boolean> {
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (this.internalSecret) {
+        headers['X-Internal-Secret'] = this.internalSecret
+      }
       const response = await this.fetchFn(`${this.url}/cluster/reset`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ tenant_id: tenantId }),
         signal: AbortSignal.timeout(this.timeoutMs),
       })
