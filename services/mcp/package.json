@@ -24,6 +24,10 @@
     "prepublishOnly": "tsc -p tsconfig.build.json",
     "dev": "node --import tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --fix .",
+    "format": "biome format --write .",
+    "test": "node --import tsx --test tests/dev-tools.test.ts tests/patterns.test.ts tests/rules.test.ts tests/system-state.test.ts",
     "test:unit": "node --import tsx --test tests/dev-tools.test.ts tests/patterns.test.ts tests/rules.test.ts tests/system-state.test.ts",
     "test:e2e": "node --import tsx --test tests/e2e.test.ts"
   },
@@ -55,6 +59,7 @@
     "zod": "^4.4.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.13",
     "@types/node": "^25.6.0",
     "tsx": "^4.21.0",
     "typescript": "catalog:"

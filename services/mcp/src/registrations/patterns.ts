@@ -3,8 +3,8 @@ import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
 import {
   type ApiResponse,
-  READ_ONLY,
   formatMeta,
+  READ_ONLY,
   toolHandler,
   truncate,
 } from '../shared/handler.js'
@@ -78,8 +78,12 @@ async function templateDetail(
     const third = Math.max(1, Math.floor(counts.length / 3))
     const firstThirdAvg = counts.slice(0, third).reduce((a, b) => a + b, 0) / third
     const lastThirdAvg = counts.slice(-third).reduce((a, b) => a + b, 0) / third
-    const trendDir = lastThirdAvg > firstThirdAvg * 1.2 ? 'trending UP' :
-      lastThirdAvg < firstThirdAvg * 0.8 ? 'trending DOWN' : 'stable'
+    const trendDir =
+      lastThirdAvg > firstThirdAvg * 1.2
+        ? 'trending UP'
+        : lastThirdAvg < firstThirdAvg * 0.8
+          ? 'trending DOWN'
+          : 'stable'
 
     text += `\n### Occurrence Trend (${sparkline.length} intervals)\n`
     text += `- Direction: ${trendDir}\n`
@@ -143,7 +147,8 @@ async function templateTrend(
   const third = Math.max(1, Math.floor(counts.length / 3))
   const firstAvg = counts.slice(0, third).reduce((a, b) => a + b, 0) / third
   const lastAvg = counts.slice(-third).reduce((a, b) => a + b, 0) / third
-  const direction = lastAvg > firstAvg * 1.2 ? 'increasing' : lastAvg < firstAvg * 0.8 ? 'decreasing' : 'stable'
+  const direction =
+    lastAvg > firstAvg * 1.2 ? 'increasing' : lastAvg < firstAvg * 0.8 ? 'decreasing' : 'stable'
 
   let text = `## Long-Term Trend (${rows.length} days)\n\n`
   text += `- Direction: **${direction}**\n`
@@ -262,14 +267,14 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
         'Use a template_id from error_patterns or changes results. ' +
         'Do not use without a template_id.',
       inputSchema: {
-        template_id: z.string().describe('Template ID to look up (from error_patterns or changes results)'),
+        template_id: z
+          .string()
+          .describe('Template ID to look up (from error_patterns or changes results)'),
         hours: z.number().optional().describe('Time window in hours (default: 24)'),
       },
       annotations: READ_ONLY,
     },
-    toolHandler((args) =>
-      templateDetail(client, args as { template_id: string; hours?: number }),
-    ),
+    toolHandler((args) => templateDetail(client, args as { template_id: string; hours?: number })),
   )
 
   server.registerTool(
@@ -291,12 +296,18 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
           .max(100)
           .optional()
           .describe('Max results to return (default: 100, max: 100)'),
-        mode: z.enum(['substring', 'semantic']).optional().describe('Search mode (default: substring)'),
+        mode: z
+          .enum(['substring', 'semantic'])
+          .optional()
+          .describe('Search mode (default: substring)'),
       },
       annotations: READ_ONLY,
     },
     toolHandler((args) =>
-      searchTemplates(client, args as { query: string; hours?: number; limit?: number; mode?: string }),
+      searchTemplates(
+        client,
+        args as { query: string; hours?: number; limit?: number; mode?: string },
+      ),
     ),
   )
 
@@ -309,14 +320,14 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
         'Use this to determine if a pattern is getting worse over weeks/months, or if it is seasonal. ' +
         'For short-term trends (hours), use template_detail instead.',
       inputSchema: {
-        template_id: z.string().describe('Template ID (from error_patterns, changes, or search_templates)'),
+        template_id: z
+          .string()
+          .describe('Template ID (from error_patterns, changes, or search_templates)'),
         days: z.number().optional().describe('Number of days to look back (default: 90, max: 365)'),
       },
       annotations: READ_ONLY,
     },
-    toolHandler((args) =>
-      templateTrend(client, args as { template_id: string; days?: number }),
-    ),
+    toolHandler((args) => templateTrend(client, args as { template_id: string; days?: number })),
   )
 
   server.registerTool(
@@ -329,7 +340,10 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
         'Use trace IDs with trace_details to follow requests across services.',
       inputSchema: {
         template_id: z.string().describe('Template ID'),
-        status_code: z.number().optional().describe('Filter to a specific HTTP status code (e.g. 500)'),
+        status_code: z
+          .number()
+          .optional()
+          .describe('Filter to a specific HTTP status code (e.g. 500)'),
         hours: z.number().optional().describe('Time window in hours (default: 24)'),
         limit: z
           .number()
@@ -372,10 +386,7 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
       annotations: READ_ONLY,
     },
     toolHandler((args) =>
-      searchByTag(
-        client,
-        args as { key: string; value: string; hours?: number; limit?: number },
-      ),
+      searchByTag(client, args as { key: string; value: string; hours?: number; limit?: number }),
     ),
   )
 }

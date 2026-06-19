@@ -19,7 +19,7 @@ export class LogWeaveClient {
   constructor(config: LogWeaveClientConfig) {
     this.baseUrl = config.apiUrl.replace(/\/+$/, '')
     this.headers = {
-      'Authorization': `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${config.apiKey}`,
       'Content-Type': 'application/json',
       'User-Agent': USER_AGENT,
     }
@@ -37,7 +37,10 @@ export class LogWeaveClient {
     return this.request(url, { method: 'GET' })
   }
 
-  async getComposite(path: string, params?: Record<string, string | number | undefined>): Promise<unknown> {
+  async getComposite(
+    path: string,
+    params?: Record<string, string | number | undefined>,
+  ): Promise<unknown> {
     const url = this.buildUrl(path, params)
     return this.request(url, { method: 'GET', timeout: COMPOSITE_TIMEOUT_MS })
   }
@@ -84,20 +87,26 @@ export class LogWeaveClient {
       })
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
-        throw new Error(`LogWeave API request timed out after ${opts.timeout ?? DEFAULT_TIMEOUT_MS}ms`)
+        throw new Error(
+          `LogWeave API request timed out after ${opts.timeout ?? DEFAULT_TIMEOUT_MS}ms`,
+        )
       }
-      throw new Error(`LogWeave API is unreachable at ${this.baseUrl}: ${err instanceof Error ? err.message : String(err)}`)
+      throw new Error(
+        `LogWeave API is unreachable at ${this.baseUrl}: ${err instanceof Error ? err.message : String(err)}`,
+      )
     }
 
     if (res.status === 429) {
       const retryAfter = res.headers.get('retry-after') ?? '60'
-      throw new Error(`Rate limited by LogWeave API. Retry after ${retryAfter} seconds. Reduce query frequency.`)
+      throw new Error(
+        `Rate limited by LogWeave API. Retry after ${retryAfter} seconds. Reduce query frequency.`,
+      )
     }
 
     if (!res.ok) {
       let detail = ''
       try {
-        const body = await res.json() as { error?: { message?: string } }
+        const body = (await res.json()) as { error?: { message?: string } }
         detail = body?.error?.message ?? ''
       } catch {
         // ignore parse errors

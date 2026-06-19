@@ -29,7 +29,12 @@ afterEach(() => {
 function stubTenantCount(value: string | { status: number }): void {
   globalThis.fetch = (async () => {
     if (typeof value === 'object') {
-      return { ok: false, status: value.status, statusText: 'err', text: async () => '' } as Response
+      return {
+        ok: false,
+        status: value.status,
+        statusText: 'err',
+        text: async () => '',
+      } as Response
     }
     return { ok: true, status: 200, statusText: 'OK', text: async () => value } as Response
   }) as typeof fetch

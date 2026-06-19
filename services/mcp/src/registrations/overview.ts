@@ -1,13 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
-import { type ApiResponse, READ_ONLY, formatMeta, toolHandler } from '../shared/handler.js'
-import { buildSystemNotes, formatSystemStateBlock, getAnomalyState } from '../shared/system-state.js'
+import { type ApiResponse, formatMeta, READ_ONLY, toolHandler } from '../shared/handler.js'
+import {
+  buildSystemNotes,
+  formatSystemStateBlock,
+  getAnomalyState,
+} from '../shared/system-state.js'
 
-async function overview(
-  client: LogWeaveClient,
-  args: { hours?: number },
-): Promise<string> {
+async function overview(client: LogWeaveClient, args: { hours?: number }): Promise<string> {
   const res = (await client.getComposite('/overview', {
     hours: args.hours,
   })) as ApiResponse
@@ -78,8 +79,12 @@ async function serviceHealth(
     const third = Math.max(1, Math.floor(logCounts.length / 3))
     const firstThirdAvg = logCounts.slice(0, third).reduce((a, b) => a + b, 0) / third
     const lastThirdAvg = logCounts.slice(-third).reduce((a, b) => a + b, 0) / third
-    const trendDir = lastThirdAvg > firstThirdAvg * 1.2 ? 'volume trending UP' :
-      lastThirdAvg < firstThirdAvg * 0.8 ? 'volume trending DOWN' : 'volume stable'
+    const trendDir =
+      lastThirdAvg > firstThirdAvg * 1.2
+        ? 'volume trending UP'
+        : lastThirdAvg < firstThirdAvg * 0.8
+          ? 'volume trending DOWN'
+          : 'volume stable'
 
     text += `\n### Volume Trend (${trend.length} intervals)\n`
     text += `- Direction: ${trendDir}\n`
@@ -92,10 +97,7 @@ async function serviceHealth(
   return text
 }
 
-async function listServices(
-  client: LogWeaveClient,
-  args: { hours?: number },
-): Promise<string> {
+async function listServices(client: LogWeaveClient, args: { hours?: number }): Promise<string> {
   const res = (await client.get('/dashboard/services', { hours: args.hours })) as ApiResponse
   const rows = (res.data as Array<Record<string, unknown>>) ?? []
 
@@ -177,9 +179,7 @@ export function registerOverview(server: McpServer, client: LogWeaveClient): voi
       },
       annotations: READ_ONLY,
     },
-    toolHandler((args) =>
-      serviceHealth(client, args as { service: string; hours?: number }),
-    ),
+    toolHandler((args) => serviceHealth(client, args as { service: string; hours?: number })),
   )
 
   server.registerTool(
