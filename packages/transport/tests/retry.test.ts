@@ -307,4 +307,50 @@ describe('retryFetch', () => {
     assert.ok(mock.calls.length < 4, 'should stop retrying when aborted')
     assert.equal(result, null, 'should return null when aborted')
   })
+
+  it('does not double-sleep on 429 — the inline Retry-After wait is not compounded by the pre-attempt backoff', async () => {
+    const mock = mockFetchSequence([
+      { status: 429, headers: { 'retry-after': '5' } },
+      { status: 200 },
+    ])
+    const delays: number[] = []
+    const trackingSleep = async (ms: number): Promise<void> => {
+      delays.push(ms)
+    }
+
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: trackingSleep },
+    )
+
+    assert.equal(mock.calls.length, 2, 'should retry exactly once after the 429')
+    assert.notEqual(result, null)
+    assert.equal(
+      delays.length,
+      1,
+      'should sleep exactly once (the Retry-After wait), not also run the next pre-attempt backoff',
+    )
+    assert.equal(delays[0], 5000, 'the single sleep should be the server-instructed 5s')
+  })
+
+  it('does not double-sleep on a 503 with Retry-After either', async () => {
+    const mock = mockFetchSequence([
+      { status: 503, headers: { 'retry-after': '10' } },
+      { status: 200 },
+    ])
+    const delays: number[] = []
+    const trackingSleep = async (ms: number): Promise<void> => {
+      delays.push(ms)
+    }
+
+    await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: trackingSleep },
+    )
+
+    assert.equal(delays.length, 1, 'one inline Retry-After sleep, no extra pre-attempt backoff')
+    assert.equal(delays[0], 10_000)
+  })
 })

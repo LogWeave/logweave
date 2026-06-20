@@ -14,6 +14,16 @@ export function truncate(value: unknown, max = TEMPLATE_TEXT_MAX): string {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
+// Escape a value for use inside a GitHub-flavored-markdown table cell. Pipes
+// would start a new column and newlines would end the row, so template/log text
+// (which can contain either) must be neutralized or it corrupts the table the
+// agent reads. Replaces newlines with a space and escapes pipes.
+export function escapeCell(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\|/g, '\\|')
+}
+
 export function formatMeta(meta: Record<string, unknown>): string {
   const parts: string[] = []
   if (meta.timeRange) parts.push(`Time range: ${meta.timeRange}`)
