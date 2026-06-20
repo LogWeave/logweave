@@ -355,7 +355,15 @@ async function shutdown(signal: string): Promise<void> {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 process.on('SIGINT', () => shutdown('SIGINT'))
+// Route fatal async errors through the same graceful shutdown path (idempotent
+// via the `shuttingDown` guard) so background sweeps, the HTTP server, and the
+// ClickHouse client are closed cleanly. shutdown()'s force-exit timer remains
+// the backstop if a wedged shutdown can't complete in time.
 process.on('unhandledRejection', (reason) => {
   logger.fatal({ err: reason }, 'Unhandled rejection — shutting down')
-  process.exit(1)
+  void shutdown('unhandledRejection')
+})
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught exception — shutting down')
+  void shutdown('uncaughtException')
 })

@@ -17,10 +17,17 @@ export function createErrorHandler(logger: pino.Logger) {
       return
     }
 
-    // Express body-parser errors (malformed JSON, etc.) have a statusCode property
+    // Express body-parser errors (malformed JSON, payload too large, etc.) are
+    // created via http-errors, which sets `expose = true` on client (4xx) errors
+    // to mark their message safe to return. Only echo the message when the error
+    // itself opts in this way — a foreign library error that merely happens to
+    // carry a numeric statusCode<500 must not leak its (possibly sensitive)
+    // message; it falls through to the masked 500 below.
     if ('statusCode' in err && typeof (err as Record<string, unknown>).statusCode === 'number') {
-      const statusCode = (err as Record<string, unknown>).statusCode as number
-      if (statusCode < HttpStatus.INTERNAL_SERVER_ERROR) {
+      const errRecord = err as Record<string, unknown>
+      const statusCode = errRecord.statusCode as number
+      const exposeMessage = errRecord.expose === true
+      if (statusCode < HttpStatus.INTERNAL_SERVER_ERROR && exposeMessage) {
         logger.warn({ err, statusCode }, err.message)
         const body: ErrorResponseBody = {
           error: { code: 'BAD_REQUEST', message: err.message },

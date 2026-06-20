@@ -220,7 +220,6 @@ export function createApp(deps: AppDependencies): CreatedApp {
   v1.use(mcpDetect)
   v1.use(createAccessAuditMiddleware({ db: deps.db, logger: deps.logger }))
   v1.use(rateLimiter)
-  v1.use(queryGuard)
   const ingestDeps = {
     clusterClient: deps.clusterClient,
     db: deps.db,
@@ -230,9 +229,15 @@ export function createApp(deps: AppDependencies): CreatedApp {
     settingsStore: deps.settingsStore,
     eventBus: deps.eventBus,
   }
+  // Ingest routes are mounted BEFORE the concurrent-query guard so the guard
+  // (sized for heavy read/analytics queries) does not also cap ingest
+  // concurrency. Ingest is still bounded by the rate limiter above.
   v1.use(ingestRoutes(ingestDeps))
   v1.use(genericIngestRoutes(ingestDeps))
   v1.use(otlpIngestRoutes(ingestDeps))
+  // Guard the read/query routes that follow (dashboard, composite, cost,
+  // correlation, etc.) against unbounded concurrent expensive queries.
+  v1.use(queryGuard)
   v1.use(
     dashboardRoutes({
       db: deps.db,
