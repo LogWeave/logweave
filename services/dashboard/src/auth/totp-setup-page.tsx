@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
+import { csrfHeader } from '../lib/api-client'
 import { useAuth } from './auth-provider'
 
 export function TotpSetupPage() {
@@ -20,6 +21,7 @@ export function TotpSetupPage() {
       const res = await fetch('/v1/auth/totp/setup', {
         method: 'POST',
         credentials: 'include',
+        headers: { ...csrfHeader() },
       })
       const body = await res.json().catch(() => ({}))
       if (res.ok) {
@@ -43,7 +45,7 @@ export function TotpSetupPage() {
       const res = await fetch('/v1/auth/totp/confirm', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...csrfHeader() },
         body: JSON.stringify({ code }),
       })
       const body = await res.json().catch(() => ({}))

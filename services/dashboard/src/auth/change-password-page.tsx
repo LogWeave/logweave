@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
+import { csrfHeader } from '../lib/api-client'
 import { useAuth } from './auth-provider'
 
 export function ChangePasswordPage() {
@@ -30,7 +31,7 @@ export function ChangePasswordPage() {
       const res = await fetch('/v1/auth/password', {
         method: 'PUT',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...csrfHeader() },
         body: JSON.stringify({ currentPassword, newPassword }),
       })
       const body = await res.json().catch(() => ({}))

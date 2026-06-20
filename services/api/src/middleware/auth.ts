@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import type pino from 'pino'
 import type { ApiKeyStore } from '../auth/api-key-store.js'
@@ -13,10 +13,6 @@ const TENANT_ID_KEY = 'tenantId'
 const KEY_ID_KEY = 'keyId'
 const ROLE_KEY = 'role'
 
-function sha256(value: string): Buffer {
-  return createHash('sha256').update(value).digest()
-}
-
 interface HashedKey {
   hash: Buffer
   tenantId: string
@@ -25,33 +21,47 @@ interface HashedKey {
 /**
  * Mutable key store that supports hot-reload without server restart.
  * Auth middleware references this store on every request.
+ *
+ * Keys are hashed with domain-separated HMAC-SHA256 (`env-key:` prefix) keyed
+ * by the encryption key, mirroring ApiKeyStore so env and DB keys share the same
+ * posture. When no encryption key is configured (Bearer-only, keyless deploys)
+ * it falls back to bare SHA-256 — bootstrap-only, no server-side secret exists.
  */
 export class KeyStore {
   private keys: HashedKey[] = []
+  private readonly hmacSecret: string
 
-  constructor(keyMap: Map<string, string>) {
+  constructor(keyMap: Map<string, string>, hmacSecret?: string) {
+    this.hmacSecret = hmacSecret ?? ''
     this.loadKeys(keyMap)
+  }
+
+  /** Hash a key/token. HMAC when a secret is configured, else bare SHA-256. */
+  private hash(value: string): Buffer {
+    return this.hmacSecret
+      ? createHmac('sha256', this.hmacSecret).update(`env-key:${value}`).digest()
+      : createHash('sha256').update(value).digest()
   }
 
   /** Replace all keys with a new set. Thread-safe (atomic reference swap). */
   loadKeys(keyMap: Map<string, string>): void {
     const newKeys: HashedKey[] = []
     for (const [key, tenantId] of keyMap) {
-      newKeys.push({ hash: sha256(key), tenantId })
+      newKeys.push({ hash: this.hash(key), tenantId })
     }
     this.keys = newKeys
   }
 
   /** Clear plaintext keys from a Map after loading (caller should discard the Map). */
-  static fromMapAndClear(keyMap: Map<string, string>): KeyStore {
-    const store = new KeyStore(keyMap)
+  static fromMapAndClear(keyMap: Map<string, string>, hmacSecret?: string): KeyStore {
+    const store = new KeyStore(keyMap, hmacSecret)
     keyMap.clear()
     return store
   }
 
   /** Validate a token. Returns tenantId if valid, undefined if not. */
   validate(token: string): { tenantId: string; keyId: string } | undefined {
-    const tokenHash = sha256(token)
+    const tokenHash = this.hash(token)
     for (const entry of this.keys) {
       if (timingSafeEqual(tokenHash, entry.hash)) {
         return {
@@ -111,7 +121,7 @@ export function createAuthMiddleware(
   const us = opts.userStore
   const log = opts.logger
 
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     // 1. Bearer token (API keys, MCP, SDK)
     const header = req.get('authorization')
     if (header) {
@@ -161,17 +171,25 @@ export function createAuthMiddleware(
           if (sc && us) {
             const cached = sc.get(session.userId)
             if (!cached) {
-              // Cache miss — query DB (async, but we need to await)
-              // Fire-and-forget populate cache; for this request, trust the signed cookie
-              us.findById(session.userId)
-                .then((user) => {
-                  sc.set(session.userId, user?.sessionVersion ?? 0, !user)
-                })
-                .catch((err) => {
-                  // Silently swallowing this would mean every request takes the slow
-                  // path with no signal in logs. Log it so DB outages are observable.
-                  log?.warn({ err, userId: session.userId }, 'Session cache populate failed')
-                })
+              // Cold cache: await the DB lookup before authorizing so a deleted
+              // or version-bumped user is rejected immediately, not after the
+              // cache eventually populates. One round-trip per uncached user.
+              let user: Awaited<ReturnType<typeof us.findById>>
+              try {
+                user = await us.findById(session.userId)
+              } catch (err) {
+                // Fail closed: if we can't verify the session against the DB,
+                // don't authorize. Log so DB outages are observable.
+                log?.warn({ err, userId: session.userId }, 'Session validation DB lookup failed')
+                next(unauthorized('Session validation unavailable'))
+                return
+              }
+              sc.set(session.userId, user?.sessionVersion ?? 0, !user)
+              if (!user || user.sessionVersion !== session.sessionVersion) {
+                // User deleted or session version bumped — reject
+                next(unauthorized('Session expired'))
+                return
+              }
             } else if (cached.isDeleted || cached.sessionVersion !== session.sessionVersion) {
               // User deleted or session version mismatch — reject
               next(unauthorized('Session expired'))

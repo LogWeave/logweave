@@ -31,8 +31,8 @@ Generate the three secrets first, then paste the literal output into `.env`:
 # Generate an API key (32-byte hex string)
 openssl rand -hex 32
 
-# Generate an encryption key (16-byte hex string)
-openssl rand -hex 16
+# Generate an encryption key (32-byte hex string)
+openssl rand -hex 32
 
 # Generate a ClickHouse password (16-byte hex string)
 openssl rand -hex 16
@@ -48,7 +48,7 @@ Edit `.env` and replace the placeholder values with the literal hex strings you 
 LOGWEAVE_API_KEYS={"<paste-32-byte-hex-here>":"my-org"}
 
 # Required — your generated encryption key
-LOGWEAVE_ENCRYPTION_KEY=<paste-16-byte-hex-here>
+LOGWEAVE_ENCRYPTION_KEY=<paste-32-byte-hex-here>
 
 # Required — ClickHouse credentials (kept inside Docker network, not exposed)
 LOGWEAVE_CLICKHOUSE_USER=logweave
@@ -476,7 +476,7 @@ An 8 GB / 2 vCPU server is the minimum for production. Increase ClickHouse to 8 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `LOGWEAVE_API_KEYS` | Yes | — | JSON mapping API keys to tenant IDs |
-| `LOGWEAVE_ENCRYPTION_KEY` | Yes | — | 16+ char key — enables dashboard login, TOTP, connector encryption |
+| `LOGWEAVE_ENCRYPTION_KEY` | Yes | — | 32+ char key (use `openssl rand -hex 32`) — roots session/CSRF/TOTP/API-key HMAC and connector encryption |
 | `LOGWEAVE_PORT` | No | `3000` | API server port |
 | `LOGWEAVE_LOG_LEVEL` | No | `info` | Log level (fatal/error/warn/info/debug/trace) |
 | `LOGWEAVE_CLUSTERER_TIMEOUT_MS` | No | `500` | Clusterer call timeout (raise for Docker) |
