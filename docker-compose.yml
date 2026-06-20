@@ -30,14 +30,18 @@ services:
       clickhouse:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      # python:slim ships no wget/curl — use stdlib urllib for the probe.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 3s
       retries: 3
 
   api:
     build:
-      context: services/api
+      # Root context: the API image also builds the dashboard workspace, so the
+      # build needs the repo root (matches docker-compose.prod.yml).
+      context: .
+      dockerfile: services/api/Dockerfile
     ports:
       - "3000:3000"
     environment:
