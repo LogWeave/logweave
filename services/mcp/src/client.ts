@@ -3,9 +3,11 @@
  * Handles auth, timeouts, User-Agent, and error formatting.
  */
 
+import { VERSION } from './version.js'
+
 const DEFAULT_TIMEOUT_MS = 5_000
 const COMPOSITE_TIMEOUT_MS = 10_000
-const USER_AGENT = '@logweave/mcp/0.1.0'
+const USER_AGENT = `@logweave/mcp/${VERSION}`
 
 export interface LogWeaveClientConfig {
   apiUrl: string
