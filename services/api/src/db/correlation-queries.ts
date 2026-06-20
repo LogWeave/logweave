@@ -51,7 +51,14 @@ const MAX_RELATED_LIMIT = 100
 const DEFAULT_CORRELATION_LIMIT = 10
 const MAX_CORRELATION_LIMIT = 50
 const MIN_CORRELATION = 0.7
-const MAX_OUTLIER_HOURS = 168
+// Outlier "current window" cap. The z-score baseline is matched to the current
+// hour-of-day (see SERVICE_OUTLIER_QUERY); a wide current window defeats that —
+// it averages current_rate across many hours-of-day (re-mixing the diurnal
+// cycle the baseline removes) and, past 7 days, makes the baseline window
+// (interval_start > now-7d) disjoint from the baseline filter
+// (interval_start <= now-{hours}) so data_points collapses to 0. Keep the
+// current window near a single hour-of-day. (Chunk 5 / #258)
+const MAX_OUTLIER_HOURS = 6
 
 // ---------------------------------------------------------------------------
 // 1. Trace details — events sharing a trace_id
@@ -151,7 +158,10 @@ export async function queryRelatedPatterns(
  *      track the daily traffic cycle correlate spuriously. We correlate the
  *      *residuals* — each bucket minus that series' mean for its hour-of-day
  *      (UTC) — so a match means "moves together beyond the normal daily
- *      rhythm", not "both busy at noon".
+ *      rhythm", not "both busy at noon". Note this suppresses *purely* diurnal
+ *      candidates (flat within each hour → residual 0 → corr is NaN → filtered);
+ *      a candidate that also genuinely co-moves with the anchor *within* the
+ *      hour will still correlate, which is the intended behaviour, not a leak.
  *
  *   3. corr() over too few points is meaningless (returns 1 or NaN). The
  *      >= MIN_OBSERVATIONS guard rejects thin windows, and the

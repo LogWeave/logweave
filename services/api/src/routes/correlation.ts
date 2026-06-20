@@ -41,7 +41,9 @@ const correlationQuerySchema = z.object({
 })
 
 const outlierQuerySchema = z.object({
-  hours: z.coerce.number().int().min(1).max(168).default(1),
+  // Capped at 6h: the z-score baseline is matched to the current hour-of-day,
+  // so a wide current window re-mixes the diurnal cycle. See MAX_OUTLIER_HOURS.
+  hours: z.coerce.number().int().min(1).max(6).default(1),
 })
 
 // ---------------------------------------------------------------------------
