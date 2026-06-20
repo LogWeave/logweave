@@ -325,7 +325,7 @@ async function comparePeriods(
   text += `\n\n`
 
   if (combined.length >= COMPARE_LIMIT || recent.length >= COMPARE_LIMIT) {
-    text += `> ⚠️ This service has more than ${COMPARE_LIMIT} distinct patterns per window; new/resolved classification may be approximate beyond that cap. Narrow by service for exact results.\n\n`
+    text += `> ⚠️ This service has ${COMPARE_LIMIT} or more distinct patterns per window; new/resolved classification may be approximate beyond that cap. Narrow by service for exact results.\n\n`
   }
 
   if (newPatterns.length > 0) {
