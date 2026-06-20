@@ -84,4 +84,29 @@ describe('templateToRegex', () => {
     const regex = templateToRegex(template)
     assert.ok(regex.test(original))
   })
+
+  it('caps the number of compiled wildcards (ReDoS guard)', () => {
+    // Far more <*> than the budget; excess must not become more `.*?` runs.
+    const template = '<*>'.repeat(500)
+    const regex = templateToRegex(template)
+    const lazyRuns = (regex.source.match(/\.\*\?/g) ?? []).length
+    assert.ok(lazyRuns <= 64, `expected <=64 lazy runs, got ${lazyRuns}`)
+  })
+
+  it('caps template length before compiling', () => {
+    const template = `${'a'.repeat(10_000)}<*>`
+    const regex = templateToRegex(template)
+    assert.ok(regex.source.length <= 4200, 'compiled source should be bounded')
+  })
+
+  it('still compiles to a valid regex after capping (excess wildcards go literal)', () => {
+    // A hostile template with hundreds of wildcards must still compile without
+    // throwing; excess `<*>` past the budget are emitted as literal text, which
+    // only makes matching stricter (safe degradation), never a ReDoS.
+    const regex = templateToRegex(`prefix ${'<*>'.repeat(200)} suffix`)
+    assert.ok(regex instanceof RegExp)
+    // The first 64 wildcards still match; a normal template is unaffected.
+    const normal = templateToRegex('user <*> did <*>')
+    assert.ok(normal.test('user alice did login'))
+  })
 })

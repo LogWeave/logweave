@@ -144,7 +144,11 @@ describe('LokiAdapter.fetchRawLogs', () => {
     const expectedIso = new Date(1735689600000).toISOString()
     server.setHandler(() => ({
       status: 200,
-      body: { data: { result: [{ stream: { app: 'test' }, values: [['1735689600000000000', 'some log']] }] } },
+      body: {
+        data: {
+          result: [{ stream: { app: 'test' }, values: [['1735689600000000000', 'some log']] }],
+        },
+      },
     }))
 
     const result = await adapter.fetchRawLogs(params())
@@ -166,8 +170,14 @@ describe('LokiAdapter.fetchRawLogs', () => {
       body: {
         data: {
           result: [
-            { stream: { app: 'payments', pod: 'a' }, values: [['1735689600000000000', 'line from pod a']] },
-            { stream: { app: 'payments', pod: 'b' }, values: [['1735689600000000000', 'line from pod b']] },
+            {
+              stream: { app: 'payments', pod: 'a' },
+              values: [['1735689600000000000', 'line from pod a']],
+            },
+            {
+              stream: { app: 'payments', pod: 'b' },
+              values: [['1735689600000000000', 'line from pod b']],
+            },
           ],
         },
       },
@@ -186,6 +196,19 @@ describe('LokiAdapter.fetchRawLogs', () => {
     const query = url.searchParams.get('query') ?? ''
     assert.ok(query.includes('{app="payments"}'))
     assert.ok(query.includes('|~'))
+  })
+
+  it('strips backticks so a template cannot break out of the LogQL line filter', async () => {
+    server.setHandler(() => ({ status: 200, body: { data: { result: [] } } }))
+
+    // A template carrying a backtick (from a tenant log line) must not be able to
+    // close the backtick-quoted line filter and inject LogQL.
+    await adapter.fetchRawLogs(params({ templateText: 'evil`} |~ `whoami' }))
+    const url = new URL(server.last()?.url ?? '/', server.baseUrl)
+    const query = url.searchParams.get('query') ?? ''
+    // The line filter is one backtick-quoted string: exactly the two delimiters.
+    const backticks = (query.match(/`/g) ?? []).length
+    assert.equal(backticks, 2)
   })
 
   it('respects limit parameter', async () => {
