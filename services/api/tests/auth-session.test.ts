@@ -11,11 +11,23 @@ import {
   validatePasswordPolicy,
   verifyPassword,
 } from '../src/auth/passwords.js'
-import { HmacSessionProvider } from '../src/auth/session.js'
+import { HmacSessionProvider, SESSION_COOKIE_NAME } from '../src/auth/session.js'
+import { SessionValidationCache } from '../src/auth/session-cache.js'
 import type { DashboardUser, UserStore } from '../src/auth/user-store.js'
 import type { DbClient } from '../src/db/client.js'
+import { createAuthMiddleware } from '../src/middleware/auth.js'
+import { createCsrfMiddleware } from '../src/middleware/csrf.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
 import { authRoutes } from '../src/routes/auth.js'
+
+/** Extract a cookie value by name from a supertest set-cookie array. */
+function readSetCookie(setCookie: string[] | undefined, name: string): string | undefined {
+  for (const c of setCookie ?? []) {
+    const m = c.match(new RegExp(`${name}=([^;]+)`))
+    if (m?.[1]) return decodeURIComponent(m[1])
+  }
+  return undefined
+}
 
 // ---------------------------------------------------------------------------
 // In-memory UserStore for tests (no ClickHouse dependency)
@@ -561,5 +573,173 @@ describe('session invalidation', () => {
     const meRes = await request(app).get('/v1/auth/me').set('Cookie', oldCookies)
 
     assert.equal(meRes.status, 401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// CSRF on /v1/auth/* (mirrors the app.ts wiring: CSRF in front of authRoutes)
+// ---------------------------------------------------------------------------
+
+describe('CSRF on /v1/auth/*', () => {
+  async function createCsrfAuthApp() {
+    const logger = pino({ level: 'silent' })
+    const userStore = new InMemoryUserStore()
+    const keys = await deriveKeys('test-encryption-key-at-least-32-chars!!')
+    const sessionProvider = new HmacSessionProvider(keys.sessionSigningKey)
+    await userStore.createUser({
+      username: 'admin',
+      password: 'adminpassword1',
+      tenantId: 'test-tenant',
+      role: 'admin',
+    })
+    const admin = await userStore.findByUsername('test-tenant', 'admin')
+    if (admin) await userStore.clearMustChangePassword(admin.userId)
+
+    const app = express()
+    app.use(express.json())
+    app.use(cookieParser())
+    const csrf = createCsrfMiddleware(keys.csrfTokenKey, { isProduction: false })
+    const authRouter = express.Router()
+    authRouter.use('/auth', csrf.tokenSetter)
+    authRouter.use('/auth', csrf.tokenValidator)
+    authRouter.use(
+      authRoutes({
+        userStore,
+        sessionProvider,
+        db: mockDb,
+        logger,
+        totpEncryptionKey: keys.totpEncryptionKey,
+        isProduction: false,
+      }),
+    )
+    app.use('/v1', authRouter)
+    app.use(createErrorHandler(logger))
+    return { app }
+  }
+
+  it('allows login without a CSRF token (no session cookie yet) and seeds both cookies', async () => {
+    const { app } = await createCsrfAuthApp()
+    const res = await request(app)
+      .post('/v1/auth/session')
+      .send({ username: 'admin', password: 'adminpassword1' })
+
+    assert.equal(res.status, 200)
+    const setCookie = res.headers['set-cookie'] as unknown as string[]
+    assert.ok(readSetCookie(setCookie, SESSION_COOKIE_NAME), 'session cookie set')
+    assert.ok(readSetCookie(setCookie, 'logweave_csrf'), 'csrf cookie set')
+  })
+
+  it('rejects a session-authed mutation without the CSRF header (403)', async () => {
+    const { app } = await createCsrfAuthApp()
+    const login = await request(app)
+      .post('/v1/auth/session')
+      .send({ username: 'admin', password: 'adminpassword1' })
+    const cookies = login.headers['set-cookie']
+
+    const res = await request(app).delete('/v1/auth/session').set('Cookie', cookies)
+
+    assert.equal(res.status, 403)
+    assert.equal(res.body.error.code, 'CSRF_MISSING')
+  })
+
+  it('allows a session-authed mutation with a valid CSRF header', async () => {
+    const { app } = await createCsrfAuthApp()
+    const login = await request(app)
+      .post('/v1/auth/session')
+      .send({ username: 'admin', password: 'adminpassword1' })
+    const cookies = login.headers['set-cookie'] as unknown as string[]
+    const csrfCookie = readSetCookie(cookies, 'logweave_csrf')
+    assert.ok(csrfCookie)
+    const csrfToken = csrfCookie.slice(0, csrfCookie.indexOf('.'))
+
+    const res = await request(app)
+      .delete('/v1/auth/session')
+      .set('Cookie', cookies)
+      .set('X-CSRF-Token', csrfToken)
+
+    assert.equal(res.status, 204)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Session validation cache-miss revocation (await + fail-closed)
+// ---------------------------------------------------------------------------
+
+describe('session validation cache-miss revocation', () => {
+  function appWith(
+    userStore: UserStore,
+    sessionCache: SessionValidationCache,
+    sessionProvider: HmacSessionProvider,
+  ) {
+    const logger = pino({ level: 'silent' })
+    const app = express()
+    app.use(cookieParser())
+    app.use(createAuthMiddleware({ sessionProvider, sessionCache, userStore, logger }))
+    app.get('/protected', (_req, res) => res.json({ ok: true }))
+    app.use(createErrorHandler(logger))
+    return app
+  }
+
+  async function setup() {
+    const keys = await deriveKeys('test-encryption-key-at-least-32-chars!!')
+    const sessionProvider = new HmacSessionProvider(keys.sessionSigningKey)
+    const userStore = new InMemoryUserStore()
+    const user = await userStore.createUser({
+      username: 'u',
+      password: 'password12345',
+      tenantId: 't1',
+      role: 'admin',
+    })
+    const cookie = sessionProvider.createSession({
+      userId: user.userId,
+      tenantId: 't1',
+      role: 'admin',
+      sessionVersion: user.sessionVersion,
+    })
+    return { sessionProvider, userStore, user, cookie }
+  }
+
+  it('authorizes a valid user on a cold cache (awaits DB)', async () => {
+    const { sessionProvider, userStore, cookie } = await setup()
+    const app = appWith(userStore, new SessionValidationCache(), sessionProvider)
+    const res = await request(app)
+      .get('/protected')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${cookie}`)
+    assert.equal(res.status, 200)
+  })
+
+  it('rejects a deleted user on a cold cache (previously trusted the cookie)', async () => {
+    const { sessionProvider, userStore, user, cookie } = await setup()
+    await userStore.deleteUser(user.userId)
+    const app = appWith(userStore, new SessionValidationCache(), sessionProvider)
+    const res = await request(app)
+      .get('/protected')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${cookie}`)
+    assert.equal(res.status, 401)
+  })
+
+  it('rejects a version-bumped user on a cold cache', async () => {
+    const { sessionProvider, userStore, user, cookie } = await setup()
+    const stored = await userStore.findById(user.userId)
+    if (stored) stored.sessionVersion = 2
+    const app = appWith(userStore, new SessionValidationCache(), sessionProvider)
+    const res = await request(app)
+      .get('/protected')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${cookie}`)
+    assert.equal(res.status, 401)
+  })
+
+  it('fails closed when the DB lookup throws on a cold cache', async () => {
+    const { sessionProvider, cookie } = await setup()
+    const throwingStore = {
+      findById: async () => {
+        throw new Error('db down')
+      },
+    } as unknown as UserStore
+    const app = appWith(throwingStore, new SessionValidationCache(), sessionProvider)
+    const res = await request(app)
+      .get('/protected')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${cookie}`)
+    assert.equal(res.status, 401)
   })
 })

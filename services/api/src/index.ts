@@ -222,7 +222,7 @@ if (config.encryptionKey) {
   logger.error('=================================================================')
   logger.error('LOGWEAVE_ENCRYPTION_KEY is not set!')
   logger.error('Dashboard login, TOTP, and connector encryption are DISABLED.')
-  logger.error('Generate one: openssl rand -hex 16')
+  logger.error('Generate one: openssl rand -hex 32')
   logger.error('=================================================================')
 }
 

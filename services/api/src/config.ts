@@ -96,7 +96,10 @@ const configSchema = z.object({
   rateLimitTenantRpm: z.coerce.number().int().min(1).max(10_000).default(600),
   rateLimitIngestRpm: z.coerce.number().int().min(1).max(10_000).default(600),
   maxConcurrentQueries: z.coerce.number().int().min(1).max(100).default(8),
-  encryptionKey: z.string().min(16).optional(),
+  encryptionKey: z
+    .string()
+    .min(32, 'LOGWEAVE_ENCRYPTION_KEY must be at least 32 chars (use: openssl rand -hex 32)')
+    .optional(),
   retentionEnabled: z
     .enum(['true', 'false'])
     .default('true')

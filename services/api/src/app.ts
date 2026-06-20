@@ -156,8 +156,20 @@ export function createApp(deps: AppDependencies): CreatedApp {
 
   // Routes — auth (partially unauthenticated: login, logout, me)
   if (deps.userStore && deps.sessionProvider && deps.totpEncryptionKey) {
-    app.use(
-      '/v1',
+    const authRouter = Router()
+    // CSRF on state-changing auth routes (password change, TOTP disable, user
+    // create/delete, logout). The validator self-exempts login (no session
+    // cookie yet), Bearer auth, and safe methods; tokenSetter seeds the cookie.
+    if (deps.csrfTokenKey) {
+      const authCsrf = createCsrfMiddleware(deps.csrfTokenKey, {
+        isProduction: process.env.NODE_ENV === 'production',
+      })
+      // Scope to /auth so non-auth /v1/* requests (which get their own CSRF on
+      // the v1 router below) don't run this pair twice.
+      authRouter.use('/auth', authCsrf.tokenSetter)
+      authRouter.use('/auth', authCsrf.tokenValidator)
+    }
+    authRouter.use(
       authRoutes({
         userStore: deps.userStore,
         sessionProvider: deps.sessionProvider,
@@ -167,10 +179,11 @@ export function createApp(deps: AppDependencies): CreatedApp {
         isProduction: process.env.NODE_ENV === 'production',
       }),
     )
+    app.use('/v1', authRouter)
   }
 
   // Routes — API (authenticated, rate-limited)
-  const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys)
+  const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys, deps.config.encryptionKey)
   const sessionCache = new SessionValidationCache()
   const auth = createAuthMiddleware({
     envKeys: keyStore,

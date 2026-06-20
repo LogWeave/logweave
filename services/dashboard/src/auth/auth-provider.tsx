@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react'
+import { csrfHeader } from '../lib/api-client'
 
 interface AuthUser {
   userId: string
@@ -35,7 +36,7 @@ async function fetchJson<T>(
     const res = await fetch(`${base}${path}`, {
       ...init,
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
+      headers: { 'Content-Type': 'application/json', ...csrfHeader(), ...init?.headers },
     })
     const body = await res.json().catch(() => ({}))
     if (res.ok) return { data: body.data, status: res.status }

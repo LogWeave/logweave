@@ -18,6 +18,17 @@ function getCsrfToken(): string | undefined {
   return dotIndex > 0 ? value.slice(0, dotIndex) : undefined
 }
 
+/**
+ * CSRF header for cookie-based state-changing requests made outside the
+ * ApiClient (the auth pages use raw fetch). Empty under Bearer auth or when no
+ * token cookie is present yet (e.g. login, which the server exempts).
+ */
+export function csrfHeader(): Record<string, string> {
+  if (config.apiKey) return {}
+  const csrf = getCsrfToken()
+  return csrf ? { 'X-CSRF-Token': csrf } : {}
+}
+
 class ApiClient {
   private headers(): HeadersInit {
     const h: HeadersInit = { Accept: 'application/json' }

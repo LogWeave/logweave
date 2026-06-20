@@ -138,6 +138,23 @@ describe('loadConfig', () => {
     assert.throws(() => loadConfig())
   })
 
+  it('rejects an encryption key shorter than 32 chars', async () => {
+    Object.assign(process.env, validEnv)
+    process.env.LOGWEAVE_ENCRYPTION_KEY = 'a'.repeat(31)
+
+    const { loadConfig } = await import('../src/config.js')
+    assert.throws(() => loadConfig(), /at least 32 chars/)
+  })
+
+  it('accepts an encryption key of exactly 32 chars', async () => {
+    Object.assign(process.env, validEnv)
+    process.env.LOGWEAVE_ENCRYPTION_KEY = 'a'.repeat(32)
+
+    const { loadConfig } = await import('../src/config.js')
+    const config = loadConfig()
+    assert.equal(config.encryptionKey, 'a'.repeat(32))
+  })
+
   it('recoveryEnabled defaults to true', async () => {
     Object.assign(process.env, validEnv)
 
