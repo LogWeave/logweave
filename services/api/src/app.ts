@@ -164,8 +164,10 @@ export function createApp(deps: AppDependencies): CreatedApp {
       const authCsrf = createCsrfMiddleware(deps.csrfTokenKey, {
         isProduction: process.env.NODE_ENV === 'production',
       })
-      authRouter.use(authCsrf.tokenSetter)
-      authRouter.use(authCsrf.tokenValidator)
+      // Scope to /auth so non-auth /v1/* requests (which get their own CSRF on
+      // the v1 router below) don't run this pair twice.
+      authRouter.use('/auth', authCsrf.tokenSetter)
+      authRouter.use('/auth', authCsrf.tokenValidator)
     }
     authRouter.use(
       authRoutes({

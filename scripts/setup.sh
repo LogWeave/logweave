@@ -19,7 +19,7 @@ fi
 
 # Generate secrets
 API_KEY=$(openssl rand -hex 32)
-ENCRYPTION_KEY=$(openssl rand -hex 16)
+ENCRYPTION_KEY=$(openssl rand -hex 32)
 CHECKPOINT_HMAC_KEY=$(openssl rand -hex 16)
 CH_PASSWORD=$(openssl rand -hex 16)
 CH_PASSWORD_SHA256=$(echo -n "$CH_PASSWORD" | openssl dgst -sha256 | awk '{print $NF}')

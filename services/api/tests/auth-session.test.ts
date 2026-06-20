@@ -600,8 +600,8 @@ describe('CSRF on /v1/auth/*', () => {
     app.use(cookieParser())
     const csrf = createCsrfMiddleware(keys.csrfTokenKey, { isProduction: false })
     const authRouter = express.Router()
-    authRouter.use(csrf.tokenSetter)
-    authRouter.use(csrf.tokenValidator)
+    authRouter.use('/auth', csrf.tokenSetter)
+    authRouter.use('/auth', csrf.tokenValidator)
     authRouter.use(
       authRoutes({
         userStore,
