@@ -228,6 +228,46 @@ describe('POST /v1/connectors SSRF guard', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Loki streamSelector grammar (LogQL injection prevention)
+// ---------------------------------------------------------------------------
+
+describe('POST /v1/connectors loki streamSelector validation', () => {
+  function lokiBody(streamSelector: string) {
+    return {
+      name: 'Loki',
+      config: { type: 'loki', url: 'https://loki.example.com', streamSelector },
+    }
+  }
+
+  async function create(streamSelector: string) {
+    return request(createTestApp())
+      .post('/v1/connectors')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(lokiBody(streamSelector))
+  }
+
+  it('accepts a valid stream selector', async () => {
+    const res = await create('{app="payments", env=~"prod|staging"}')
+    assert.equal(res.status, 201)
+  })
+
+  it('rejects a selector that appends arbitrary LogQL', async () => {
+    const res = await create('{app="x"} |~ "secret"')
+    assert.equal(res.status, 400)
+  })
+
+  it('rejects a selector missing braces', async () => {
+    const res = await create('app="x"')
+    assert.equal(res.status, 400)
+  })
+
+  it('rejects an empty brace selector (no matchers)', async () => {
+    const res = await create('{}')
+    assert.equal(res.status, 400)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // GET /v1/connectors
 // ---------------------------------------------------------------------------
 

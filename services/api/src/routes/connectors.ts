@@ -124,11 +124,15 @@ function externalUrl(url: string): boolean {
   }
 }
 
-const externalUrlSchema = z.string().url().max(1024).refine(externalUrl, {
-  message:
-    'URL must point to an external host. Loopback, link-local, and private ranges are blocked ' +
-    '(SSRF prevention); allowlist a host with LOGWEAVE_CONNECTOR_ALLOWED_HOSTS for local development.',
-})
+const externalUrlSchema = z
+  .string()
+  .url()
+  .max(1024)
+  .refine(externalUrl, {
+    message:
+      'URL must point to an external host. Loopback, link-local, and private ranges are blocked ' +
+      '(SSRF prevention); allowlist a host with LOGWEAVE_CONNECTOR_ALLOWED_HOSTS for local development.',
+  })
 
 const elasticsearchConfigSchema = z.object({
   type: z.literal('elasticsearch'),
@@ -141,10 +145,27 @@ const elasticsearchConfigSchema = z.object({
   timestampField: z.string().max(128).optional(),
 })
 
+// A LogQL stream selector is `{label=~"value", ...}` with one or more label
+// matchers. Validating the grammar (rather than just a length cap) stops a
+// crafted selector from appending arbitrary LogQL — the selector is
+// string-interpolated into the query, so `{app="x"} |~ "..."` must not pass.
+const LOKI_LABEL_MATCHER = '[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:=~|!~|=|!=)\\s*"(?:[^"\\\\]|\\\\.)*"'
+const LOKI_STREAM_SELECTOR = new RegExp(
+  `^\\{\\s*${LOKI_LABEL_MATCHER}(?:\\s*,\\s*${LOKI_LABEL_MATCHER})*\\s*\\}$`,
+)
+
 const lokiConfigSchema = z.object({
   type: z.literal('loki'),
   url: externalUrlSchema,
-  streamSelector: z.string().min(1).max(1024),
+  streamSelector: z
+    .string()
+    .min(1)
+    .max(1024)
+    .refine((s) => LOKI_STREAM_SELECTOR.test(s), {
+      message:
+        'streamSelector must be a LogQL stream selector of label matchers, ' +
+        'e.g. {app="payments", env=~"prod|staging"}.',
+    }),
   orgId: z.string().max(128).optional(),
   username: z.string().max(128).optional(),
   password: z.string().max(256).optional(),

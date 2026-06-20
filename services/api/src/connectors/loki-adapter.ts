@@ -44,9 +44,15 @@ function buildHeaders(config: LokiConnectorConfig): Record<string, string> {
 /**
  * Convert a JS RegExp source to a Loki-compatible regex string.
  * Loki regex (RE2) does not support lazy quantifiers (.*?) — replace with greedy (.*).
+ *
+ * Strips backticks: the result is interpolated into a backtick-quoted LogQL line
+ * filter (`|~ \`...\``), and LogQL backtick strings are raw with no escape — a
+ * literal backtick from a template (a tenant log line) would otherwise break out
+ * of the string and inject LogQL. A backtick in matched text is rare; dropping it
+ * from this best-effort line filter is acceptable.
  */
 function toLokiRegex(regex: RegExp): string {
-  return regex.source.replace(/\.\*\?/g, '.*')
+  return regex.source.replace(/\.\*\?/g, '.*').replace(/`/g, '')
 }
 
 /**
