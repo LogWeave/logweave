@@ -9,6 +9,7 @@ import { registerOverview } from './registrations/overview.js'
 import { registerPatterns } from './registrations/patterns.js'
 import { registerRaw } from './registrations/raw.js'
 import { registerRules } from './registrations/rules.js'
+import { VERSION } from './version.js'
 
 // Fail fast on missing env vars. stderr only — stdout is the JSON-RPC stream.
 
@@ -29,7 +30,7 @@ const client = new LogWeaveClient({ apiUrl, apiKey })
 
 const server = new McpServer({
   name: 'logweave',
-  version: '0.1.0',
+  version: VERSION,
 })
 
 registerOverview(server, client)

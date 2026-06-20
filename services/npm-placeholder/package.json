@@ -9,5 +9,8 @@
   "keywords": [
     "logweave",
     "placeholder"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -243,6 +243,8 @@ cd services/clusterer && uv run poe test  # clusterer unit + integration tests
 
 [Business Source License 1.1](LICENSE) — free to self-host for your own use. Cannot be offered as a commercial hosted service. Converts to Apache 2.0 after 4 years.
 
+The published client packages — [`@logweave/transport`](packages/transport) (Winston transport) and [`@logweave/mcp`](services/mcp) (MCP server) — are **MIT licensed** so they can be freely embedded in your own applications. The BSL-1.1 applies to the LogWeave server itself, not these client libraries.
+
 ## Terms & Beta Disclaimer
 
 LogWeave is **beta software** — see [TERMS.md](TERMS.md) for full terms. Provided as-is, no warranty, no liability. Do not rely on it as your sole observability tool in critical production systems.
