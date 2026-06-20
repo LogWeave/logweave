@@ -119,7 +119,14 @@ class DrainService:
                 miner.config.drain_sim_th = original_sim_th
 
     def get_dirty_tenants(self) -> dict[str, int]:
-        """Return {tenant_id: generation} snapshot of dirty tenants."""
+        """Return {tenant_id: generation} snapshot of dirty tenants.
+
+        Read without a lock: dict() over a dict is a single atomic operation
+        under the CPython GIL (no Python-level bytecode interleaves), so the
+        snapshot can't observe a half-mutated dict even though writers hold only
+        their per-tenant lock. A tenant reset between this snapshot and the
+        subsequent get_state() is handled there (returns None).
+        """
         return dict(self._dirty_generations)
 
     def mark_clean(self, tenant_id: str, generation: int) -> None:
@@ -130,15 +137,22 @@ class DrainService:
             if current is not None and current <= generation:
                 del self._dirty_generations[tenant_id]
 
-    def get_state(self, tenant_id: str) -> bytes:
+    def get_state(self, tenant_id: str) -> bytes | None:
         """Serialize miner's Drain3 state to bytes. Thread-safe.
+
+        Returns None if the tenant has no miner — e.g. it was reset between a
+        get_dirty_tenants() snapshot and this call. The checkpoint cycle treats
+        None as a clean skip rather than letting a KeyError surface as a noisy
+        logged exception for an expected, benign race.
 
         Security: uses jsonpickle (Drain3's native format). Only load state
         from trusted checkpoint volume — never from external sources.
         """
         lock = self._get_lock(tenant_id)
         with lock:
-            miner = self._miners[tenant_id]
+            miner = self._miners.get(tenant_id)
+            if miner is None:
+                return None
             return jsonpickle.dumps(miner.drain, keys=True).encode("utf-8")
 
     def load_state(self, tenant_id: str, state: bytes) -> None:
@@ -158,12 +172,11 @@ class DrainService:
                 len(loaded_drain.clusters),
             )
 
-    def preview(
-        self, messages: list[str], *, sim_th: float = 0.4
-    ) -> tuple[int, float, list[str]]:
-        """Cluster messages with a throwaway miner. Returns (pattern_count, compression_ratio, top_templates).
+    def preview(self, messages: list[str], *, sim_th: float = 0.4) -> tuple[int, float, list[str]]:
+        """Cluster messages with a throwaway miner.
 
-        No side effects — the miner is discarded after this call.
+        Returns (pattern_count, compression_ratio, top_templates). No side
+        effects — the miner is discarded after this call.
         """
         miner = self._create_miner(sim_th=sim_th)
         for msg in messages:
@@ -180,7 +193,15 @@ class DrainService:
         return pattern_count, compression_ratio, sample_templates
 
     def reset_tenant(self, tenant_id: str) -> bool:
-        """Delete a tenant's miner state. Thread-safe. Returns True if miner existed."""
+        """Delete a tenant's miner state. Thread-safe. Returns True if miner existed.
+
+        The per-tenant lock in self._locks is intentionally left in place (not
+        pruned): another thread may already hold a reference to it, so popping it
+        here could hand a concurrent caller a different lock object for the same
+        tenant and break mutual exclusion. self._locks therefore tracks the
+        historical distinct-tenant count, which is bounded in practice by the
+        deployment's tenant cardinality.
+        """
         _validate_tenant_id(tenant_id)
         lock = self._get_lock(tenant_id)
         with lock:

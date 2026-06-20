@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
-import clickhouse_connect.driver
 from cachetools import LRUCache
 from uuid_utils import uuid7
 
 from clusterer.internal_events import emit_clickhouse_failure
+
+if TYPE_CHECKING:
+    import clickhouse_connect.driver
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +61,8 @@ WHERE tenant_id = {tid:String}
 
 _INSERT_SQL = """\
 INSERT INTO template_registry
-    (tenant_id, template_text_hash, template_text, template_id, first_seen, embedding, embedding_model)
+    (tenant_id, template_text_hash, template_text, template_id, first_seen,
+     embedding, embedding_model)
 VALUES
     ({tid:String}, cityHash64({text:String}), {text:String}, {template_id:String}, now64(3),
      {embedding:Array(Float32)}, {embedding_model:String})
@@ -256,7 +260,13 @@ class TemplateRegistry:
             self._client.insert(
                 "template_registry",
                 rows,
-                column_names=["tenant_id", "template_text", "template_id", "embedding", "embedding_model"],
+                column_names=[
+                    "tenant_id",
+                    "template_text",
+                    "template_id",
+                    "embedding",
+                    "embedding_model",
+                ],
             )
         except Exception as exc:
             emit_clickhouse_failure("insert", exc)

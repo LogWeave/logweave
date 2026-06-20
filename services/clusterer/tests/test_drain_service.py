@@ -162,6 +162,15 @@ class TestStateSerialization:
         assert isinstance(state, bytes)
         assert len(state) > 0
 
+    def test_get_state_returns_none_for_unknown_tenant(self, svc: DrainService) -> None:
+        """A tenant reset between the dirty snapshot and get_state is a clean no-op."""
+        assert svc.get_state("never-seen") is None
+
+    def test_get_state_returns_none_after_reset(self, svc: DrainService) -> None:
+        svc.cluster_messages("t1", ["msg"])
+        assert svc.reset_tenant("t1") is True
+        assert svc.get_state("t1") is None
+
     def test_load_state_restores_clustering(self, svc: DrainService) -> None:
         # Train and capture results
         svc.cluster_messages("t1", ["Connection timeout to host after 100ms"])
