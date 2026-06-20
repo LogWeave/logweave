@@ -1,4 +1,5 @@
 import type pino from 'pino'
+import { decrypt, encrypt } from '../crypto.js'
 import type { DbClient } from '../db/client.js'
 
 export type TailMode = 'disabled' | 'metadata' | 'preprocessed'
@@ -48,6 +49,8 @@ const SETTING_KEYS: (keyof TenantSettings)[] = [
 export interface TenantSettingsStoreOpts {
   db?: DbClient
   logger?: pino.Logger
+  /** Encrypts slackWebhookUrl at rest. When unset, the URL is stored plaintext (dev). */
+  encryptionKey?: string
 }
 
 /**
@@ -60,10 +63,12 @@ export class TenantSettingsStore {
   private readonly settings = new Map<string, TenantSettings>()
   private readonly db?: DbClient
   private readonly logger?: pino.Logger
+  private readonly encryptionKey?: string
 
   constructor(opts: TenantSettingsStoreOpts = {}) {
     this.db = opts.db
     this.logger = opts.logger
+    this.encryptionKey = opts.encryptionKey
   }
 
   /** Load all settings from ClickHouse into memory. Call once at startup. */
@@ -84,7 +89,16 @@ export class TenantSettingsStore {
     for (const row of rows) {
       const existing = this.settings.get(row.tenant_id) ?? {}
       if (row.setting_key === 'slackWebhookUrl') {
-        existing.slackWebhookUrl = row.setting_value
+        // Stored encrypted; plaintext rows (pre-encryption) pass through unchanged.
+        try {
+          existing.slackWebhookUrl = await decrypt(row.setting_value, this.encryptionKey)
+        } catch (err) {
+          // Don't crash startup over one undecryptable webhook — log and skip it.
+          this.logger?.warn(
+            { err, tenantId: row.tenant_id },
+            'Failed to decrypt slackWebhookUrl; Slack alerts disabled for this tenant until re-saved',
+          )
+        }
       } else if (row.setting_key === 'lastTestStatus') {
         existing.lastTestStatus = row.setting_value as 'success' | 'failed'
       } else if (row.setting_key === 'lastTestAt') {
@@ -169,38 +183,46 @@ export class TenantSettingsStore {
     this.settings.set(tenantId, { ...existing, ...updates })
 
     if (this.db) {
-      const now = Date.now()
-      const rows: {
-        tenant_id: string
-        setting_key: string
-        setting_value: string
-        version: number
-        is_deleted: number
-      }[] = []
-      for (const key of SETTING_KEYS) {
-        if (key in updates && updates[key] !== undefined) {
-          rows.push({
-            tenant_id: tenantId,
-            setting_key: key,
-            setting_value: Array.isArray(updates[key])
+      // Encryption and the insert are both inside the try so any failure
+      // (crypto fault or DB error) rolls the in-memory cache back to `previous`.
+      try {
+        const now = Date.now()
+        const rows: {
+          tenant_id: string
+          setting_key: string
+          setting_value: string
+          version: number
+          is_deleted: number
+        }[] = []
+        for (const key of SETTING_KEYS) {
+          if (key in updates && updates[key] !== undefined) {
+            let value = Array.isArray(updates[key])
               ? JSON.stringify(updates[key])
-              : String(updates[key]),
-            version: now,
-            is_deleted: 0,
-          })
+              : String(updates[key])
+            // Encrypt the webhook URL at rest (mirrors connector-secret handling);
+            // a no-op when no encryption key is configured.
+            if (key === 'slackWebhookUrl' && value) {
+              value = await encrypt(value, this.encryptionKey)
+            }
+            rows.push({
+              tenant_id: tenantId,
+              setting_key: key,
+              setting_value: value,
+              version: now,
+              is_deleted: 0,
+            })
+          }
         }
-      }
-      if (rows.length > 0) {
-        try {
+        if (rows.length > 0) {
           await this.db.insert({
             table: 'logweave.tenant_settings',
             values: rows,
             format: 'JSONEachRow',
           })
-        } catch (err) {
-          this.settings.set(tenantId, previous)
-          throw err
         }
+      } catch (err) {
+        this.settings.set(tenantId, previous)
+        throw err
       }
     }
   }

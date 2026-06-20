@@ -71,7 +71,11 @@ const clusterClient = new ClusterClient(
 )
 const anomalyScorer = new AnomalyScorer({ db, logger })
 const watchStore = new WatchStore({ db, logger })
-const settingsStore = new TenantSettingsStore({ db, logger })
+const settingsStore = new TenantSettingsStore({
+  db,
+  logger,
+  encryptionKey: config.encryptionKey,
+})
 const ruleStore = new RuleStore({ db, logger })
 
 // Runtime-mutable API keys. Lives alongside env-loaded `config.apiKeys`,
