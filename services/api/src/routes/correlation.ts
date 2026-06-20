@@ -92,7 +92,11 @@ export interface ServiceOutlier {
 // Z-score computation
 // ---------------------------------------------------------------------------
 
-const MIN_DATA_POINTS = 168
+// Baseline samples are per-day values at the current hour-of-day over a 7-day
+// window (service_stats is hourly), so a full baseline is ~7 points. Require at
+// least 5 distinct days at this hour before the z-score is trustworthy. (Chunk
+// 5 / #258 — was 168 when the baseline mixed all 24 hours.)
+const MIN_DATA_POINTS = 5
 
 function computeOutlier(
   service: string,
@@ -132,7 +136,7 @@ function computeOutlier(
     return {
       ...base,
       verdict: 'insufficient_data',
-      warning: `Only ${dataPoints} hourly data points available (${MIN_DATA_POINTS} recommended for reliable z-score)`,
+      warning: `Only ${dataPoints} prior days at this hour-of-day (${MIN_DATA_POINTS} recommended for a reliable z-score)`,
     }
   }
 
@@ -273,7 +277,7 @@ export function correlationRoutes(deps: CorrelationDeps): Router {
               zScore: 0,
               verdict: 'insufficient_data',
               dataPoints: 0,
-              warning: `Only 0 hourly data points available (${MIN_DATA_POINTS} recommended for reliable z-score)`,
+              warning: `Only 0 prior days at this hour-of-day (${MIN_DATA_POINTS} recommended for a reliable z-score)`,
             }
 
         respond(res, data, { hours, count: 1 })

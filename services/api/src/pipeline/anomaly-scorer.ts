@@ -1,6 +1,7 @@
 import type pino from 'pino'
-import { BASELINE_ROW_WARN_THRESHOLD, queryAnomalyBaselines } from '../db/anomaly-queries.js'
+import { BASELINE_ROW_WARN_THRESHOLD } from '../db/anomaly-queries.js'
 import type { DbClient } from '../db/client.js'
+import { type AnomalyStrategy, RatioThresholdStrategy } from './anomaly-strategy.js'
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000
 const TEN_MINUTES_MS = 10 * 60 * 1000
@@ -47,6 +48,12 @@ export interface AnomalyScorerOptions {
   steadyThreshold?: number
   newTemplateThreshold?: number
   now?: () => number
+  /**
+   * Anomaly algorithm. Defaults to {@link RatioThresholdStrategy} built from
+   * the threshold options above (back-compat). Pass a custom strategy to swap
+   * the baseline model and/or scoring policy without touching the plumbing.
+   */
+  strategy?: AnomalyStrategy
 }
 
 /**
@@ -67,11 +74,9 @@ export class AnomalyScorer {
   private readonly logger: pino.Logger
   private readonly coldStartMs: number
   private readonly warmupMs: number
-  private readonly warmupThreshold: number
-  private readonly steadyThreshold: number
-  private readonly newTemplateThreshold: number
   private readonly baselineRefreshMs: number
   private readonly now: () => number
+  private readonly strategy: AnomalyStrategy
 
   /** Current interval event counts: `{tenant}\0{service}\0{templateId}\0{intervalStart}` → count */
   private readonly intervalCounters = new Map<string, number>()
@@ -97,11 +102,15 @@ export class AnomalyScorer {
     this.logger = options.logger
     this.coldStartMs = options.coldStartMs ?? DEFAULT_COLD_START_MS
     this.warmupMs = options.warmupMs ?? DEFAULT_WARMUP_MS
-    this.warmupThreshold = options.warmupThreshold ?? DEFAULT_WARMUP_THRESHOLD
-    this.steadyThreshold = options.steadyThreshold ?? DEFAULT_STEADY_THRESHOLD
-    this.newTemplateThreshold = options.newTemplateThreshold ?? DEFAULT_NEW_TEMPLATE_THRESHOLD
     this.baselineRefreshMs = options.baselineRefreshMs ?? DEFAULT_BASELINE_REFRESH_MS
     this.now = options.now ?? Date.now
+    this.strategy =
+      options.strategy ??
+      new RatioThresholdStrategy({
+        warmupThreshold: options.warmupThreshold ?? DEFAULT_WARMUP_THRESHOLD,
+        steadyThreshold: options.steadyThreshold ?? DEFAULT_STEADY_THRESHOLD,
+        newTemplateThreshold: options.newTemplateThreshold ?? DEFAULT_NEW_TEMPLATE_THRESHOLD,
+      })
   }
 
   /** Start periodic baseline refresh + counter pruning. */
@@ -211,8 +220,10 @@ export class AnomalyScorer {
   }
 
   /**
-   * Pure scoring arithmetic — no side effects, no counter mutation.
-   * Shared by recordAndScore (hot path) and getWatchedScores (evaluator).
+   * Pure scoring — no side effects, no counter mutation. Resolves the
+   * hour-of-day baseline, then delegates the actual scoring decision to the
+   * configured strategy. Shared by recordAndScore (hot path) and
+   * getWatchedScores (evaluator).
    */
   private computeScore(
     tenantId: string,
@@ -222,23 +233,7 @@ export class AnomalyScorer {
     age: number,
   ): number {
     const baseline = this.lookupBaseline(tenantId, service, templateId)
-
-    // No baseline or baseline=0 → use absolute threshold for new templates
-    if (baseline === undefined || baseline <= 0) {
-      if (count > this.newTemplateThreshold) {
-        return count / this.newTemplateThreshold
-      }
-      return 0
-    }
-
-    // Graduated threshold
-    const threshold = age < this.warmupMs ? this.warmupThreshold : this.steadyThreshold
-
-    // Floor baseline at 1.0 to prevent false positives on rare templates
-    const effectiveBaseline = Math.max(baseline, 1.0)
-    const score = count / effectiveBaseline / threshold
-
-    return score >= 1.0 ? score : 0
+    return this.strategy.score({ count, baseline, inWarmup: age < this.warmupMs })
   }
 
   /**
@@ -279,15 +274,15 @@ export class AnomalyScorer {
       for (const tenantId of tenants) {
         const startMs = this.now()
         try {
-          const rows = await queryAnomalyBaselines(this.db, tenantId)
+          const rows = await this.strategy.fetchBaselines(this.db, tenantId)
           // Clear-and-replace: remove stale entries for this tenant, then add fresh ones
           const prefix = `${tenantId}${D}`
           for (const key of this.baselineByHour.keys()) {
             if (key.startsWith(prefix)) this.baselineByHour.delete(key)
           }
           for (const row of rows) {
-            const hourKey = `${tenantId}${D}${row.service}${D}${row.template_id}${D}${Number(row.hour_of_day)}`
-            this.baselineByHour.set(hourKey, Number(row.avg_count_per_interval))
+            const hourKey = `${tenantId}${D}${row.service}${D}${row.templateId}${D}${row.hourOfDay}`
+            this.baselineByHour.set(hourKey, row.baseline)
           }
           if (rows.length >= BASELINE_ROW_WARN_THRESHOLD) {
             this.logger.warn(

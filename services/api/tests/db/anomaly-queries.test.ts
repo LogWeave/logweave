@@ -34,13 +34,23 @@ describe('anomaly baseline window', () => {
     await queryAnomalyBaselines(db, 't1')
     assert.ok(captured, 'query should have been called')
     assert.equal(captured.query_params.window_days, BASELINE_WINDOW_DAYS)
-    assert.equal(captured.query_params.min_samples, 3, 'min-sample guard (ADR-014)')
+    assert.equal(captured.query_params.min_samples, 3, 'min-day guard (ADR-014)')
+    assert.equal(captured.query_params.buckets_per_hour, 12, 'per-interval denominator base')
 
     // Hour-of-day grouping (ADR-014 lookup contract)
     assert.match(captured.query, /toHour\(interval_start\)\s+AS\s+hour_of_day/)
     assert.match(captured.query, /GROUP BY template_id, service, hour_of_day/)
-    // HAVING guard prevents 1-sample baselines (ADR-014)
-    assert.match(captured.query, /HAVING uniq\(interval_start\) >= \{min_samples:UInt32\}/)
+    // Per-interval rate counts silent buckets: divide by distinct days × buckets/hour,
+    // NOT by buckets-that-fired (which overstates "normal"). See ADR-014.
+    assert.match(
+      captured.query,
+      /countMerge\(occurrence_count\) \/ \(uniq\(toDate\(interval_start\)\) \* \{buckets_per_hour:UInt32\}\)/,
+    )
+    // HAVING guard requires 3 distinct DAYS, not 3 distinct 5-min buckets (ADR-014)
+    assert.match(
+      captured.query,
+      /HAVING uniq\(toDate\(interval_start\)\) >= \{min_samples:UInt32\}/,
+    )
     // Deterministic ordering — no silent truncation
     assert.match(captured.query, /ORDER BY template_id, service, hour_of_day/)
     // No LIMIT clause (ADR-014: rely on cardinality bound + warn threshold)
