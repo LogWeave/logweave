@@ -1,7 +1,13 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
-import { type ApiResponse, formatMeta, READ_ONLY, toolHandler } from '../shared/handler.js'
+import {
+  type ApiResponse,
+  escapeCell,
+  formatMeta,
+  READ_ONLY,
+  toolHandler,
+} from '../shared/handler.js'
 import {
   buildSystemNotes,
   formatSystemStateBlock,
@@ -40,7 +46,18 @@ async function incidentPostmortem(
   client: LogWeaveClient,
   args: { service: string; since?: string; hours?: number },
 ): Promise<string> {
-  const hours = args.hours ?? 2
+  // When `since` is provided it anchors the window, so every sub-query must
+  // cover the same (now - since) span. Without this, `changes` honored `since`
+  // while outlier/templates/correlations silently used the default `hours`,
+  // mixing a long incident window with a 2h snapshot. Derive one effective
+  // window and pass it everywhere. Guard against an unparseable/future `since`.
+  let hours = args.hours ?? 2
+  if (args.since) {
+    const sinceMs = Date.parse(args.since)
+    if (!Number.isNaN(sinceMs)) {
+      hours = Math.max(1, Math.ceil((Date.now() - sinceMs) / 3_600_000))
+    }
+  }
 
   const [deploysRes, changesRes, outlierRes, patternsRes] = await Promise.all([
     client.get('/deploys', { service: args.service, limit: 5 }) as Promise<ApiResponse>,
@@ -245,7 +262,13 @@ async function comparePeriods(
     service: string
   }
 
-  const params: Record<string, string | number | undefined> = { service }
+  // High explicit limit so both windows cover the same template cardinality.
+  // With the API's default top-N, the combined and recent lists are truncated
+  // independently — a template present in recent but cut from combined would be
+  // mis-labelled "new" (baselineCount 0). A matched, generous limit makes that
+  // mismatch vanishingly unlikely below the cap; services above it are noted.
+  const COMPARE_LIMIT = 500
+  const params: Record<string, string | number | undefined> = { service, limit: COMPARE_LIMIT }
 
   // Fetch combined window (recent + baseline) and recent window in parallel.
   // Baseline counts are derived as: combined - recent (avoids double-counting the recent period).
@@ -301,6 +324,10 @@ async function comparePeriods(
   if (service) text += ` | **Service:** ${service}`
   text += `\n\n`
 
+  if (combined.length >= COMPARE_LIMIT || recent.length >= COMPARE_LIMIT) {
+    text += `> ⚠️ This service has more than ${COMPARE_LIMIT} distinct patterns per window; new/resolved classification may be approximate beyond that cap. Narrow by service for exact results.\n\n`
+  }
+
   if (newPatterns.length > 0) {
     text += `## New Patterns (${newPatterns.length})\n\n`
     for (const t of newPatterns.slice(0, 10)) {
@@ -323,7 +350,7 @@ async function comparePeriods(
     text += `| Pattern | Service | Recent | Baseline | Change |\n|---------|---------|--------|----------|--------|\n`
     for (const c of changed.slice(0, 10)) {
       const dir = c.ratio > 1 ? `↑ ${c.ratio.toFixed(1)}x` : `↓ ${(1 / c.ratio).toFixed(1)}x`
-      text += `| ${c.template.slice(0, 80)} | ${c.service} | ${c.recentCount} | ${c.baselineCount} | ${dir} |\n`
+      text += `| ${escapeCell(c.template.slice(0, 80))} | ${escapeCell(c.service)} | ${c.recentCount} | ${c.baselineCount} | ${dir} |\n`
     }
     text += '\n'
   }

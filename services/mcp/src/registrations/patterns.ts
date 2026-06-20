@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { LogWeaveClient } from '../client.js'
 import {
   type ApiResponse,
+  escapeCell,
   formatMeta,
   READ_ONLY,
   toolHandler,
@@ -189,11 +190,11 @@ async function templateEvents(
   text += `|-----------|---------|-------|--------|----------|----------|\n`
   for (const r of rows) {
     const ts = (r.timestamp as string).slice(0, 19).replace('T', ' ')
-    const route = (r.route as string) || '-'
+    const route = escapeCell((r.route as string) || '-')
     const status = r.statusCode || '-'
     const dur = r.durationMs ? `${r.durationMs}ms` : '-'
-    const trace = (r.traceId as string) || '-'
-    text += `| ${ts} | ${r.service} | ${route} | ${status} | ${dur} | ${trace} |\n`
+    const trace = escapeCell((r.traceId as string) || '-')
+    text += `| ${ts} | ${escapeCell(r.service)} | ${route} | ${status} | ${dur} | ${trace} |\n`
   }
 
   text += formatMeta(res.meta)

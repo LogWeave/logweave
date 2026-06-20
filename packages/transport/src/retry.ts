@@ -51,14 +51,21 @@ export async function retryFetch(
 
   const totalAttempts = 1 + maxRetries
 
+  // Set when an iteration already performed an inline wait (429 Retry-After, or
+  // 5xx Retry-After) before `continue`. The next iteration must NOT also run the
+  // pre-attempt backoff — otherwise a single rate-limit response waits twice
+  // (the server-instructed delay plus an extra exponential backoff).
+  let skipBackoff = false
+
   for (let attempt = 0; attempt < totalAttempts; attempt++) {
     // Check if we've been told to stop
     if (signal?.aborted) {
       return null
     }
 
-    // Wait before retries (not before the first attempt)
-    if (attempt > 0) {
+    // Wait before retries (not before the first attempt, and not when the
+    // previous iteration already waited inline as instructed by Retry-After).
+    if (attempt > 0 && !skipBackoff) {
       const maxDelay = 1000 * 2 ** (attempt - 1)
       const jitteredDelay = Math.random() * maxDelay
       await sleepFn(jitteredDelay)
@@ -68,6 +75,7 @@ export async function retryFetch(
         return null
       }
     }
+    skipBackoff = false
 
     try {
       // Per-attempt timeout via AbortSignal.timeout
@@ -103,6 +111,9 @@ export async function retryFetch(
         }
 
         if (signal?.aborted) return null
+        // This iteration already waited the full backoff inline — don't let the
+        // next iteration's pre-attempt backoff stack another delay on top.
+        skipBackoff = true
         continue
       }
 
@@ -125,7 +136,9 @@ export async function retryFetch(
           )
           await sleepFn(retrySeconds * 1000)
           if (signal?.aborted) return null
-          continue
+          // Skip the next iteration's pre-attempt backoff (we just waited the
+          // server-instructed delay); then fall through to the next attempt.
+          skipBackoff = true
         }
       }
     } catch {
