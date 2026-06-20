@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { MAX_MESSAGE_LENGTH } from '../../src/pipeline/parse.js'
 import {
   PREPROCESSING_VERSION,
   preprocessMessage,
   processEvent,
 } from '../../src/pipeline/preprocess.js'
-import { MAX_MESSAGE_LENGTH } from '../../src/pipeline/parse.js'
 import type { ParsedEvent } from '../../src/pipeline/types.js'
 
 describe('preprocessMessage', () => {

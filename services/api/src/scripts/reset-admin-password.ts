@@ -26,8 +26,8 @@
  */
 import { randomBytes } from 'node:crypto'
 import pino from 'pino'
-import { ClickHouseUserStore } from '../auth/user-store.js'
 import { hashPassword } from '../auth/passwords.js'
+import { ClickHouseUserStore } from '../auth/user-store.js'
 import { createClickHouseClient } from '../clients/clickhouse.js'
 import { loadConfig } from '../config.js'
 import { DbClient } from '../db/client.js'

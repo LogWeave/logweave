@@ -7,6 +7,7 @@ import * as metrics from '../metrics.js'
 
 /** Retry-After (seconds) advertised when ClickHouse is unavailable for ingest. */
 const INGEST_RETRY_AFTER_SECONDS = 30
+
 import type { TailBuffer } from '../tail/buffer.js'
 import { levelMeetsSeverity } from '../tail/types.js'
 import type { LogMetadataRow } from '../types.js'

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { setTimeout as delay } from 'node:timers/promises'
 import { describe, it } from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
 import express from 'express'
 import pino from 'pino'
 import request from 'supertest'

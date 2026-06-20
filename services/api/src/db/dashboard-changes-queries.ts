@@ -549,10 +549,7 @@ WHERE tenant_id = {tenant_id:String}
  * Cheap: single MIN aggregate against the (tenant_id, service, interval_start)
  * primary key order — ClickHouse short-circuits to the first matching part.
  */
-async function queryTenantFirstSeenAt(
-  db: DbClient,
-  tenantId: string,
-): Promise<string | null> {
+async function queryTenantFirstSeenAt(db: DbClient, tenantId: string): Promise<string | null> {
   const rows = await db.query<{ first_seen: string }>(
     tenantQuery(
       `/* @query: tenantFirstSeenAt */
