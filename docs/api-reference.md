@@ -1137,7 +1137,7 @@ Send a test message to the configured Slack webhook.
 
 **Auth**: API key or session
 
-**Response** (200): `{ data: { success, error? }, meta: { fetchedAt } }`
+**Response** (200): `{ data: { success, failureReason? }, meta: { fetchedAt } }` — `failureReason` is present only when `success` is `false`.
 
 **Errors**: 400 `SLACK_NOT_CONFIGURED`
 

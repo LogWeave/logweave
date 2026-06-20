@@ -564,8 +564,13 @@ identifier. Only works if the tenant has configured tag extraction in Settings.
 
 ## Dev-Only Tools
 
-These tools are only registered when `LOGWEAVE_DEV=true`. They are intended for local
-development and debugging, not production use.
+These tools are only registered when `LOGWEAVE_DEV=true`.
+
+> ⚠️ **Never set `LOGWEAVE_DEV=true` in any shared, multi-tenant, or production
+> deployment.** `dev_query` runs raw, tenant-unscoped SQL directly against
+> ClickHouse — it can read every tenant's data and bypasses the per-tenant
+> scoping enforced by all production tools. These tools exist only for
+> single-operator local development and debugging against a throwaway dataset.
 
 ### `dev_health`
 

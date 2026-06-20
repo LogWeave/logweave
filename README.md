@@ -236,7 +236,7 @@ cd services/dashboard && pnpm install && pnpm dev
 
 # Tests
 cd services/api && pnpm test:unit   # unit tests, no external deps (use `pnpm test` to also run ClickHouse-backed tests)
-cd services/clusterer && uv run poe test  # 106 tests
+cd services/clusterer && uv run poe test  # clusterer unit + integration tests
 ```
 
 ## License
