@@ -183,44 +183,46 @@ export class TenantSettingsStore {
     this.settings.set(tenantId, { ...existing, ...updates })
 
     if (this.db) {
-      const now = Date.now()
-      const rows: {
-        tenant_id: string
-        setting_key: string
-        setting_value: string
-        version: number
-        is_deleted: number
-      }[] = []
-      for (const key of SETTING_KEYS) {
-        if (key in updates && updates[key] !== undefined) {
-          let value = Array.isArray(updates[key])
-            ? JSON.stringify(updates[key])
-            : String(updates[key])
-          // Encrypt the webhook URL at rest (mirrors connector-secret handling);
-          // a no-op when no encryption key is configured.
-          if (key === 'slackWebhookUrl' && value) {
-            value = await encrypt(value, this.encryptionKey)
+      // Encryption and the insert are both inside the try so any failure
+      // (crypto fault or DB error) rolls the in-memory cache back to `previous`.
+      try {
+        const now = Date.now()
+        const rows: {
+          tenant_id: string
+          setting_key: string
+          setting_value: string
+          version: number
+          is_deleted: number
+        }[] = []
+        for (const key of SETTING_KEYS) {
+          if (key in updates && updates[key] !== undefined) {
+            let value = Array.isArray(updates[key])
+              ? JSON.stringify(updates[key])
+              : String(updates[key])
+            // Encrypt the webhook URL at rest (mirrors connector-secret handling);
+            // a no-op when no encryption key is configured.
+            if (key === 'slackWebhookUrl' && value) {
+              value = await encrypt(value, this.encryptionKey)
+            }
+            rows.push({
+              tenant_id: tenantId,
+              setting_key: key,
+              setting_value: value,
+              version: now,
+              is_deleted: 0,
+            })
           }
-          rows.push({
-            tenant_id: tenantId,
-            setting_key: key,
-            setting_value: value,
-            version: now,
-            is_deleted: 0,
-          })
         }
-      }
-      if (rows.length > 0) {
-        try {
+        if (rows.length > 0) {
           await this.db.insert({
             table: 'logweave.tenant_settings',
             values: rows,
             format: 'JSONEachRow',
           })
-        } catch (err) {
-          this.settings.set(tenantId, previous)
-          throw err
         }
+      } catch (err) {
+        this.settings.set(tenantId, previous)
+        throw err
       }
     }
   }
