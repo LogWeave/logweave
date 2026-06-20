@@ -32,10 +32,13 @@ const PREFIX_V1 = 'enc:'
 
 const hkdfAsync = promisify(hkdfCb)
 
+// Cache derived keys by a hash of the secret, never the plaintext secret itself,
+// so the master key is not retained as a Map key for the process lifetime.
 const v2KeyCache = new Map<string, Buffer>()
 
 async function deriveKeyV2(secret: string): Promise<Buffer> {
-  const cached = v2KeyCache.get(secret)
+  const cacheKey = createHash('sha256').update(secret).digest('hex')
+  const cached = v2KeyCache.get(cacheKey)
   if (cached) return cached
   const ikm = Buffer.from(secret, 'utf-8')
   const derived = await hkdfAsync(
@@ -46,7 +49,7 @@ async function deriveKeyV2(secret: string): Promise<Buffer> {
     KEY_LENGTH,
   )
   const key = Buffer.from(derived)
-  v2KeyCache.set(secret, key)
+  v2KeyCache.set(cacheKey, key)
   return key
 }
 

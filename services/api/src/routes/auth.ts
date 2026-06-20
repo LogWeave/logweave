@@ -341,7 +341,11 @@ export function authRoutes(deps: AuthDeps): Router {
     const uri = totp.toString()
     const qrCodeDataUrl = await QRCode.toDataURL(uri)
 
-    // Store secret temporarily (not enabled yet — user must confirm)
+    // Store secret temporarily (not enabled yet — user must confirm).
+    // totpEncryptionKey is already HKDF-derived; encrypt() HKDF-derives it again
+    // from its hex form. The extra derivation is harmless and gives TOTP its own
+    // stable key domain — we intentionally do NOT re-key, since that would orphan
+    // every TOTP secret already encrypted under the current scheme.
     const encryptedSecret = await encrypt(secret.base32, deps.totpEncryptionKey.toString('hex'))
     await deps.userStore.updateTotp(user.userId, encryptedSecret, user.recoveryCodes, false)
 
