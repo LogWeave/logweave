@@ -268,7 +268,7 @@ describe('GET /v1/templates/:id/related', () => {
 describe('GET /v1/templates/:id/correlations', () => {
   function correlationQueryMap(): Map<string, unknown> {
     const map = new Map<string, unknown>()
-    map.set('corr(af.cnt, cf.cnt)', mockCorrelations)
+    map.set('corr(af.resid, cf.resid)', mockCorrelations)
     return map
   }
 
@@ -358,13 +358,21 @@ describe('GET /v1/templates/:id/correlations', () => {
       'must NOT INNER JOIN against the anchor CTE (the original #220 bug)',
     )
     assert.ok(
-      capturedQuery.includes('any(cb.service) AS service') ||
-        capturedQuery.includes('any(cf.service)'),
+      capturedQuery.includes('any(cm.service)') || capturedQuery.includes('any(cf.service)'),
       'should select service so MCP postmortem can render it (regression #221)',
     )
     assert.ok(
       capturedQuery.includes('min_observations'),
       'should have min_observations guard against false-signal',
+    )
+    // De-seasonalization: correlate residuals, not raw counts (Chunk 5 / #258)
+    assert.ok(
+      capturedQuery.includes('corr(af.resid, cf.resid)'),
+      'should correlate hour-of-day residuals, not raw counts',
+    )
+    assert.ok(
+      capturedQuery.includes('min_cooccurrence'),
+      'should require a floor of co-occurring non-zero buckets',
     )
   })
 
@@ -442,7 +450,8 @@ describe('GET /v1/services/:name/outlier', () => {
     const app = createTestApp(
       outlierQueryMap({
         ...mockOutlierRow,
-        data_points: '48',
+        // Below MIN_DATA_POINTS (5 distinct days at this hour-of-day).
+        data_points: '3',
       }),
     )
 
@@ -450,10 +459,11 @@ describe('GET /v1/services/:name/outlier', () => {
       .get('/v1/services/payment-service/outlier')
       .set('Authorization', `Bearer ${KEY_A}`)
 
-    assert.equal(res.body.data.dataPoints, 48)
+    assert.equal(res.body.data.dataPoints, 3)
+    assert.equal(res.body.data.verdict, 'insufficient_data')
     assert.ok(res.body.data.warning)
-    assert.ok(res.body.data.warning.includes('48'))
-    assert.ok(res.body.data.warning.includes('168'))
+    assert.ok(res.body.data.warning.includes('3'))
+    assert.ok(res.body.data.warning.includes('5'))
   })
 
   it('handles zero stddev gracefully', async () => {

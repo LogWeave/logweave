@@ -206,7 +206,7 @@ export function registerCorrelations(server: McpServer, client: LogWeaveClient):
         hours: z
           .number()
           .optional()
-          .describe('Current window in hours for comparison (default: 1, max: 168)'),
+          .describe('Current window in hours for comparison (default: 1, max: 6)'),
       },
       annotations: READ_ONLY,
     },

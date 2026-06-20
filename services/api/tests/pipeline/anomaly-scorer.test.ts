@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import pino from 'pino'
 import type { DbClient } from '../../src/db/client.js'
 import { AnomalyScorer, WARMUP_SENTINEL_TEMPLATE_ID } from '../../src/pipeline/anomaly-scorer.js'
+import type { AnomalyStrategy } from '../../src/pipeline/anomaly-strategy.js'
 import { createBaselineMockDb } from '../helpers/mock-db.js'
 
 // ---------------------------------------------------------------------------
@@ -584,6 +585,49 @@ describe('AnomalyScorer', () => {
     // 25 / 20 = 1.25 — new-template threshold path, unaffected by other templates' baselines.
     assert.ok(lastScore > 0, `expected new-template path to fire, got ${lastScore}`)
     assert.ok(Math.abs(lastScore - 1.25) < 0.01, `expected ~1.25, got ${lastScore}`)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Strategy seam (Chunk 5 / #258)
+  // ---------------------------------------------------------------------------
+
+  it('strategy seam: a custom strategy drives baseline fetch and scoring', async () => {
+    const clock = { t: HOUR_3_UTC_MS }
+    const events: string[] = []
+    const strategy: AnomalyStrategy = {
+      fetchBaselines: async (_db, tenantId) => {
+        events.push(`fetch:${tenantId}`)
+        return [{ service: 'api', templateId: 'tmpl-1', hourOfDay: 3, baseline: 42 }]
+      },
+      score: ({ count, baseline, inWarmup }) => {
+        events.push(`score:${count}:${baseline}:${inWarmup}`)
+        return 7.5 // sentinel — not derivable from the default ratio math
+      },
+    }
+    const scorer = new AnomalyScorer({
+      db: createBaselineMockDb([]),
+      logger: silentLogger,
+      coldStartMs: 0,
+      warmupMs: 3_600_000,
+      now: () => clock.t,
+      strategy,
+    })
+
+    // Initialise the warmup tracker 2h in the past so we score in steady state.
+    clock.t = HOUR_3_UTC_MS - 2 * 3_600_000
+    scorer.recordAndScore('t1', 'api', WARMUP_SENTINEL_TEMPLATE_ID)
+    clock.t = HOUR_3_UTC_MS
+
+    await scorer.refreshBaselines()
+    assert.ok(events.includes('fetch:t1'), 'plumbing should call the strategy baseline model')
+
+    const score = scorer.recordAndScore('t1', 'api', 'tmpl-1')
+    assert.equal(score, 7.5, 'plumbing should return the custom strategy score')
+    // The hour-3 baseline (42) resolved by the cache is handed to the strategy.
+    assert.ok(
+      events.some((e) => e.startsWith('score:1:42:false')),
+      `expected baseline 42 + steady phase passed to strategy, got ${JSON.stringify(events)}`,
+    )
   })
 
   describe('getTenantWarmupState', () => {

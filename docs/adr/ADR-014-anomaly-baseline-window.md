@@ -1,8 +1,13 @@
 # ADR-014: Anomaly Baseline Window — 7d, Hour-of-Day Matched
 
 **Status:** Accepted
-**Date:** 2026-05-23
+**Date:** 2026-05-23 (amended 2026-06-21, [#258](https://github.com/LogWeave/logweave/issues/258))
 **Issue:** [#203](https://github.com/LogWeave/logweave/issues/203)
+
+> **Amendment (2026-06-21, #258 / Chunk 5).** Two corrections to the baseline
+> math below, plus the extension of hour-of-day matching to the query-time
+> analytics tools. See "Amendment" at the foot of this ADR. The SQL and prose
+> in the body have been updated in place to reflect the corrected math.
 
 ## Context
 
@@ -24,19 +29,19 @@ A maintainability/lemon-test review flagged three statistical problems with a 1-
 
 ## Decision
 
-Move to a **7-day window grouped by hour-of-day** (UTC). Each baseline row is the average 5-minute occurrence count for a `(template_id, service, hourOfDay)` over the last 7 days, **provided at least 3 distinct 5-min buckets contributed to the average**.
+Move to a **7-day window grouped by hour-of-day** (UTC). Each baseline row is the true per-interval occurrence rate for a `(template_id, service, hourOfDay)` over the last 7 days — total occurrences divided by the number of 5-min buckets the hour *could* have had (distinct days × 12), so silent buckets count as the zeros they are — **provided at least 3 distinct days contributed**.
 
 ```sql
 SELECT
   template_id,
   service,
   toHour(interval_start) AS hour_of_day,
-  countMerge(occurrence_count) / uniq(interval_start) AS avg_count_per_interval
+  countMerge(occurrence_count) / (uniq(toDate(interval_start)) * 12) AS avg_count_per_interval
 FROM logweave.template_stats
 WHERE tenant_id = {tenant_id:String}
   AND interval_start > now64(3) - toIntervalDay(7)
 GROUP BY template_id, service, hour_of_day
-HAVING uniq(interval_start) >= 3
+HAVING uniq(toDate(interval_start)) >= 3
 ORDER BY template_id, service, hour_of_day
 ```
 
@@ -56,9 +61,17 @@ Diurnal seasonality (24h cycle) is the dominant pattern in log volume — reques
 
 Operational simplicity. `interval_start` is stored as UTC; computing hour-of-day in the tenant's timezone would require a per-tenant timezone setting we don't have. The downside is that "hour 3" means "3 AM UTC" — for a tenant whose traffic peaks at noon local, the baseline buckets misalign by the timezone offset. Acceptable now; the front-end can present scored alerts in tenant-local time without changing the baseline math. Revisit if a customer's traffic seasonality is dominated by local-time effects.
 
-### Why `HAVING uniq(interval_start) >= 3`
+### Why `HAVING uniq(toDate(interval_start)) >= 3`
 
-Without this guard, a single noisy 5-min bucket on day 0 of the window establishes the official baseline for that hour. On day 1 a modest burst against that 1-sample baseline trips the threshold, producing a false positive. Requiring 3 distinct buckets means the per-hour baseline is built from at least 3 days of observations at that hour-of-day before it becomes authoritative.
+Without this guard, a single noisy day on day 0 of the window establishes the official baseline for that hour. On day 1 a modest burst against that 1-day baseline trips the threshold, producing a false positive. Requiring 3 distinct **days** means the per-hour baseline is built from at least 3 days of observations at that hour-of-day before it becomes authoritative.
+
+The guard counts `uniq(toDate(interval_start))` — distinct calendar days — **not** `uniq(interval_start)`. Three firings within a single hour on one day produce three distinct 5-min timestamps, which would wrongly satisfy a buckets-based guard with only one day of data. (This was the original intent of the guard; the first implementation counted buckets — corrected in #258.)
+
+### Why divide by `distinct days × 12`, not by buckets-that-fired
+
+`template_stats` only stores a row for a 5-min bucket where the template actually fired — silent buckets are absent. Dividing total occurrences by `uniq(interval_start)` (buckets that fired) therefore computes a *conditional* mean ("how much when it fires"), which overstates "normal" for sparse/bursty templates and suppresses real spikes (a high baseline makes the current count clear the threshold less easily). Dividing by `distinct days × 12` — the number of 5-min buckets the hour-of-day could have had over the observed window — yields the true *per-interval rate* including silence. (Corrected in #258.)
+
+Accepted tradeoff: for a genuinely bursty template (silent most of the time), the lower baseline can make a normal-sized burst read as anomalous. The `Math.max(baseline, 1.0)` floor and the new-template absolute-threshold path soften this; it is the correct default for steady traffic.
 
 ### Why no cross-hour-mean fallback
 
@@ -121,3 +134,41 @@ If false positives remain after this change, consider:
 - Neighbour-hour smoothing to soften the discontinuity at hour boundaries for slowly-varying templates.
 
 None of these are needed to ship the fix this ADR records.
+
+## Amendment (2026-06-21, #258 / Chunk 5)
+
+Three changes, all extending or correcting the math this ADR governs:
+
+1. **Baseline denominator** — corrected to a zero-filled per-interval rate
+   (`÷ distinct days × 12`). See "Why divide by distinct days × 12" above.
+2. **Min-samples guard** — corrected to count distinct **days**
+   (`uniq(toDate(interval_start))`). See "Why HAVING ..." above.
+3. **Hour-of-day matching extended to the query-time analytics tools.** The
+   diurnal-blindness this ADR fixed for the ingest scorer also affected two
+   MCP/API tools, now aligned with the same approach:
+   - **`service_outlier`** (`correlation-queries.ts`): the z-score baseline
+     mean/stddev are now computed only from the **same hour-of-day** as the
+     current window over the last 7 days (`service_stats` is hourly, so ~7
+     samples), instead of a flat all-day average that made off-peak verdicts
+     compare against a daytime-inflated mean. The verdict gate dropped from 168
+     hourly points to 5 distinct days at the current hour-of-day.
+   - **`correlations`** (`correlation-queries.ts`): Pearson correlation now runs
+     on **hour-of-day residuals** (each bucket minus that series' mean for its
+     hour-of-day) rather than raw counts, so two templates that merely share the
+     daily traffic cycle no longer correlate spuriously. A minimum
+     co-occurring-non-zero-bucket floor was added alongside the existing
+     min-observations guard. Multiple-comparisons control (the top-50
+     simultaneous tests) is deliberately deferred to a future additive
+     honest-labeling pass — see docs/specs/chunk-5-anomaly-correlation-math-design.md.
+
+### Swappable algorithm seam
+
+The ingest scorer's math now lives behind an `AnomalyStrategy` interface
+(`pipeline/anomaly-strategy.ts`): `fetchBaselines` (the baseline model) and
+`score` (the scoring policy) are separated from the scorer plumbing (counters,
+refresh loop, warmup, pruning, alert wiring). The behaviour this ADR records is
+the default `RatioThresholdStrategy`. A future algorithm (EWMA, robust/MAD
+z-score, Poisson, ...) can be dropped in as a new strategy without touching the
+plumbing or the alert path. The graduated 3×/10× threshold multipliers were left
+unchanged — tuning them needs real customer traffic (#100) and is a strategy
+swap, not a rewrite.
