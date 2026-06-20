@@ -29,7 +29,10 @@ const DDL_STATEMENTS = [
     INDEX idx_level level TYPE set(5) GRANULARITY 1,
     INDEX idx_template_id template_id TYPE bloom_filter(0.01) GRANULARITY 1
   ) ENGINE = MergeTree()
-  PARTITION BY toYYYYMM(timestamp)
+  -- Daily partitions so ttl_only_drop_parts=1 enforces the 30-day TTL tightly.
+  -- Monthly (toYYYYMM) parts span ~31 days, so a part only drops ~30 days after
+  -- its NEWEST row — retaining data up to ~59 days, ~2x the stated window.
+  PARTITION BY toYYYYMMDD(timestamp)
   ORDER BY (tenant_id, service, timestamp, level)
   TTL toDateTime(timestamp) + toIntervalDay(30) DELETE
   SETTINGS
@@ -49,7 +52,7 @@ const DDL_STATEMENTS = [
     avg_duration_ms     AggregateFunction(avg, Float64),
     max_anomaly_score   AggregateFunction(max, Float32)
   ) ENGINE = AggregatingMergeTree()
-  PARTITION BY toYYYYMM(interval_start)
+  PARTITION BY toYYYYMMDD(interval_start)
   ORDER BY (tenant_id, service, template_id, interval_start)
   TTL toDateTime(interval_start) + toIntervalDay(30) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
@@ -81,7 +84,7 @@ const DDL_STATEMENTS = [
     new_template_count  AggregateFunction(countIf, UInt8),
     avg_anomaly_score   AggregateFunction(avg, Float32)
   ) ENGINE = AggregatingMergeTree()
-  PARTITION BY toYYYYMM(interval_start)
+  PARTITION BY toYYYYMMDD(interval_start)
   ORDER BY (tenant_id, service, interval_start)
   TTL toDateTime(interval_start) + toIntervalDay(30) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
@@ -171,6 +174,10 @@ GROUP BY tenant_id, service, level, interval_start`,
     commit_sha      Nullable(String),
     timestamp       DateTime64(3) DEFAULT now64(3)
   ) ENGINE = MergeTree()
+  -- Daily partitions are required for ttl_only_drop_parts=1 to enforce the TTL:
+  -- with no PARTITION BY the whole table is one part-group that only drops once
+  -- every row is past 90 days.
+  PARTITION BY toYYYYMMDD(timestamp)
   ORDER BY (tenant_id, service, timestamp)
   TTL toDateTime(timestamp) + toIntervalDay(90) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
@@ -202,7 +209,8 @@ GROUP BY tenant_id, service, level, interval_start`,
     error_count     AggregateFunction(countIf, UInt8),
     warn_count      AggregateFunction(countIf, UInt8)
   ) ENGINE = AggregatingMergeTree()
-  PARTITION BY toYYYYMM(interval_start)
+  -- Daily partitions: a 7-day TTL on monthly parts kept data up to ~37 days (5x).
+  PARTITION BY toYYYYMMDD(interval_start)
   ORDER BY (tenant_id, service, interval_start)
   TTL toDateTime(interval_start) + toIntervalDay(7) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
@@ -259,7 +267,7 @@ GROUP BY tenant_id, service, environment, level, interval_start`,
     details             String DEFAULT '',
     channels_notified   String DEFAULT '[]'
   ) ENGINE = MergeTree()
-  PARTITION BY toYYYYMM(fired_at)
+  PARTITION BY toYYYYMMDD(fired_at)
   ORDER BY (tenant_id, fired_at)
   TTL toDateTime(fired_at) + toIntervalDay(90) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
@@ -319,7 +327,7 @@ GROUP BY tenant_id, service, environment, level, interval_start`,
     tag_value       String,
     INDEX idx_tag_value tag_value TYPE bloom_filter(0.01) GRANULARITY 1
   ) ENGINE = MergeTree()
-  PARTITION BY toYYYYMM(timestamp)
+  PARTITION BY toYYYYMMDD(timestamp)
   ORDER BY (tenant_id, tag_key, tag_value, timestamp)
   TTL toDateTime(timestamp) + toIntervalDay(30) DELETE
   SETTINGS ttl_only_drop_parts = 1`,
