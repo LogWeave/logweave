@@ -455,7 +455,9 @@ async def _run_backfill() -> None:
             # Preserve first_seen to avoid ReplacingMergeTree overwrite
             insert_rows = [
                 [row[0], row[1], row[2], row[3], emb, model_name]
-                for row, emb in zip(rows.result_rows, embeddings)
+                # strict=True: embeddings is 1:1 with result_rows (embed(texts)
+                # where texts is derived from result_rows); fail loudly if not.
+                for row, emb in zip(rows.result_rows, embeddings, strict=True)
             ]
             try:
                 await asyncio.to_thread(

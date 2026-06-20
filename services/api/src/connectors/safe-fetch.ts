@@ -178,7 +178,11 @@ export function defaultAllowedHosts(): Set<string> {
 type LookupFn = (
   hostname: string,
   options: { all?: boolean; family?: number },
-  callback: (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void,
+  callback: (
+    err: NodeJS.ErrnoException | null,
+    address: string | LookupAddress[],
+    family?: number,
+  ) => void,
 ) => void
 
 /**
@@ -261,7 +265,10 @@ export interface SafeFetchInit {
 // safeFetch
 // ---------------------------------------------------------------------------
 
-export async function safeFetch(target: string | URL, init: SafeFetchInit = {}): Promise<SafeResponse> {
+export async function safeFetch(
+  target: string | URL,
+  init: SafeFetchInit = {},
+): Promise<SafeResponse> {
   const allowedHosts = init.allowedHosts ?? defaultAllowedHosts()
   const lookup = makeGuardedLookup(allowedHosts)
 
@@ -277,11 +284,16 @@ export async function safeFetch(target: string | URL, init: SafeFetchInit = {}):
       throw new SsrfBlockedError(`Refusing to connect to internal host ${current.hostname}`)
     }
 
-    const res = await rawRequest(current, { method, headers: init.headers, body, signal: init.signal }, lookup)
+    const res = await rawRequest(
+      current,
+      { method, headers: init.headers, body, signal: init.signal },
+      lookup,
+    )
 
     const status = res.message.statusCode ?? 0
     const location = res.message.headers.location
-    const isRedirect = status === 301 || status === 302 || status === 303 || status === 307 || status === 308
+    const isRedirect =
+      status === 301 || status === 302 || status === 303 || status === 307 || status === 308
     if (isRedirect && location) {
       res.message.resume() // drain and discard the redirect body
       if (redirects >= MAX_REDIRECTS) {

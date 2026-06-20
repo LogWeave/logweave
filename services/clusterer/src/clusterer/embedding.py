@@ -33,7 +33,8 @@ class EmbeddingService:
         if not texts:
             return []
         self._ensure_model()
-        assert self._model is not None
+        if self._model is None:
+            raise RuntimeError("Embedding model failed to load")
         return [e.tolist() for e in self._model.embed(texts)]
 
     @property

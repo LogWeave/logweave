@@ -5,8 +5,8 @@ import {
   assertAddressesAllowed,
   isBlockedHostname,
   isInternalIp,
-  safeFetch,
   SsrfBlockedError,
+  safeFetch,
 } from '../../src/connectors/safe-fetch.js'
 
 // ---------------------------------------------------------------------------

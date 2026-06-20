@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     clickhouse_password: SecretStr = SecretStr("")
     drain3_max_clusters: int = Field(default=10_000, ge=1)
     max_concurrent_requests: int = Field(default=4, ge=1)
+    # Inner per-request processing cap. It must stay BELOW the API's client
+    # timeout (LOGWEAVE_CLUSTERER_TIMEOUT_MS, default 500ms; compose 2000-5000ms)
+    # so the clusterer returns a timeout the API can degrade on (template_id=0)
+    # rather than the API abandoning the connection. The /embed/backfill path
+    # uses 4x this value for larger batches. If you raise the API timeout for
+    # heavy batches, raise this in tandem (LOGWEAVE_REQUEST_TIMEOUT_SECONDS).
     request_timeout_seconds: float = Field(default=0.45, gt=0.0)
     max_tenants: int = Field(default=200, ge=1)
     checkpoint_hmac_key: SecretStr = SecretStr("")

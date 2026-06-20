@@ -83,9 +83,7 @@ describe('GET /v1/tail/poll tail_mode default', () => {
   // returns events without any "enable tail in settings" step.
   it('queries the buffer when tailMode is unset (defaults to metadata)', async () => {
     const { app, recentCalls } = createTestApp({})
-    const res = await request(app)
-      .get('/v1/tail/poll')
-      .set('Authorization', `Bearer ${API_KEY}`)
+    const res = await request(app).get('/v1/tail/poll').set('Authorization', `Bearer ${API_KEY}`)
 
     assert.equal(res.status, 200)
     assert.equal(recentCalls.length, 1)
@@ -95,9 +93,7 @@ describe('GET /v1/tail/poll tail_mode default', () => {
 
   it('queries the buffer when tailMode is metadata', async () => {
     const { app, recentCalls } = createTestApp({ tailMode: 'metadata' })
-    const res = await request(app)
-      .get('/v1/tail/poll')
-      .set('Authorization', `Bearer ${API_KEY}`)
+    const res = await request(app).get('/v1/tail/poll').set('Authorization', `Bearer ${API_KEY}`)
 
     assert.equal(res.status, 200)
     assert.equal(recentCalls.length, 1)
@@ -105,9 +101,7 @@ describe('GET /v1/tail/poll tail_mode default', () => {
 
   it('returns no events and does not query the buffer when tailMode is disabled', async () => {
     const { app, recentCalls } = createTestApp({ tailMode: 'disabled' })
-    const res = await request(app)
-      .get('/v1/tail/poll')
-      .set('Authorization', `Bearer ${API_KEY}`)
+    const res = await request(app).get('/v1/tail/poll').set('Authorization', `Bearer ${API_KEY}`)
 
     assert.equal(res.status, 200)
     assert.equal(recentCalls.length, 0)

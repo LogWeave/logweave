@@ -212,7 +212,9 @@ if (config.encryptionKey) {
     process.stderr.write(`  Password: ${bootstrapPassword}\n`)
     process.stderr.write(`  Tenant:   ${firstTenantId}\n`)
     process.stderr.write('You will be required to change it on first login.\n')
-    process.stderr.write('If you missed this, the same value is at $LOGWEAVE_DATA_DIR/bootstrap-credentials.txt\n')
+    process.stderr.write(
+      'If you missed this, the same value is at $LOGWEAVE_DATA_DIR/bootstrap-credentials.txt\n',
+    )
     process.stderr.write('=================================================================\n\n')
 
     // Also persist to a file (auto-deleted on first password change). Lets

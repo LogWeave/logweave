@@ -51,6 +51,14 @@ class ClusterPipeline:
         1. Drain3 clustering (CPU-bound, run in thread)
         2. Registry lookup for each template (async, cache-first)
         3. Return combined results using registry's is_new (authoritative)
+
+        Scaling note: step 1 runs in a worker thread, but Drain3 is pure-Python
+        and CPU-bound, so the GIL means it does not truly run in parallel with
+        other request handling — it bounds single-process throughput. The design
+        is one clusterer process per deployment (see PLAN.md); horizontal scale
+        is by sharding tenants across processes, not threads. A ProcessPoolExecutor
+        would side-step the GIL but adds per-call serialization cost and rules out
+        the shared in-process miner/registry caches, so it is deferred.
         """
         drain_results = await asyncio.to_thread(
             self._drain.cluster_messages, tenant_id, messages, sim_th=sim_th
@@ -127,6 +135,10 @@ class ClusterPipeline:
         for tenant_id, generation in dirty.items():
             try:
                 state = await asyncio.to_thread(self._drain.get_state, tenant_id)
+                # None => the tenant was reset after the dirty snapshot; reset
+                # already cleared its dirty mark, so there is nothing to save.
+                if state is None:
+                    continue
                 await asyncio.to_thread(self._checkpoint.save, tenant_id, state)
                 self._drain.mark_clean(tenant_id, generation)
             except Exception:

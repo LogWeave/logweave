@@ -52,7 +52,10 @@ describe('bootstrap-credentials', () => {
     // On Windows the perm system is reduced; assert that at least no world-read flag is set.
     // On POSIX systems the value should be exactly 0o600.
     if (process.platform === 'win32') {
-      assert.ok((mode & 0o077) === 0 || mode === 0o666, `mode looked unexpectedly permissive: ${mode.toString(8)}`)
+      assert.ok(
+        (mode & 0o077) === 0 || mode === 0o666,
+        `mode looked unexpectedly permissive: ${mode.toString(8)}`,
+      )
     } else {
       assert.equal(mode, 0o600, `mode should be 0600, got ${mode.toString(8)}`)
     }

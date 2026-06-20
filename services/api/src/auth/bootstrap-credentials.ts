@@ -1,4 +1,4 @@
-import { writeFileSync, unlinkSync, existsSync, chmodSync } from 'node:fs'
+import { chmodSync, existsSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type pino from 'pino'
 
@@ -53,9 +53,15 @@ export function writeBootstrapCredentials(
   try {
     writeFileSync(path, body, { encoding: 'utf8' })
     chmodSync(path, 0o600)
-    logger.info({ path }, 'Bootstrap credentials written to disk (will be removed on first password change)')
+    logger.info(
+      { path },
+      'Bootstrap credentials written to disk (will be removed on first password change)',
+    )
   } catch (err) {
-    logger.warn({ err, path }, 'Failed to write bootstrap-credentials file; password is still available on stderr')
+    logger.warn(
+      { err, path },
+      'Failed to write bootstrap-credentials file; password is still available on stderr',
+    )
   }
 }
 
