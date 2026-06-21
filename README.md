@@ -36,7 +36,7 @@ On first start, LogWeave creates a default `admin` user and prints a one-time ra
 curl -X POST http://localhost:3000/v1/ingest/batch \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"events": [{"message": "User login succeeded", "level": "INFO", "service": "auth-service"}]}'
+  -d '{"events": [{"message": "Payment failed: gateway timeout for order 4821", "level": "ERROR", "service": "payments-api"}]}'
 ```
 
 **Connect your AI:**
