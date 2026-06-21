@@ -16,11 +16,11 @@
 
 You send logs. LogWeave clusters them into patterns, detects anomalies, and exposes structured intelligence via 26 MCP tools. Raw logs stay in your infrastructure — LogWeave stores only the patterns, metadata, and custom fields you configure.
 
-LogWeave works alongside your existing logging stack (Datadog, Grafana, CloudWatch). It adds an AI-queryable intelligence layer on top — it doesn't replace your log storage or search tools.
+LogWeave works alongside your existing logging stack. It adds an AI-queryable intelligence layer on top — it doesn't replace your log storage or search tools.
 
 LogWeave is an analytics layer, not a log reader. Tools that pipe raw logs over MCP just make your AI grep — burning tokens re-reading text. LogWeave does the clustering, baselining, anomaly scoring, and correlation up front, then hands your AI structured answers: which patterns are spiking, what's anomalous *for this hour*, and what changed since the deploy. Unlike inline log-reduction pipelines that sit in front of a paid backend to cut volume, it runs *beside* your stack — it doesn't intercept or gate your log flow.
 
-**Who it's for:** developers and budget-conscious teams whose logs already live in the cloud — CloudWatch, S3, Loki — where actually *querying* them is painful and expensive (searching CloudWatch is a slog; S3 means standing up Athena; high volume means a real bill just to trawl). If full platforms like Datadog or Sentry feel like more — and more cost — than you need, and what you actually want is to see *which* errors are firing, *when* they started, and *what happened next* in the sequence, LogWeave gives you that targeted runtime visibility without shipping your logs to a third-party SaaS.
+**Who it's for:** developers and budget-conscious teams whose logs already live in cloud storage — CloudWatch, S3, or similar — where getting quick, targeted answers out of them isn't always easy. If a full observability platform is more than you need, and what you actually want is to see *which* errors are firing, *when* they started, and *what happened next* in the sequence, LogWeave focuses on exactly those questions — without shipping your logs to a third-party service.
 
 ## Quick Start
 
