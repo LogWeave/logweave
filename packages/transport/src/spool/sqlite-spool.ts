@@ -36,8 +36,16 @@ export class SqliteSpoolStore implements SpoolStore {
   private readonly insertStmt: StatementSync
   private readonly peekStmt: StatementSync
   private readonly countStmt: StatementSync
+  private readonly deleteStmt: StatementSync
 
   constructor(options: SqliteSpoolOptions) {
+    if (options.path === ':memory:') {
+      throw new Error(
+        '[LogWeave] SqliteSpoolStore needs a file path for WAL durability; ' +
+          ':memory: is not supported — use MemorySpoolStore for an in-memory spool.',
+      )
+    }
+
     let sqlite: SqliteModule
     try {
       sqlite = require('node:sqlite') as SqliteModule
@@ -68,6 +76,7 @@ export class SqliteSpoolStore implements SpoolStore {
       'SELECT event_id, payload, enqueued_at FROM spool ORDER BY seq LIMIT ?',
     )
     this.countStmt = this.db.prepare('SELECT count(*) AS c FROM spool')
+    this.deleteStmt = this.db.prepare('DELETE FROM spool WHERE event_id = ?')
   }
 
   insert(event: LogEvent): string {
@@ -92,8 +101,17 @@ export class SqliteSpoolStore implements SpoolStore {
 
   delete(eventIds: readonly string[]): void {
     if (eventIds.length === 0) return
-    const placeholders = eventIds.map(() => '?').join(', ')
-    this.db.prepare(`DELETE FROM spool WHERE event_id IN (${placeholders})`).run(...eventIds)
+    // One reusable prepared statement run inside a single transaction — the
+    // pump's drain loop deletes frequently, so this avoids re-preparing dynamic
+    // SQL per call and commits all deletes with one fsync.
+    this.db.exec('BEGIN')
+    try {
+      for (const id of eventIds) this.deleteStmt.run(id)
+      this.db.exec('COMMIT')
+    } catch (err) {
+      this.db.exec('ROLLBACK')
+      throw err
+    }
   }
 
   count(): number {
