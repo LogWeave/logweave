@@ -15,6 +15,7 @@ import { uuidv7 } from '../uuid.js'
 import type { TenantSettingsStore } from '../watches/tenant-settings.js'
 import type { AnomalyScorer } from './anomaly-scorer.js'
 import type { ClusterClient, ClusterResult } from './cluster-client.js'
+import { computeBatchKey, extractEventId, getCachedResult, recordResult } from './idempotency.js'
 import { PREPROCESSING_VERSION, parseEvent, processEvent } from './index.js'
 import type { ParseOptions, ProcessedEvent } from './types.js'
 
@@ -39,6 +40,8 @@ interface ParsedItem {
   processed: ProcessedEvent
   timestamp: string
   raw: unknown
+  /** Final dedup id: source-assigned event_id, or a generated UUIDv7 fallback. */
+  eventId: string
 }
 
 /**
@@ -78,6 +81,7 @@ function toMetadataRow(
 ): LogMetadataRow {
   return {
     id: uuidv7(),
+    event_id: item.eventId,
     tenant_id: tenantId,
     timestamp: item.timestamp,
     service: item.processed.service,
@@ -117,6 +121,7 @@ export async function ingestBatch(
   // Phase 1: Parse + Preprocess
   let items: ParsedItem[] = []
   let parseErrors = 0
+  const sourceEventIds: string[] = []
 
   for (let i = 0; i < events.length; i++) {
     const result = parseEvent(events[i], i, options, parser)
@@ -127,7 +132,24 @@ export async function ingestBatch(
     }
     const timestamp = extractTimestamp(events[i]) ?? ingestTime
     const processed = processEvent(result.event)
-    items.push({ processed, timestamp, raw: events[i] })
+    // event_id is assigned at the source (SDK); generate a UUIDv7 fallback for
+    // non-SDK sources so every row has a stable dedup key (#268).
+    const sourceEventId = extractEventId(events[i])
+    if (sourceEventId) sourceEventIds.push(sourceEventId)
+    items.push({ processed, timestamp, raw: events[i], eventId: sourceEventId ?? uuidv7() })
+  }
+
+  // Batch idempotency: explicit header key, else a hash of the source-assigned
+  // event_ids. A batch with neither has no stable identity — always processed.
+  const batchKey =
+    options.idempotencyKey ??
+    (sourceEventIds.length > 0 ? computeBatchKey(sourceEventIds) : undefined)
+  if (batchKey) {
+    const cached = getCachedResult(tenantId, batchKey)
+    if (cached) {
+      deps.logger.debug({ tenantId, batchKey }, 'Idempotent replay — short-circuiting batch')
+      return cached
+    }
   }
 
   // Filter by minimum ingest level (server-side log-level gating)
@@ -301,10 +323,17 @@ export async function ingestBatch(
     metrics.increment(metrics.ANOMALY_SCORED, anomalyCount)
   }
 
-  return {
+  const result: IngestResult = {
     accepted: items.length,
     clustered,
     unclustered,
     new_templates: newTemplates,
   }
+
+  // Remember the result so an at-least-once replay of this batch replays the
+  // same outcome instead of re-inserting. Recorded only after a successful
+  // insert, so a retry following a failure still goes through.
+  if (batchKey) recordResult(tenantId, batchKey, result)
+
+  return result
 }

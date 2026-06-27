@@ -166,10 +166,16 @@ describe('anomaly + correlation math (real ClickHouse)', () => {
   it('finding 4: de-seasonalization drops diurnal-only matches, keeps real co-movement', async () => {
     const tenant = testTenantId('f4')
     const now = new Date()
-    // 24 five-minute buckets over the last ~2 hours → two hours-of-day, 12
-    // buckets each, enough for a within-hour residual.
+    // The query grid spans 24 five-minute buckets (hours=2 × 12) anchored at
+    // the server's toStartOfFiveMinutes(now64()). We generate i=0..26 so the
+    // data brackets that grid with a bucket of margin on each end: the test's JS
+    // `now` and the query's ClickHouse `now64()` are evaluated a moment apart, so
+    // without margin a grid bucket can fall just outside the populated range and
+    // become a coalesce(...,0) — which injects residual into the diurnal-only
+    // candidate B and makes it leak. (The query itself was also fixed to cover
+    // its grid's oldest bucket; this margin guards the remaining clock skew.)
     const rows: LogMetadataRow[] = []
-    for (let i = 1; i <= 24; i++) {
+    for (let i = 0; i <= 26; i++) {
       const bucket = new Date(now.getTime() - i * 5 * 60_000)
       const when = fmt(bucket)
       // Diurnal step keyed on the REAL UTC hour so it aligns with the query's

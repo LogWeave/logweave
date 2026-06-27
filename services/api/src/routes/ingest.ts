@@ -41,6 +41,7 @@ export function ingestRoutes(deps: IngestDeps): Router {
           neverExtract: body.neverExtract ? new Set(body.neverExtract) : undefined,
           sourceType: body.source_type,
           sourceRef: body.source_ref,
+          idempotencyKey: req.header('Idempotency-Key'),
         },
       )
 

@@ -40,7 +40,7 @@ export function genericIngestRoutes(deps: IngestDeps): Router {
         },
         tenantId,
         events,
-        { sourceType: 'http' },
+        { sourceType: 'http', idempotencyKey: req.header('Idempotency-Key') },
         genericParser,
       )
 
