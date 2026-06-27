@@ -15,11 +15,13 @@ const CLICKHOUSE_FILES = new Set([
   'tests/db/mv.test.ts',
   'tests/db/schema.test.ts',
   'tests/db/audit-insert.test.ts',
+  'tests/db/log-metadata-dedup.test.ts',
   'tests\\db\\queries.test.ts',
   'tests\\db\\insert.test.ts',
   'tests\\db\\mv.test.ts',
   'tests\\db\\schema.test.ts',
   'tests\\db\\audit-insert.test.ts',
+  'tests\\db\\log-metadata-dedup.test.ts',
 ])
 
 if (mode === '--unit') {
