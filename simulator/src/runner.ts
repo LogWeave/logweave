@@ -1,4 +1,5 @@
 import { LogWeaveTransport } from '../../packages/transport/src/transport.js'
+import { deriveApiBase, postDeployMarker } from './deploy-marker.js'
 import { S3Writer } from './s3-writer.js'
 import { ModeController, Scheduler } from './scheduler.js'
 import { TemplateEngine } from './template-engine.js'
@@ -65,9 +66,13 @@ export class Runner {
     })
     this.totalServiceWeight = cumWeight
 
-    this.scheduler = new Scheduler(options.rate, () => {
-      this.emitEvent()
-    })
+    this.scheduler = new Scheduler(
+      options.rate,
+      () => {
+        this.emitEvent()
+      },
+      options.diurnal,
+    )
 
     this.modeController = new ModeController(
       options.mode,
@@ -76,6 +81,29 @@ export class Runner {
       this.scheduler,
       options.rate,
     )
+
+    // The canonical "deploying" service for deploy markers — the first with a
+    // spike config (its spike is the simulated deploy). null if none.
+    this.deployService = services.find((s) => s.spike)?.service ?? null
+
+    // Each time we enter deploy-spike, register a deploy marker so LogWeave's
+    // deploy-anchored change detection has something to anchor to.
+    this.modeController.on('modeChange', (event: { mode: string }) => {
+      if (event.mode === 'deploy-spike') void this.registerDeploy()
+    })
+  }
+
+  private readonly deployService: string | null
+  private deployVersion = 0
+
+  /** Best-effort deploy marker for the current deploy-spike. No-op in dry-run. */
+  private async registerDeploy(): Promise<void> {
+    if (this.options.dryRun || !this.deployService) return
+    this.deployVersion++
+    await postDeployMarker(deriveApiBase(this.options.endpoint), this.options.apiKey, {
+      service: this.deployService,
+      version: `sim-1.${this.deployVersion}.0`,
+    })
   }
 
   private stopped = false
@@ -157,6 +185,8 @@ export class Runner {
 
     this.scheduler.start()
     this.modeController.start()
+    // Initial-mode deploy-spike doesn't emit a modeChange, so mark it here.
+    if (this.options.mode === 'deploy-spike') void this.registerDeploy()
     this.s3Writer?.startFlushing()
 
     if (this.options.duration > 0) {
@@ -181,10 +211,7 @@ export class Runner {
     this.scheduler.stop()
     this.modeController.stop()
 
-    await Promise.all([
-      ...this.transports.map((t) => t.closeAsync()),
-      this.s3Writer?.close(),
-    ])
+    await Promise.all([...this.transports.map((t) => t.closeAsync()), this.s3Writer?.close()])
 
     console.log(`  Events sent: ${this.eventCount}`)
     console.log(`  Duration:    ${elapsed}s`)

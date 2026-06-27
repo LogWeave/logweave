@@ -160,8 +160,7 @@ function validateGenerators(raw: unknown, source: string, context: string): void
       case 'float':
         if (typeof g.min !== 'number' || typeof g.max !== 'number')
           throw new Error(`${ctx} "${g.type}" requires numeric "min" and "max"`)
-        if (g.min > g.max)
-          throw new Error(`${ctx} "${g.type}" requires min <= max`)
+        if (g.min > g.max) throw new Error(`${ctx} "${g.type}" requires min <= max`)
         break
       case 'sequence':
         if (typeof g.prefix !== 'string')

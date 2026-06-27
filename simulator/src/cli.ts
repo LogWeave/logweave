@@ -54,8 +54,23 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliOptions {
 
   const dryRun = hasFlag(argv, '--dry-run')
 
+  const backfillRaw = getArg(argv, '--backfill')
+  const backfillDays = Number(backfillRaw ?? '0')
+  if (Number.isNaN(backfillDays) || backfillDays < 0) {
+    throw new Error('--backfill must be a non-negative number of days')
+  }
+
+  const backfillRateRaw = getArg(argv, '--backfill-rate')
+  const backfillRate = Number(backfillRateRaw ?? '2')
+  if (Number.isNaN(backfillRate) || backfillRate <= 0) {
+    throw new Error('--backfill-rate must be a positive number')
+  }
+
+  const diurnal = hasFlag(argv, '--diurnal')
+
   const s3Bucket = getArg(argv, '--s3-bucket') ?? process.env.LOGWEAVE_SIM_S3_BUCKET
-  const s3Endpoint = getArg(argv, '--s3-endpoint') ?? process.env.LOGWEAVE_SIM_S3_ENDPOINT ?? 'http://localhost:9002'
+  const s3Endpoint =
+    getArg(argv, '--s3-endpoint') ?? process.env.LOGWEAVE_SIM_S3_ENDPOINT ?? 'http://localhost:9002'
 
   return {
     rate,
@@ -67,6 +82,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliOptions {
     bufferSize,
     flushMs,
     dryRun,
+    backfillDays,
+    backfillRate,
+    diurnal,
     s3Bucket: s3Bucket ?? undefined,
     s3Endpoint,
     _explicit: {

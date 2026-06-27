@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { runBackfill } from './backfill.js'
 import { parseArgs } from './cli.js'
 import { loadDefaults, loadServiceConfigs } from './config.js'
 import { Runner } from './runner.js'
@@ -27,6 +28,19 @@ async function main(): Promise<void> {
   if (!options._explicit.rate) options.rate = defaults.rate
   if (!options._explicit.bufferSize) options.bufferSize = defaults.buffer_size
   if (!options._explicit.flushMs) options.flushMs = defaults.flush_interval_ms
+
+  // Backfill mode: generate historical data and exit (no live streaming).
+  if (options.backfillDays > 0) {
+    await runBackfill({
+      services,
+      days: options.backfillDays,
+      peakRate: options.backfillRate,
+      apiKey: options.apiKey,
+      endpoint: options.endpoint,
+      dryRun: options.dryRun,
+    })
+    return
+  }
 
   const runner = new Runner({ services, options, defaults })
 
