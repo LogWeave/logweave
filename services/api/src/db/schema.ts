@@ -32,11 +32,14 @@ const DDL_STATEMENTS = [
   )
   -- ReplacingMergeTree dedups rows with an identical ORDER BY key, keeping the
   -- one with the largest version (ingest_time) — so an at-least-once replay
-  -- collapses to a single row, and a later re-enrichment (async Drain3, #277)
-  -- supersedes the earlier write. The dedup key is event_id (UUIDv7 assigned at
-  -- the source, #268), so event_id is the trailing ORDER BY column: distinct
-  -- events never collapse, a replayed event always does. Dedup is eventual
-  -- (on merge); reads needing read-after-write correctness must use FINAL.
+  -- collapses to a single row. Once event_id is source-stable (#268), a later
+  -- re-enrichment that re-inserts the same event (async Drain3, #277) will
+  -- likewise supersede the earlier write via its newer ingest_time. The dedup
+  -- key is event_id (UUIDv7 assigned at the source, #268), so event_id is the
+  -- trailing ORDER BY column: distinct events never collapse, a replayed event
+  -- always does. Until #268, event_id defaults to a fresh per-insert UUID, so
+  -- no rows share a key and reads behave exactly like the old MergeTree. Dedup
+  -- is eventual (on merge); reads needing read-after-write must use FINAL.
   ENGINE = ReplacingMergeTree(ingest_time)
   -- Daily partitions so ttl_only_drop_parts=1 enforces the 30-day TTL tightly.
   -- Monthly (toYYYYMM) parts span ~31 days, so a part only drops ~30 days after
