@@ -81,13 +81,15 @@ export async function runBackfill(opts: BackfillOptions): Promise<void> {
   // Per-service batches, flushed at MAX_BATCH.
   const batches = new Map<string, Event[]>()
   let sent = 0
+  let failed = 0
   let lastProgress = 0
 
   const flush = async (service: string): Promise<void> => {
     const batch = batches.get(service)
     if (!batch || batch.length === 0) return
-    await postBatch(endpoint, apiKey, service, batch)
-    sent += batch.length
+    const ok = await postBatch(endpoint, apiKey, service, batch)
+    if (ok) sent += batch.length
+    else failed += batch.length
     batches.set(service, [])
   }
 
@@ -140,7 +142,15 @@ export async function runBackfill(opts: BackfillOptions): Promise<void> {
     timestamp: deployIso,
   })
 
-  console.log(`\n\x1b[1mBackfill complete.\x1b[0m  ${sent.toLocaleString()} events sent.`)
+  if (failed > 0) {
+    console.log(
+      `\n\x1b[33mBackfill finished with errors.\x1b[0m  ${sent.toLocaleString()} sent, ` +
+        `\x1b[33m${failed.toLocaleString()} failed\x1b[0m — planted signals may be incomplete; ` +
+        'check the endpoint and API key.',
+    )
+  } else {
+    console.log(`\n\x1b[1mBackfill complete.\x1b[0m  ${sent.toLocaleString()} events sent.`)
+  }
   console.log('\x1b[1mPlanted signals (verify LogWeave caught these):\x1b[0m')
   console.log(`  • Diurnal traffic across ${days}d — hour-of-day baselines should be shaped.`)
   console.log(
@@ -159,12 +169,13 @@ function estimateTotal(start: number, end: number, peakRate: number): number {
   return Math.round(minutes * peakRate * 60 * 0.6)
 }
 
+/** POST one batch. Best-effort: logs and swallows errors. Returns true on success. */
 async function postBatch(
   endpoint: string,
   apiKey: string,
   service: string,
   events: Event[],
-): Promise<void> {
+): Promise<boolean> {
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -176,8 +187,11 @@ async function postBatch(
     })
     if (!res.ok) {
       console.error(`[backfill] ${service} batch → HTTP ${res.status}`)
+      return false
     }
+    return true
   } catch (err) {
     console.error(`[backfill] ${service} batch failed: ${(err as Error).message}`)
+    return false
   }
 }
