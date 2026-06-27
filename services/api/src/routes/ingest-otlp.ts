@@ -129,7 +129,7 @@ export function otlpIngestRoutes(deps: IngestDeps): Router {
           },
           tenantId,
           flatEvents,
-          { sourceType: 'otlp' },
+          { sourceType: 'otlp', idempotencyKey: req.header('Idempotency-Key') },
         )
 
         // Return OTLP-spec response format

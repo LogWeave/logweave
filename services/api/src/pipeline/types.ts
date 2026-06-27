@@ -56,6 +56,12 @@ export interface ParseOptions {
   sourceType?: string
   /** Pointer to where the raw log lives (e.g., S3 key, S3 prefix). Defaults to ''. */
   sourceRef?: string
+  /**
+   * Batch idempotency key from the request's `Idempotency-Key` header (#268).
+   * When absent, ingest falls back to a hash of the batch's source-assigned
+   * event_ids. Used to short-circuit a re-submitted batch.
+   */
+  idempotencyKey?: string
 }
 
 /**

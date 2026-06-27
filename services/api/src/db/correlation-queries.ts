@@ -184,7 +184,12 @@ WITH
         FROM logweave.template_stats
         WHERE tenant_id = {tenant_id:String}
           AND template_id = {template_id:String}
-          AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
+          -- Cover the grid's oldest bucket (now5 - hours). The grid anchors at
+          -- toStartOfFiveMinutes(now), which is <= now, so a plain
+          -- "now - hours" filter excludes that bucket and leaves a phantom
+          -- coalesce(0) at the window edge — harmless noise for real data, but
+          -- it injects spurious residual into a perfectly-flat diurnal series.
+          AND interval_start > toStartOfFiveMinutes(now64(3)) - toIntervalHour({hours:UInt32}) - toIntervalMinute(5)
         GROUP BY bucket_start
     ),
     anchor_full AS (
@@ -208,7 +213,9 @@ WITH
         WHERE tenant_id = {tenant_id:String}
           AND template_id != {template_id:String}
           AND template_id != '0'
-          AND interval_start > now64(3) - toIntervalHour({hours:UInt32})
+          -- Match the grid window (see anchor CTE) so the oldest grid bucket is
+          -- populated rather than a phantom coalesce(0).
+          AND interval_start > toStartOfFiveMinutes(now64(3)) - toIntervalHour({hours:UInt32}) - toIntervalMinute(5)
         GROUP BY template_id, bucket_start
     ),
     candidate_meta AS (
