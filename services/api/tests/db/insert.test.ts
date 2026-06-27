@@ -8,10 +8,19 @@ import { closeTestClient, getTestClient, getTestDb, jsonRows, testTenantId } fro
 
 const logger = pino({ level: 'silent' })
 
+/**
+ * ClickHouse DateTime64 literal ('YYYY-MM-DD HH:MM:SS.mmm') for `minutesAgo`
+ * before now. Timestamps must be RECENT: log_metadata has a 30-day TTL that
+ * DELETEs stale rows on merge, which would non-deterministically empty the test.
+ */
+function recentTimestamp(minutesAgo = 0): string {
+  return new Date(Date.now() - minutesAgo * 60_000).toISOString().replace('T', ' ').replace('Z', '')
+}
+
 function makeRow(tenantId: string, overrides?: Partial<LogMetadataRow>): LogMetadataRow {
   return {
     tenant_id: tenantId,
-    timestamp: '2026-03-14 12:00:00.000',
+    timestamp: recentTimestamp(),
     service: 'test-svc',
     level: 'INFO',
     environment: 'test',
@@ -45,7 +54,7 @@ describe('batchInsert', () => {
   it('inserts 100 rows and all are readable', async () => {
     const inputRows = Array.from({ length: 100 }, (_, i) =>
       makeRow(tenantId, {
-        timestamp: `2026-03-14 12:${String(i).padStart(2, '0')}:00.000`,
+        timestamp: recentTimestamp(i),
         duration_ms: i * 10,
       }),
     )

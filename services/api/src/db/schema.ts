@@ -8,6 +8,7 @@ const DDL_STATEMENTS = [
   // 2. Primary fact table
   `CREATE TABLE IF NOT EXISTS logweave.log_metadata (
     id                     UUID DEFAULT generateUUIDv7(),
+    event_id               UUID DEFAULT generateUUIDv7(),
     tenant_id              LowCardinality(String),
     timestamp              DateTime64(3),
     ingest_time            DateTime64(3) DEFAULT now64(3),
@@ -28,12 +29,23 @@ const DDL_STATEMENTS = [
     preprocessing_version  UInt8 DEFAULT 1,
     INDEX idx_level level TYPE set(5) GRANULARITY 1,
     INDEX idx_template_id template_id TYPE bloom_filter(0.01) GRANULARITY 1
-  ) ENGINE = MergeTree()
+  )
+  -- ReplacingMergeTree dedups rows with an identical ORDER BY key, keeping the
+  -- one with the largest version (ingest_time) — so an at-least-once replay
+  -- collapses to a single row. Once event_id is source-stable (#268), a later
+  -- re-enrichment that re-inserts the same event (async Drain3, #277) will
+  -- likewise supersede the earlier write via its newer ingest_time. The dedup
+  -- key is event_id (UUIDv7 assigned at the source, #268), so event_id is the
+  -- trailing ORDER BY column: distinct events never collapse, a replayed event
+  -- always does. Until #268, event_id defaults to a fresh per-insert UUID, so
+  -- no rows share a key and reads behave exactly like the old MergeTree. Dedup
+  -- is eventual (on merge); reads needing read-after-write must use FINAL.
+  ENGINE = ReplacingMergeTree(ingest_time)
   -- Daily partitions so ttl_only_drop_parts=1 enforces the 30-day TTL tightly.
   -- Monthly (toYYYYMM) parts span ~31 days, so a part only drops ~30 days after
   -- its NEWEST row — retaining data up to ~59 days, ~2x the stated window.
   PARTITION BY toYYYYMMDD(timestamp)
-  ORDER BY (tenant_id, service, timestamp, level)
+  ORDER BY (tenant_id, service, timestamp, level, event_id)
   TTL toDateTime(timestamp) + toIntervalDay(30) DELETE
   SETTINGS
       index_granularity = 8192,
@@ -413,11 +425,37 @@ const INITIAL_BACKOFF_MS = 200
 
 import { sleep } from '../lib/sleep.js'
 
+/**
+ * Engine change can't be done in place (ClickHouse has no ALTER ... MODIFY
+ * ENGINE), so a `log_metadata` left on the legacy `MergeTree` engine (pre-#267)
+ * is dropped here and recreated by the DDL below with `ReplacingMergeTree`. This
+ * is safe pre-release — no live data, only simulator-generated rows — and is a
+ * no-op once the table is already `ReplacingMergeTree`. The dependent MVs are
+ * left in place; they simply resume firing against the recreated table.
+ */
+async function dropLegacyLogMetadata(client: ClickHouseClient, logger: pino.Logger): Promise<void> {
+  const probe = await client.query({
+    query: `SELECT engine FROM system.tables WHERE database = 'logweave' AND name = 'log_metadata'`,
+    format: 'JSONEachRow',
+  })
+  const rows = (await probe.json()) as Array<{ engine: string }>
+  const engine = rows[0]?.engine
+  if (engine && engine !== 'ReplacingMergeTree') {
+    logger.warn(
+      { engine },
+      'Dropping legacy log_metadata to migrate engine to ReplacingMergeTree (no live data pre-release; simulator rows will be regenerated)',
+    )
+    await client.command({ query: `DROP TABLE IF EXISTS logweave.log_metadata` })
+  }
+}
+
 export async function initSchema(client: ClickHouseClient, logger: pino.Logger): Promise<void> {
   let lastError: unknown
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
+      await dropLegacyLogMetadata(client, logger)
+
       for (const ddl of DDL_STATEMENTS) {
         await client.command({ query: ddl })
       }
