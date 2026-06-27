@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { diurnalFactorAt } from './diurnal.js'
 import type { TemplateEngine } from './template-engine.js'
 import type { DefaultsConfig, Mode } from './types.js'
 
@@ -12,13 +13,15 @@ import type { DefaultsConfig, Mode } from './types.js'
 export class Scheduler {
   private rate: number
   private readonly onEvent: (serviceIndex: number) => void
+  private readonly diurnal: boolean
   private currentIndex = 0
   private timer: ReturnType<typeof setTimeout> | null = null
   private running = false
 
-  constructor(rate: number, onEvent: (serviceIndex: number) => void) {
+  constructor(rate: number, onEvent: (serviceIndex: number) => void, diurnal = false) {
     this.rate = rate
     this.onEvent = onEvent
+    this.diurnal = diurnal
   }
 
   /** Start emitting events at the configured rate */
@@ -50,10 +53,15 @@ export class Scheduler {
   private scheduleNext(): void {
     if (!this.running) return
 
-    // Poisson inter-arrival time: exponential distribution
-    // Clamp random away from 0 to avoid Math.log(0) = -Infinity
+    // Poisson inter-arrival time: exponential distribution.
+    // Clamp random away from 0 to avoid Math.log(0) = -Infinity.
+    // When diurnal shaping is on, scale the rate by the current hour-of-day so
+    // live traffic has the same daily rhythm the baselines learn from.
+    const effectiveRate = this.diurnal
+      ? Math.max(Number.EPSILON, this.rate * diurnalFactorAt(new Date()))
+      : this.rate
     const r = Math.max(Number.EPSILON, Math.random())
-    const delay = Math.min(10_000, Math.max(1, -Math.log(r) * (1000 / this.rate)))
+    const delay = Math.min(10_000, Math.max(1, -Math.log(r) * (1000 / effectiveRate)))
 
     this.timer = setTimeout(() => {
       if (!this.running) return

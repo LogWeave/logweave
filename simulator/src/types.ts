@@ -71,6 +71,12 @@ export interface CliOptions {
   bufferSize: number
   flushMs: number
   dryRun: boolean
+  /** Backfill mode: generate this many days of backdated history then exit. 0 = live mode. */
+  backfillDays: number
+  /** Events/sec across all services at the diurnal peak, used by backfill. */
+  backfillRate: number
+  /** Apply the diurnal (time-of-day) rate curve to live traffic. */
+  diurnal: boolean
   /** S3 bucket name — enables dual-write to the local S3 emulator when set */
   s3Bucket?: string
   /** S3 endpoint URL (default: http://localhost:4566, the Floci dev container) */
