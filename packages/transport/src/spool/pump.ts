@@ -51,18 +51,21 @@ export interface PumpOptions {
   readonly onDrop?: (events: readonly LogEvent[], error: Error) => void
 }
 
-function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
+export function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms)
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      resolve()
+    }
+    const timer = setTimeout(() => {
+      // Remove the listener on the normal path — {once:true} only self-removes
+      // after firing, so without this an idle pump's long-lived signal would
+      // accumulate one listener per poll/backoff tick (a real leak).
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
     timer.unref()
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer)
-        resolve()
-      },
-      { once: true },
-    )
+    signal?.addEventListener('abort', onAbort, { once: true })
   })
 }
 
@@ -117,6 +120,7 @@ export class Pump {
     this.abort?.abort()
     await this.loop
     this.loop = null
+    this.abort = null
   }
 
   private async run(): Promise<void> {
@@ -143,11 +147,13 @@ export class Pump {
         continue
       }
 
-      // transient: retain the batch and back off before retrying it.
+      // transient: retain the batch and back off before retrying it. Full
+      // jitter (sleep a random fraction of the cap) avoids synchronized retries
+      // across many clients, matching retry.ts.
       this.backoffMs = this.backoffMs
         ? Math.min(this.backoffMs * 2, this.maxBackoffMs)
         : this.initialBackoffMs
-      await this.sleepFn(this.backoffMs, this.abort?.signal)
+      await this.sleepFn(Math.random() * this.backoffMs, this.abort?.signal)
     }
   }
 
@@ -182,13 +188,18 @@ export class Pump {
   }
 
   private reportDrop(batch: readonly SpooledEvent[]): void {
-    if (!this.onDrop) return
+    const error = new Error(
+      `[LogWeave] dropped ${batch.length} event(s): ingest rejected the batch (4xx, unrecoverable)`,
+    )
+    if (!this.onDrop) {
+      // Fail loudly: never drop data silently, even when no handler is wired.
+      console.error(error.message)
+      return
+    }
     try {
       this.onDrop(
         batch.map((e) => e.event),
-        new Error(
-          `[LogWeave] dropped ${batch.length} event(s): ingest rejected the batch (4xx, unrecoverable)`,
-        ),
+        error,
       )
     } catch {
       // onDrop must never throw back into the pump

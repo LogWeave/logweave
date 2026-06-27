@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
+import { getEventListeners } from 'node:events'
 import { describe, it } from 'node:test'
 import { MemorySpoolStore } from '../../src/spool/memory-spool.js'
-import { batchKey, Pump } from '../../src/spool/pump.js'
+import { batchKey, defaultSleep, Pump } from '../../src/spool/pump.js'
 import type { LogEvent } from '../../src/types.js'
 
 /** Fast, signal-ignoring sleep so backoff/poll delays don't slow tests. */
@@ -163,6 +164,19 @@ describe('Pump delivery loop', () => {
     assert.equal(body.events[0]?.message, 'a')
   })
 
+  it('4xx without an onDrop handler still deletes the batch and does not throw', async () => {
+    const spool = new MemorySpoolStore()
+    spool.insert(evt('a'))
+    const { fn } = stubFetch(() => 400)
+    const pump = makePump(spool, fn) // no onDrop wired
+
+    pump.start()
+    await waitFor(() => spool.count() === 0)
+    await pump.stop()
+
+    assert.equal(spool.count(), 0, 'unrecoverable batch skipped even without onDrop')
+  })
+
   it('start is idempotent and stop is safe to call without start', async () => {
     const spool = new MemorySpoolStore()
     const { fn } = stubFetch(() => 200)
@@ -179,5 +193,25 @@ describe('batchKey', () => {
   it('is deterministic and order-independent', () => {
     assert.equal(batchKey(['a', 'b', 'c']), batchKey(['c', 'b', 'a']))
     assert.notEqual(batchKey(['a']), batchKey(['a', 'b']))
+  })
+})
+
+describe('defaultSleep', () => {
+  it('removes its abort listener on the normal path (no leak across ticks)', async () => {
+    const ctrl = new AbortController()
+    for (let i = 0; i < 5; i++) await defaultSleep(0, ctrl.signal)
+    assert.equal(
+      getEventListeners(ctrl.signal, 'abort').length,
+      0,
+      'no abort listeners accumulate on a long-lived signal',
+    )
+  })
+
+  it('resolves promptly when the signal aborts mid-sleep', async () => {
+    const ctrl = new AbortController()
+    const p = defaultSleep(10_000, ctrl.signal)
+    ctrl.abort()
+    await p // would hang on the 10s timer if abort were not honored
+    assert.equal(getEventListeners(ctrl.signal, 'abort').length, 0)
   })
 })
