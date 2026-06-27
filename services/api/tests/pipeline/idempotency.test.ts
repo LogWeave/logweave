@@ -49,8 +49,10 @@ function deps(db: DbClient, count: number) {
 }
 
 describe('idempotency helpers', () => {
-  it('extractEventId reads a non-empty string event_id, else undefined', () => {
-    assert.equal(extractEventId({ event_id: 'abc' }), 'abc')
+  it('extractEventId returns only well-formed UUIDs, else undefined', () => {
+    const uuid = '019f0806-453e-702f-a68a-a1b4cf159dc3'
+    assert.equal(extractEventId({ event_id: uuid }), uuid)
+    assert.equal(extractEventId({ event_id: 'abc' }), undefined, 'non-UUID rejected')
     assert.equal(extractEventId({ event_id: '' }), undefined)
     assert.equal(extractEventId({ event_id: 123 }), undefined)
     assert.equal(extractEventId({}), undefined)
@@ -73,6 +75,22 @@ describe('ingestBatch — event_id + idempotency', () => {
     const rows = inserts[0] as Array<{ id: string; event_id: string }>
     assert.match(rows[0]?.event_id ?? '', UUID_RE, 'event_id should be a UUIDv7')
     assert.notEqual(rows[0]?.event_id, rows[0]?.id, 'event_id is distinct from server id')
+  })
+
+  it('falls back to a generated UUIDv7 when the client event_id is not a UUID', async () => {
+    // Guards a regression: a non-UUID event_id written to the UUID column would
+    // fail the insert and poison the batch. It must be replaced, not passed through.
+    const { db, inserts } = createDb()
+    await ingestBatch(
+      deps(db, 1),
+      TENANT,
+      [{ message: 'hi', service: 'api', event_id: 'not-a-uuid' }],
+      {},
+    )
+
+    const rows = inserts[0] as Array<{ event_id: string }>
+    assert.match(rows[0]?.event_id ?? '', UUID_RE, 'bad event_id replaced with a UUIDv7')
+    assert.notEqual(rows[0]?.event_id, 'not-a-uuid')
   })
 
   it('preserves a source-assigned event_id on the row', async () => {
