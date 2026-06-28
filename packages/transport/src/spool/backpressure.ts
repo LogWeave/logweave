@@ -34,7 +34,11 @@ export interface SpoolWriterOptions {
   readonly spool: SpoolStore
   /** Max spooled events before backpressure kicks in (disk-cap proxy). */
   readonly maxSpooledEvents: number
-  /** SLO: longest an enqueue may block waiting for drainage, ms. Default: 5000. */
+  /**
+   * SLO: longest an enqueue may block waiting for drainage, ms. Default: 5000.
+   * Soft bound — the poll loop rechecks on a `pollMs` cadence, so the actual
+   * worst-case block is up to `blockMs + pollMs`.
+   */
   readonly blockMs?: number
   /** How often to recheck for drained space while blocked, ms. Default: 50. */
   readonly pollMs?: number
@@ -125,7 +129,9 @@ export class SpoolWriter {
     try {
       this.onDrop([event], error)
     } catch {
-      // onDrop must never throw back into the logger
+      // onDrop must never throw back into the logger — and if it does, still
+      // surface the drop so a buggy handler can't make a loss invisible.
+      console.error(message)
     }
   }
 }
