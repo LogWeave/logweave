@@ -480,6 +480,9 @@ Resources:
                   LOGWEAVE_ENCRYPTION_KEY: ${!LOGWEAVE_ENCRYPTION_KEY}
                   LOGWEAVE_LOG_LEVEL: ${!LOGWEAVE_LOG_LEVEL}
                   LOGWEAVE_CLUSTERER_TIMEOUT_MS: ${!LOGWEAVE_CLUSTERER_TIMEOUT_MS}
+                  # Archive drill-down (#275): customer's own bucket, instance-role auth.
+                  LOGWEAVE_ARCHIVE_BUCKET: ${!LOGWEAVE_ARCHIVE_BUCKET}
+                  AWS_REGION: ${!AWS_REGION}
                 depends_on:
                   clickhouse:
                     condition: service_healthy

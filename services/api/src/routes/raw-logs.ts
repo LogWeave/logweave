@@ -2,9 +2,10 @@ import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
 import { getAdapter } from '../connectors/shared.js'
-import type { ConnectorConfig } from '../connectors/types.js'
+import type { ConnectorConfig, RawLogResult, S3ConnectorConfig } from '../connectors/types.js'
 import { SCAN_DEFAULTS } from '../connectors/types.js'
 import { decrypt } from '../crypto.js'
+import { getArchiveSourceRefs } from '../db/archive-queries.js'
 import type { DbClient } from '../db/client.js'
 import { getConnector, listConnectors } from '../db/connector-queries.js'
 import { notFound } from '../errors.js'
@@ -20,6 +21,11 @@ export interface RawLogsDeps {
   db: DbClient
   logger: pino.Logger
   encryptionKey?: string
+  /**
+   * The customer's durable-archive bucket (epic #265). When set, drill-down
+   * reads archived objects by source_ref before falling back to connectors.
+   */
+  archiveConfig?: S3ConnectorConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -102,77 +108,113 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
         const templateId = req.params.id as string
         const params = getQuery<z.infer<typeof rawLogsQuerySchema>>(req)
 
-        // Resolve connector
-        let connectorConfig: ConnectorConfig | undefined
-        let resolvedConnectorId: string | undefined
-
-        if (params.connectorId) {
-          const row = await getConnector(deps.db, tenantId, params.connectorId)
-          if (!row) {
-            throw notFound('Connector not found')
-          }
-          connectorConfig = JSON.parse(
-            await decrypt(row.config, deps.encryptionKey),
-          ) as ConnectorConfig
-          resolvedConnectorId = params.connectorId
-        } else {
-          // Use first connector for tenant (default)
-          const connectors = await listConnectors(deps.db, tenantId)
-          const first = connectors[0]
-          if (first) {
-            connectorConfig = JSON.parse(
-              await decrypt(first.config, deps.encryptionKey),
-            ) as ConnectorConfig
-            resolvedConnectorId = first.connector_id
-          }
-        }
-
-        // Graceful degradation when no connector configured
-        if (!connectorConfig) {
-          respond(
-            res,
-            {
-              lines: [],
-              filesScanned: 0,
-              bytesScanned: 0,
-              truncated: false,
-            } as RawLogsData,
-            {
-              hours: params.hours,
-              count: 0,
-              message:
-                'Raw log drill-down unavailable — no connector configured. Connect a log source in Settings > Connectors to enable.',
-            },
-          )
-          return
-        }
-
-        // Look up template text
+        // Look up template text (needed by both the archive and connector paths).
         const templateText = await getTemplateText(deps.db, tenantId, templateId)
         if (!templateText) {
           throw notFound(`Template ${templateId} not found`)
         }
 
-        // Fetch raw logs
         const now = new Date()
         const start = new Date(now.getTime() - params.hours * 3_600_000)
 
-        const adapter = getAdapter(connectorConfig.type)
-        const result = await adapter.fetchRawLogs({
-          config: connectorConfig,
-          templateText,
-          service: params.service,
-          timeRange: { start, end: now },
-          limit: params.limit,
-          auditContext:
-            resolvedConnectorId && deps.encryptionKey
-              ? {
-                  tenantId,
-                  connectorId: resolvedConnectorId,
-                  sessionNameSecret: deps.encryptionKey,
-                }
-              : undefined,
-        })
+        let result: RawLogResult | undefined
+
+        // 1. Durable archive (epic #265): the customer's own S3 bucket is the
+        // system of record. Drill down by the exact source_ref keys recorded in
+        // log_metadata — no connector setup required.
+        if (deps.archiveConfig) {
+          // Defence in depth on top of the query's tenant-prefix filter: never
+          // GET a key outside the caller's own archive partition.
+          const tenantPrefix = `tenant=${tenantId}/`
+          const sourceRefs = (
+            await getArchiveSourceRefs(deps.db, tenantId, {
+              templateId,
+              service: params.service,
+              hours: params.hours,
+              maxFiles: SCAN_DEFAULTS.maxFiles,
+            })
+          ).filter((ref) => ref.startsWith(tenantPrefix))
+
+          if (sourceRefs.length > 0) {
+            const archiveResult = await getAdapter('s3').fetchRawLogs({
+              config: deps.archiveConfig,
+              templateText,
+              service: params.service,
+              timeRange: { start, end: now },
+              limit: params.limit,
+              sourceRefs,
+            })
+            // Only commit to the archive result if it actually found lines;
+            // otherwise fall through to a user-configured connector so an empty
+            // archive scan can't mask configured connector data (#275 review).
+            if (archiveResult.lines.length > 0) {
+              result = archiveResult
+            }
+          }
+        }
+
+        // 2. Fall back to a user-configured external connector (ADR-010).
+        if (!result) {
+          let connectorConfig: ConnectorConfig | undefined
+          let resolvedConnectorId: string | undefined
+
+          if (params.connectorId) {
+            const row = await getConnector(deps.db, tenantId, params.connectorId)
+            if (!row) {
+              throw notFound('Connector not found')
+            }
+            connectorConfig = JSON.parse(
+              await decrypt(row.config, deps.encryptionKey),
+            ) as ConnectorConfig
+            resolvedConnectorId = params.connectorId
+          } else {
+            // Use first connector for tenant (default)
+            const connectors = await listConnectors(deps.db, tenantId)
+            const first = connectors[0]
+            if (first) {
+              connectorConfig = JSON.parse(
+                await decrypt(first.config, deps.encryptionKey),
+              ) as ConnectorConfig
+              resolvedConnectorId = first.connector_id
+            }
+          }
+
+          // Graceful degradation when neither archive nor a connector applies.
+          if (!connectorConfig) {
+            respond(
+              res,
+              {
+                lines: [],
+                filesScanned: 0,
+                bytesScanned: 0,
+                truncated: false,
+              } as RawLogsData,
+              {
+                hours: params.hours,
+                count: 0,
+                message:
+                  'Raw log drill-down unavailable — no archived logs for this template yet and no connector configured. Connect a log source in Settings > Connectors, or wait for logs to land in the archive.',
+              },
+            )
+            return
+          }
+
+          result = await getAdapter(connectorConfig.type).fetchRawLogs({
+            config: connectorConfig,
+            templateText,
+            service: params.service,
+            timeRange: { start, end: now },
+            limit: params.limit,
+            auditContext:
+              resolvedConnectorId && deps.encryptionKey
+                ? {
+                    tenantId,
+                    connectorId: resolvedConnectorId,
+                    sessionNameSecret: deps.encryptionKey,
+                  }
+                : undefined,
+          })
+        }
 
         const data: RawLogsData = {
           lines: result.lines,

@@ -132,6 +132,7 @@ describe('GET /v1/templates/:id/raw-logs', () => {
 
   it('accepts hours and limit params', async () => {
     const map = new Map<string, unknown>()
+    map.set('template_registry FINAL', [mockTemplateRow])
     map.set('tenant_connectors FINAL', [])
     const app = createTestApp(map)
 
@@ -152,6 +153,7 @@ describe('GET /v1/templates/:id/raw-logs', () => {
 
   it('returns standard response envelope', async () => {
     const map = new Map<string, unknown>()
+    map.set('template_registry FINAL', [mockTemplateRow])
     map.set('tenant_connectors FINAL', [])
     const app = createTestApp(map)
 

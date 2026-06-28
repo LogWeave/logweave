@@ -11,6 +11,7 @@ import { SessionValidationCache } from './auth/session-cache.js'
 import type { UserStore } from './auth/user-store.js'
 import type { ClustererHealthChecker } from './clients/clusterer.js'
 import type { Config } from './config.js'
+import { buildArchiveConfig } from './connectors/archive-config.js'
 import type { DbClient } from './db/client.js'
 import { notFound } from './errors.js'
 import type { EventBus } from './events/event-bus.js'
@@ -322,6 +323,15 @@ export function createApp(deps: AppDependencies): CreatedApp {
       db: deps.db,
       logger: deps.logger,
       encryptionKey: deps.config.encryptionKey,
+      // Dev static creds (AWS_ACCESS_KEY_ID/SECRET) are only used when an
+      // archive S3 endpoint is set (Floci); prod uses the EC2 instance role.
+      archiveConfig: buildArchiveConfig({
+        bucket: deps.config.archiveBucket,
+        region: deps.config.archiveRegion,
+        endpoint: deps.config.archiveS3Endpoint,
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      }),
     }),
   )
   const tailTokenStore = new TailTokenStore()
