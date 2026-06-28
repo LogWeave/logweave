@@ -5,6 +5,7 @@ import express, { Router } from 'express'
 import helmet from 'helmet'
 import type pino from 'pino'
 import { type Options as PinoHttpOptions, pinoHttp } from 'pino-http'
+import { ArchiveNotifyQueue } from './archive/notify-queue.js'
 import type { ApiKeyStore } from './auth/api-key-store.js'
 import type { SessionProvider } from './auth/session.js'
 import { SessionValidationCache } from './auth/session-cache.js'
@@ -37,6 +38,7 @@ import { deployRoutes } from './routes/deploys.js'
 import { healthRoutes } from './routes/health.js'
 import { ingestRoutes } from './routes/ingest.js'
 import { genericIngestRoutes } from './routes/ingest-generic.js'
+import { ingestNotifyRoutes } from './routes/ingest-notify.js'
 import { otlpIngestRoutes } from './routes/ingest-otlp.js'
 import { rawLogsRoutes } from './routes/raw-logs.js'
 import { ruleRoutes } from './routes/rules.js'
@@ -74,6 +76,8 @@ export interface CreatedApp {
   app: express.Express
   /** Resources created inside createApp that need stop() at shutdown. */
   tailTokenStore: TailTokenStore
+  /** Archive notify queue (#276); the async consumer (#277) drains it. */
+  archiveNotifyQueue: ArchiveNotifyQueue
 }
 
 export function createApp(deps: AppDependencies): CreatedApp {
@@ -152,6 +156,18 @@ export function createApp(deps: AppDependencies): CreatedApp {
       db: deps.db,
       clustererHealth: deps.clustererHealth,
       clusterClient: deps.clusterClient,
+    }),
+  )
+
+  // Routes — archive notify (#276). Internal-only (Vector → API), guarded by
+  // the shared internal secret, NOT tenant API-key auth — so it is mounted
+  // BEFORE the authenticated /v1 router. The async consumer (#277) drains this.
+  const archiveNotifyQueue = new ArchiveNotifyQueue()
+  app.use(
+    ingestNotifyRoutes({
+      queue: archiveNotifyQueue,
+      logger: deps.logger,
+      internalSecret: deps.config.clustererInternalSecret,
     }),
   )
 
@@ -381,5 +397,5 @@ export function createApp(deps: AppDependencies): CreatedApp {
   // Centralized error handler (must be last)
   app.use(createErrorHandler(deps.logger))
 
-  return { app, tailTokenStore }
+  return { app, tailTokenStore, archiveNotifyQueue }
 }
