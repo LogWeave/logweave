@@ -373,8 +373,8 @@ Resources:
             type = "remap"
             inputs = ["in"]
             source = '''
-            .tenant_id = if is_nullish(.tenant_id) { "unknown" } else { to_string(.tenant_id) }
-            .service = if is_nullish(.service) { "unknown" } else { to_string(.service) }
+            .tenant_id = string(.tenant_id) ?? "unknown"
+            .service = string(.service) ?? "unknown"
             '''
 
             [sinks.archive]
@@ -388,6 +388,9 @@ Resources:
 
             [sinks.archive.encoding]
             codec = "json"
+
+            [sinks.archive.framing]
+            method = "newline_delimited"
 
             [sinks.archive.batch]
             max_bytes = 16777216

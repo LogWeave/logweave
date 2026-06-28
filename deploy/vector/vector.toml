@@ -45,16 +45,16 @@ enabled = true
 
 # ---------------------------------------------------------------------------
 # Default the partition keys so a missing field never fails key_prefix
-# templating (an unrenderable key_prefix drops the event). `to_string` is
-# infallible and returns "" for a null/missing field, so guard with
-# is_nullish rather than `??` (which would be a VRL compile error here).
+# templating (an unrenderable key_prefix drops the event). `string()` asserts
+# the value is a string and errors otherwise; `??` coalesces that error — and
+# a missing/null field — to "unknown".
 # ---------------------------------------------------------------------------
 [transforms.partition]
 type = "remap"
 inputs = ["in"]
 source = '''
-.tenant_id = if is_nullish(.tenant_id) { "unknown" } else { to_string(.tenant_id) }
-.service = if is_nullish(.service) { "unknown" } else { to_string(.service) }
+.tenant_id = string(.tenant_id) ?? "unknown"
+.service = string(.service) ?? "unknown"
 '''
 
 # ---------------------------------------------------------------------------
@@ -72,6 +72,11 @@ key_prefix = "tenant={{ tenant_id }}/service={{ service }}/date=%F/hour=%H/"
 
 [sinks.archive.encoding]
 codec = "json"
+
+# Newline-delimited JSON objects. WITHOUT this the aws_s3 sink writes each
+# batch as a single JSON array, which breaks line-oriented drill-down (#275).
+[sinks.archive.framing]
+method = "newline_delimited"
 
 # Batch to large objects — the ~40-60x cost win over CloudWatch is CONDITIONAL
 # on not emitting tiny objects. `max_bytes` is measured on the UNCOMPRESSED
