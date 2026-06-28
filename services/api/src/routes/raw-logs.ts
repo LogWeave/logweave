@@ -123,14 +123,20 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
         // system of record. Drill down by the exact source_ref keys recorded in
         // log_metadata — no connector setup required.
         if (deps.archiveConfig) {
-          const sourceRefs = await getArchiveSourceRefs(deps.db, tenantId, {
-            templateId,
-            service: params.service,
-            hours: params.hours,
-            maxFiles: SCAN_DEFAULTS.maxFiles,
-          })
+          // Defence in depth on top of the query's tenant-prefix filter: never
+          // GET a key outside the caller's own archive partition.
+          const tenantPrefix = `tenant=${tenantId}/`
+          const sourceRefs = (
+            await getArchiveSourceRefs(deps.db, tenantId, {
+              templateId,
+              service: params.service,
+              hours: params.hours,
+              maxFiles: SCAN_DEFAULTS.maxFiles,
+            })
+          ).filter((ref) => ref.startsWith(tenantPrefix))
+
           if (sourceRefs.length > 0) {
-            result = await getAdapter('s3').fetchRawLogs({
+            const archiveResult = await getAdapter('s3').fetchRawLogs({
               config: deps.archiveConfig,
               templateText,
               service: params.service,
@@ -138,6 +144,12 @@ export function rawLogsRoutes(deps: RawLogsDeps): Router {
               limit: params.limit,
               sourceRefs,
             })
+            // Only commit to the archive result if it actually found lines;
+            // otherwise fall through to a user-configured connector so an empty
+            // archive scan can't mask configured connector data (#275 review).
+            if (archiveResult.lines.length > 0) {
+              result = archiveResult
+            }
           }
         }
 

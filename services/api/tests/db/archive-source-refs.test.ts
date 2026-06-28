@@ -58,10 +58,15 @@ describe('getArchiveSourceRefs', () => {
     await closeTestClient()
   })
 
-  it('returns distinct s3 source_refs for the template+service, newest first', async () => {
+  it('returns distinct own-tenant s3 source_refs, newest first, excluding cross-tenant refs', async () => {
     const tenantId = testTenantId('archive-refs')
     const tpl = 'tpl-arch'
     const svc = 'svc-a'
+    // Archive keys live under the tenant's own prefix (Vector's key_prefix).
+    const own = (name: string) =>
+      `tenant=${tenantId}/service=${svc}/date=2026-06-29/hour=00/${name}`
+    const keyOld = own('old.log.gz')
+    const keyNew = own('new.log.gz')
 
     await client.insert({
       table: 'logweave.log_metadata',
@@ -71,14 +76,14 @@ describe('getArchiveSourceRefs', () => {
           templateId: tpl,
           service: svc,
           sourceType: 's3',
-          sourceRef: 'keyOld',
+          sourceRef: keyOld,
           offsetMs: -60_000,
         }),
         row(tenantId, {
           templateId: tpl,
           service: svc,
           sourceType: 's3',
-          sourceRef: 'keyNew',
+          sourceRef: keyNew,
           offsetMs: -10_000,
         }),
         // A replayed event in the older object — must collapse (distinct keys).
@@ -86,28 +91,38 @@ describe('getArchiveSourceRefs', () => {
           templateId: tpl,
           service: svc,
           sourceType: 's3',
-          sourceRef: 'keyOld',
+          sourceRef: keyOld,
           offsetMs: -55_000,
+        }),
+        // SECURITY: this row belongs to our tenant but its ref points at ANOTHER
+        // tenant's archive partition (a client could forge this at ingest). It
+        // MUST NOT be returned — the prefix guard is the cross-tenant defense.
+        row(tenantId, {
+          templateId: tpl,
+          service: svc,
+          sourceType: 's3',
+          sourceRef: 'tenant=victim/service=svc-a/date=2026-06-29/hour=00/secret.log.gz',
+          offsetMs: -5_000,
         }),
         // Excluded: non-s3 source.
         row(tenantId, {
           templateId: tpl,
           service: svc,
           sourceType: 'transport',
-          sourceRef: 'keyTransport',
+          sourceRef: own('t'),
         }),
         // Excluded: different template / service / empty ref.
         row(tenantId, {
           templateId: 'other',
           service: svc,
           sourceType: 's3',
-          sourceRef: 'keyOtherTpl',
+          sourceRef: own('o1'),
         }),
         row(tenantId, {
           templateId: tpl,
           service: 'svc-b',
           sourceType: 's3',
-          sourceRef: 'keyOtherSvc',
+          sourceRef: own('o2'),
         }),
         row(tenantId, { templateId: tpl, service: svc, sourceType: 's3', sourceRef: '' }),
       ],
@@ -127,7 +142,11 @@ describe('getArchiveSourceRefs', () => {
       if (refs.length >= 2) break
     }
 
-    assert.deepEqual(refs, ['keyNew', 'keyOld'], 'distinct s3 refs, newest first, others excluded')
+    assert.deepEqual(
+      refs,
+      [keyNew, keyOld],
+      'own-tenant refs newest-first; cross-tenant ref excluded',
+    )
   })
 
   it('returns empty when the template has no archived (s3) events', async () => {

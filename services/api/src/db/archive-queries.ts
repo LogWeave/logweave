@@ -7,6 +7,15 @@ import { tenantQuery } from './queries.js'
  * archive bucket (epic #265); drill-down GETs them by key and regex-scans for
  * lines matching the template (#275).
  *
+ * SECURITY + correctness — `startsWith(source_ref, 'tenant=<caller>/')`:
+ * `source_ref` can be client-supplied at ingest (and `source_type='s3'` is also
+ * used by external connectors whose keys live in a *different* bucket). Without
+ * this guard a tenant could record a ref pointing at `tenant=<other>/…` and have
+ * drill-down GET another tenant's object from the shared archive bucket, and we
+ * could feed a connector key to the archive bucket. Vector always writes keys
+ * under `tenant={{tenant_id}}/…`, so restricting to the caller's own prefix
+ * yields exactly that tenant's archive objects and nothing else.
+ *
  * No FINAL: GROUP BY source_ref already collapses ReplacingMergeTree replicas
  * of the same event, and we only need the distinct keys — so we avoid the FINAL
  * merge cost on the hot log_metadata table.
@@ -19,6 +28,7 @@ WHERE tenant_id = {tenant_id:String}
   AND service = {service:String}
   AND source_type = 's3'
   AND source_ref != ''
+  AND startsWith(source_ref, {archive_prefix:String})
   AND timestamp >= {since:DateTime64(3)}
 GROUP BY source_ref
 ORDER BY last_seen DESC
@@ -51,6 +61,8 @@ export async function getArchiveSourceRefs(
       service: params.service,
       since,
       max_files: params.maxFiles,
+      // The tenant's own archive partition — see the security note above.
+      archive_prefix: `tenant=${tenantId}/`,
     }),
   )
   return rows.map((r) => r.source_ref)

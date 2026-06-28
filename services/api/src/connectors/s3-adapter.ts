@@ -176,6 +176,15 @@ function resolvePathPrefixes(
 // S3 console link generation
 // ---------------------------------------------------------------------------
 
+/**
+ * Reject malformed object keys before they are used as an S3 GET Key — defence
+ * in depth against a crafted `source_ref` (absolute paths, path-traversal
+ * markers). Empty keys are excluded by the DB filter but checked here too.
+ */
+function isSafeObjectKey(key: string): boolean {
+  return key.length > 0 && !key.startsWith('/') && !key.includes('..')
+}
+
 function s3ConsoleUrl(config: S3ConnectorConfig, key: string): string | undefined {
   // Dev endpoint (S3-compatible emulator like Floci): no public console to
   // link to. Caller treats undefined as "no link" — the raw log line still
@@ -383,13 +392,14 @@ export class S3Adapter implements LogSourceAdapter {
     try {
       // Fast path: scan exact object keys if provided (archive drill-down by
       // source_ref, #275), bypassing prefix listing. `sourceRefs` (newest-first
-      // list) takes precedence over a single `sourceRef`.
+      // list) takes precedence over a single `sourceRef`. Malformed keys are
+      // dropped (defence in depth against a crafted source_ref).
       const keys: string[] = []
 
       if (params.sourceRefs && params.sourceRefs.length > 0) {
-        keys.push(...params.sourceRefs.slice(0, SCAN_DEFAULTS.maxFiles))
+        keys.push(...params.sourceRefs.filter(isSafeObjectKey).slice(0, SCAN_DEFAULTS.maxFiles))
       } else if (params.sourceRef) {
-        keys.push(params.sourceRef)
+        if (isSafeObjectKey(params.sourceRef)) keys.push(params.sourceRef)
       } else {
         // Resolve prefixes and list objects
         const prefixes = resolvePathPrefixes(config, params.service, params.timeRange)
