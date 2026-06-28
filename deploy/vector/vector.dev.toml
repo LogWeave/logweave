@@ -8,9 +8,9 @@
 # Differences from prod (deploy/vector/vector.toml):
 #   - endpoint -> Floci; static test creds via env (AWS_ACCESS_KEY_ID/SECRET).
 #   - batch.max_bytes lowered to 64 KiB and timeout to 5s so a test can prove
-#     both flush paths in seconds.
-
-data_dir = "/vector-data"
+#     both flush paths in seconds. NOTE: because the 200 is S3-gated, a
+#     sub-max_bytes POST blocks for up to batch.timeout_secs (5s here, 30s in
+#     prod) before returning — by design.
 
 [api]
 enabled = false
@@ -69,6 +69,7 @@ timeout_secs = 5
 # instant the 200 returns, which only holds with a memory buffer.
 [sinks.archive.buffer]
 type = "memory"
+max_events = 10000
 when_full = "block"
 
 [sinks.archive.acknowledgements]

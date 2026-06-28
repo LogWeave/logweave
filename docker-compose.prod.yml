@@ -147,7 +147,6 @@ services:
       - "8686"
     volumes:
       - ./deploy/vector/vector.toml:/etc/vector/vector.toml:ro
-      - vector_buffer:/vector-data
     environment:
       LOGWEAVE_ARCHIVE_BUCKET: ${LOGWEAVE_ARCHIVE_BUCKET}
       AWS_REGION: ${AWS_REGION:-us-east-1}
@@ -161,4 +160,3 @@ volumes:
   clickhouse_data:
   drain3_checkpoints:
   api_data:
-  vector_buffer:

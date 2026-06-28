@@ -349,8 +349,6 @@ Resources:
             # Vector resolves its own env interpolation at runtime.
             mkdir -p /opt/logweave/deploy/vector
             cat >/opt/logweave/deploy/vector/vector.toml <<'VECTOR'
-            data_dir = "/vector-data"
-
             [api]
             enabled = false
 
@@ -403,6 +401,7 @@ Resources:
             # SDK's durable spool, so Vector's buffer need not be durable.
             [sinks.archive.buffer]
             type = "memory"
+            max_events = 10000
             when_full = "block"
 
             [sinks.archive.acknowledgements]
@@ -506,7 +505,6 @@ Resources:
                   - "8686"
                 volumes:
                   - ./deploy/vector/vector.toml:/etc/vector/vector.toml:ro
-                  - vector_buffer:/vector-data
                 environment:
                   LOGWEAVE_ARCHIVE_BUCKET: ${!LOGWEAVE_ARCHIVE_BUCKET}
                   AWS_REGION: ${!AWS_REGION}
@@ -518,7 +516,6 @@ Resources:
 
             volumes:
               drain3_checkpoints:
-              vector_buffer:
             COMPOSE
 
             mkdir -p /etc/caddy

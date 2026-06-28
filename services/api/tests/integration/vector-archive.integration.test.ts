@@ -4,17 +4,15 @@
  * Proves seam B end to end against real Vector + the Floci S3 emulator:
  *   - gzip NDJSON objects land at the deterministic key_prefix
  *     `tenant=.../service=.../date=%F/hour=%H/`;
- *   - objects are SIZE-BOUNDED with no loss: one POST that exceeds
- *     `batch.max_bytes` lands as MULTIPLE objects (size triggered the flush)
- *     and every event survives — the cost guarantee depends on not emitting
- *     one tiny object per event;
- *   - a TINY batch only flushes on `batch.timeout_secs`, so its object appears
- *     after the timeout, not immediately.
- *
- * Archiving is ASYNCHRONOUS: with a disk buffer Vector acks the HTTP 200 once
- * the event is durable in the local buffer, NOT once it reaches S3, so these
- * tests POLL S3 for the landed objects rather than trusting POST latency.
- * Gating the 200 on S3 *delivery* is issue #274, deliberately out of scope here.
+ *   - the 200 is GATED on S3 delivery (#274): the archive sink uses a memory
+ *     buffer + acknowledgements + when_full="block", so the instant the awaited
+ *     POST resolves the object(s) are already in S3 — asserted synchronously,
+ *     no polling. A disk buffer would ack before S3 and fail these assertions;
+ *   - objects are SIZE-BOUNDED with no loss: one POST over `batch.max_bytes`
+ *     lands as MULTIPLE objects whose union is every event — the cost guarantee
+ *     depends on not emitting one tiny object per event;
+ *   - a TINY batch only flushes on `batch.timeout_secs`, so the gated POST
+ *     blocks ~timeout before the 200.
  *
  * Requires the dev stack up (Floci + Vector on the dev config, whose
  * batch.max_bytes=64KiB / timeout=5s make both paths assertable in seconds):
@@ -26,7 +24,6 @@
 
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { gunzipSync } from 'node:zlib'
 import { GetObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3'
 
@@ -90,25 +87,14 @@ async function readGzipNdjson(key: string): Promise<Record<string, unknown>[]> {
     .map((l) => JSON.parse(l))
 }
 
-/** Collect distinct event_ids under a prefix, polling until `want` arrive. */
-async function collectEventIds(
-  prefix: string,
-  want: number,
-  timeoutMs: number,
-): Promise<{ ids: Set<string>; keys: string[]; ms: number }> {
-  const start = Date.now()
-  let keys: string[] = []
+/** List under a prefix and read all event_ids across the objects (one pass). */
+async function collectEventIds(prefix: string): Promise<{ ids: Set<string>; keys: string[] }> {
+  const keys = await listUnderPrefix(prefix)
   const ids = new Set<string>()
-  while (Date.now() - start < timeoutMs) {
-    keys = await listUnderPrefix(prefix)
-    ids.clear()
-    for (const key of keys) {
-      for (const ev of await readGzipNdjson(key)) ids.add(String(ev.event_id))
-    }
-    if (ids.size >= want) break
-    await sleep(500)
+  for (const key of keys) {
+    for (const ev of await readGzipNdjson(key)) ids.add(String(ev.event_id))
   }
-  return { ids, keys, ms: Date.now() - start }
+  return { ids, keys }
 }
 
 describe('Vector archive integration (Floci + Vector)', async () => {
@@ -118,7 +104,7 @@ describe('Vector archive integration (Floci + Vector)', async () => {
     up = (await reachable(FLOCI_ENDPOINT)) && (await reachable(VECTOR_ENDPOINT))
   })
 
-  it('size-bounds a large batch into multiple gzip objects with no loss', async (t) => {
+  it('size-splits a large batch into multiple gzip objects, all durable when the 200 returns', async (t) => {
     if (!up) return t.skip('Floci/Vector not reachable')
 
     // Unique partition per run so concurrent/repeat runs never collide.
@@ -138,10 +124,13 @@ describe('Vector archive integration (Floci + Vector)', async () => {
 
     assert.equal(await postBatch(events), 200)
 
+    // The 200 is gated on S3 delivery of EVERY event (the source ack is
+    // all-or-nothing for the request), so a single synchronous pass — NO
+    // polling — must already see all objects. This is the multi-object form of
+    // the delivery gate: a partial ack (some objects in S3, the 200 returned
+    // anyway) would drop event_ids here and fail the count.
     const prefix = `tenant=${tenant}/service=${service}/`
-    // Generous poll budget: under load (e.g. the db suite running first) the
-    // disk buffer can take a while to drain all objects to S3.
-    const { ids, keys } = await collectEventIds(prefix, events.length, 60000)
+    const { ids, keys } = await collectEventIds(prefix)
 
     // Multiple objects from one POST = size triggered the flush (a single
     // timer flush of the whole batch would be one object).
@@ -149,11 +138,11 @@ describe('Vector archive integration (Floci + Vector)', async () => {
     for (const key of keys) {
       assert.match(key, /^tenant=[^/]+\/service=[^/]+\/date=\d{4}-\d{2}-\d{2}\/hour=\d{2}\//)
     }
-    // Every event landed exactly once across the objects — no loss, no dupes.
+    // Every event is durable across the objects — no loss, no dupes, no partial ack.
     assert.equal(ids.size, events.length, `expected all ${events.length} events, got ${ids.size}`)
   })
 
-  it('holds a tiny batch until the timeout flush', async (t) => {
+  it('blocks a tiny batch until the timeout flush, then 200s with it durable', async (t) => {
     if (!up) return t.skip('Floci/Vector not reachable')
 
     const tenant = `t-tiny-${Date.now()}`
@@ -163,17 +152,19 @@ describe('Vector archive integration (Floci + Vector)', async () => {
       await postBatch([{ event_id: 'one', tenant_id: tenant, service: 'svc', message: 'hi' }]),
       200,
     )
+    const blockedMs = Date.now() - start
 
-    // Below batch.max_bytes → only the timer flushes it. Poll until it lands.
-    const { keys, ms } = await collectEventIds(prefix, 1, (BATCH_TIMEOUT_SECS + 15) * 1000)
-    const landedAfterMs = Date.now() - start
-    assert.equal(keys.length, 1, `expected one object, got ${keys.length} (waited ${ms}ms)`)
+    // Below batch.max_bytes → only the timer flushes it, and the 200 is gated on
+    // that flush, so the POST itself blocks ~timeout and the object is durable
+    // by the time it returns (asserted synchronously, no polling).
+    const { keys } = await collectEventIds(prefix)
+    assert.equal(keys.length, 1, `expected one object, got ${keys.length}`)
     assert.match(keys[0], /date=\d{4}-\d{2}-\d{2}\/hour=\d{2}\//)
-    // It did NOT flush immediately — it waited roughly for the timeout. Lower
-    // bound is generous to absorb disk-buffer + poll jitter.
+    // It did NOT flush immediately — the gated POST waited ~timeout. Lower bound
+    // is generous to absorb jitter.
     assert.ok(
-      landedAfterMs > (BATCH_TIMEOUT_SECS - 2) * 1000,
-      `expected timeout-flush (~${BATCH_TIMEOUT_SECS}s), landed in ${landedAfterMs}ms`,
+      blockedMs > (BATCH_TIMEOUT_SECS - 2) * 1000,
+      `expected the gated POST to block ~${BATCH_TIMEOUT_SECS}s, returned in ${blockedMs}ms`,
     )
   })
 
