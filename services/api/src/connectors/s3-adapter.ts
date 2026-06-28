@@ -381,10 +381,14 @@ export class S3Adapter implements LogSourceAdapter {
     const startTime = Date.now()
 
     try {
-      // Fast path: use sourceRef if provided
+      // Fast path: scan exact object keys if provided (archive drill-down by
+      // source_ref, #275), bypassing prefix listing. `sourceRefs` (newest-first
+      // list) takes precedence over a single `sourceRef`.
       const keys: string[] = []
 
-      if (params.sourceRef) {
+      if (params.sourceRefs && params.sourceRefs.length > 0) {
+        keys.push(...params.sourceRefs.slice(0, SCAN_DEFAULTS.maxFiles))
+      } else if (params.sourceRef) {
         keys.push(params.sourceRef)
       } else {
         // Resolve prefixes and list objects

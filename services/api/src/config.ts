@@ -110,6 +110,12 @@ const configSchema = z.object({
     .regex(/^\d{12}$/, 'LOGWEAVE_AWS_ACCOUNT_ID must be a 12-digit AWS account ID')
     .optional(),
   s3CfnTemplateUrl: z.string().url().optional(),
+  // Durable archive (epic #265): the customer's own S3 bucket Vector writes to.
+  // When set, raw-log drill-down reads archived objects by source_ref.
+  archiveBucket: z.string().optional(),
+  archiveRegion: z.string().default('us-east-1'),
+  // Dev only: S3-compatible endpoint (Floci) for archive drill-down.
+  archiveS3Endpoint: z.string().url().optional(),
 })
 
 export type Config = z.infer<typeof configSchema>
@@ -144,5 +150,8 @@ export function loadConfig(): Config {
     retentionIntervalMs: process.env.LOGWEAVE_RETENTION_INTERVAL_MS,
     awsAccountId: process.env.LOGWEAVE_AWS_ACCOUNT_ID || undefined,
     s3CfnTemplateUrl: process.env.LOGWEAVE_S3_CFN_TEMPLATE_URL || undefined,
+    archiveBucket: process.env.LOGWEAVE_ARCHIVE_BUCKET || undefined,
+    archiveRegion: process.env.AWS_REGION || undefined,
+    archiveS3Endpoint: process.env.LOGWEAVE_S3_ENDPOINT || undefined,
   })
 }

@@ -26,6 +26,8 @@ import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
 import { gunzipSync } from 'node:zlib'
 import { GetObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3'
+import { buildArchiveConfig } from '../../src/connectors/archive-config.js'
+import { S3Adapter } from '../../src/connectors/s3-adapter.js'
 
 const FLOCI_ENDPOINT = process.env.FLOCI_ENDPOINT ?? 'http://localhost:4566'
 const VECTOR_ENDPOINT = process.env.VECTOR_ENDPOINT ?? 'http://localhost:8686'
@@ -191,5 +193,64 @@ describe('Vector archive integration (Floci + Vector)', async () => {
     const events = await readGzipNdjson(keys[0])
     assert.equal(events.length, 1)
     assert.equal(events[0].event_id, 'g1')
+  })
+
+  // #275: drill-down reads the archived object by source_ref and narrows to the
+  // lines matching the template — the exact path raw-logs.ts uses for archived
+  // logs. Exercises the real S3Adapter against a real Vector-written gz NDJSON
+  // object (DoD: set source_ref → drill-down finds it; template regex matches).
+  it('drills down into an archived object by source_ref and matches the template', async (t) => {
+    if (!up) return t.skip('Floci/Vector not reachable')
+
+    const tenant = `t-drill-${Date.now()}`
+    const service = `svc-${Date.now()}`
+    // Two distinct templates so we can prove the regex NARROWS, not just reads.
+    const matching = Array.from({ length: 5 }, (_, i) => ({
+      event_id: `m${i}`,
+      tenant_id: tenant,
+      service,
+      message: `connection ${i} timed out after 30000ms to upstream 10.0.0.${i}`,
+    }))
+    const noise = [
+      { event_id: 'n1', tenant_id: tenant, service, message: 'user alice logged in' },
+      { event_id: 'n2', tenant_id: tenant, service, message: 'cache warmed in 12ms' },
+    ]
+    assert.equal(await postBatch([...matching, ...noise]), 200)
+
+    const prefix = `tenant=${tenant}/service=${service}/`
+    const sourceRefs = await listUnderPrefix(prefix)
+    assert.ok(sourceRefs.length >= 1, 'archived object should exist after the gated 200')
+
+    const config = buildArchiveConfig({
+      bucket: BUCKET,
+      region: REGION,
+      endpoint: FLOCI_ENDPOINT,
+      accessKeyId: STATIC_CREDS.accessKeyId,
+      secretAccessKey: STATIC_CREDS.secretAccessKey,
+    })
+    assert.ok(config, 'archive config should be built')
+
+    const result = await new S3Adapter().fetchRawLogs({
+      config,
+      templateText: 'connection <*> timed out after <*>ms to upstream <*>',
+      service,
+      timeRange: { start: new Date(Date.now() - 3_600_000), end: new Date() },
+      limit: 50,
+      sourceRefs,
+    })
+
+    // Found exactly the 5 matching lines, none of the noise.
+    assert.equal(
+      result.lines.length,
+      matching.length,
+      `expected 5 matches, got ${result.lines.length}`,
+    )
+    for (const line of result.lines) {
+      assert.match(
+        line.message,
+        /^connection \d+ timed out after 30000ms to upstream 10\.0\.0\.\d+$/,
+      )
+      assert.equal(line.source, sourceRefs[0])
+    }
   })
 })

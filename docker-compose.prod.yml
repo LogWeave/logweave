@@ -99,6 +99,10 @@ services:
       LOGWEAVE_CLICKHOUSE_USER: ${LOGWEAVE_CLICKHOUSE_USER:-}
       LOGWEAVE_CLICKHOUSE_PASSWORD: ${LOGWEAVE_CLICKHOUSE_PASSWORD:-}
       LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
+      # Archive drill-down (#275): the customer's own bucket; auth via the EC2
+      # instance role (default credential chain, no static creds here).
+      LOGWEAVE_ARCHIVE_BUCKET: ${LOGWEAVE_ARCHIVE_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
       # Forwarded to the clusterer's destructive endpoints; must match the
       # clusterer service value above.
       LOGWEAVE_INTERNAL_SECRET: ${LOGWEAVE_INTERNAL_SECRET:-}

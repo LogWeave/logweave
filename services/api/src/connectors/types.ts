@@ -103,7 +103,13 @@ export interface FetchRawLogsParams {
   service: string
   timeRange: { start: Date; end: Date }
   limit: number
+  /** Single exact object key to scan (fast path), bypassing prefix listing. */
   sourceRef?: string
+  /**
+   * Multiple exact object keys to scan, newest-first (archive drill-down, #275).
+   * Takes precedence over `sourceRef` and prefix listing when non-empty.
+   */
+  sourceRefs?: string[]
   cursor?: string
   auditContext?: AdapterAuditContext
 }
