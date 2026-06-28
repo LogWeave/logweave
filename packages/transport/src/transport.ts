@@ -19,6 +19,7 @@
  * Known limitation: the LogWeave API server has a 1MB body limit.
  * For very large log messages, ensure your buffer size keeps batches under 1MB.
  */
+import { createHash } from 'node:crypto'
 import TransportStream from 'winston-transport'
 import { BufferManager } from './buffer.js'
 import { retryFetch } from './retry.js'
@@ -40,12 +41,19 @@ const CLOSE_DRAIN_POLL_MS = 50
 const EXCLUDED_KEYS = new Set(['level', 'message', 'timestamp'])
 
 /**
- * Default durable spool path: per-service so two transports don't share a file
- * (the pump stamps each batch with its own service). In the current working dir.
+ * Default durable spool path, in the current working directory. Keyed on both
+ * service and environment so two transports in one process never share a file
+ * (the pump stamps each batch with its own service/environment). A short hash
+ * of the raw values guarantees uniqueness even when sanitization would alias
+ * distinct names (e.g. "a.b" and "a/b" both → "a_b").
  */
-function defaultSpoolPath(service: string): string {
-  const safe = service.replace(/[^a-zA-Z0-9_-]/g, '_')
-  return `logweave-spool-${safe}.db`
+function defaultSpoolPath(service: string, environment: string | undefined): string {
+  const safe = service.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
+  const hash = createHash('sha256')
+    .update(`${service}\n${environment ?? ''}`)
+    .digest('hex')
+    .slice(0, 8)
+  return `logweave-spool-${safe}-${hash}.db`
 }
 
 let productionWarningShown = false
@@ -106,7 +114,7 @@ export class LogWeaveTransport extends TransportStream {
       // pump, apply backpressure on a full spool. Constructing SqliteSpoolStore
       // throws a clear error on Node < 22.5.
       const spool = new SqliteSpoolStore({
-        path: opts.spoolPath ?? defaultSpoolPath(this.service),
+        path: opts.spoolPath ?? defaultSpoolPath(this.service, this.environment),
       })
       this.spool = spool
       this.spoolWriter = new SpoolWriter({
@@ -179,7 +187,15 @@ export class LogWeaveTransport extends TransportStream {
       this.spoolWriter
         .enqueue(event)
         .catch((err) => this.handleDrop([event], err as Error))
-        .finally(() => callback())
+        .finally(() => {
+          // Guard the unawaited chain: a throwing callback would otherwise
+          // become an unhandled rejection. (Winston callbacks don't throw.)
+          try {
+            callback()
+          } catch {
+            // ignore
+          }
+        })
       return
     }
 
