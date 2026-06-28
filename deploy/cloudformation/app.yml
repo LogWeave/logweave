@@ -494,7 +494,8 @@ Resources:
                       cpus: "1.0"
 
               vector:
-                image: timberio/vector:0.40.0-debian
+                # Pinned by digest (= timberio/vector:0.40.0-debian).
+                image: timberio/vector@sha256:1163571c8b59ab6755c1b5488bb2f129151c3b72130ad0500b10420fcc504d9d
                 restart: unless-stopped
                 command: ["--config", "/etc/vector/vector.toml"]
                 expose:

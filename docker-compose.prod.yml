@@ -138,7 +138,9 @@ services:
   # the `source_ref`. On EC2 it authenticates via the instance role (no creds in
   # this file); LOGWEAVE_ARCHIVE_BUCKET is supplied from the network stack.
   vector:
-    image: timberio/vector:0.40.0-debian
+    # Pinned by digest (= timberio/vector:0.40.0-debian) so an upstream retag
+    # can't silently change the system-of-record engine. Bump deliberately.
+    image: timberio/vector@sha256:1163571c8b59ab6755c1b5488bb2f129151c3b72130ad0500b10420fcc504d9d
     restart: unless-stopped
     command: ["--config", "/etc/vector/vector.toml"]
     expose:
