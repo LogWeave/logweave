@@ -2,7 +2,16 @@
  * LogWeave Winston Transport.
  *
  * Extends winston-transport to buffer log events and send them in batches
- * to the LogWeave API. Never blocks the application logger.
+ * to the LogWeave API.
+ *
+ * Two modes:
+ * - Default (in-memory): never blocks the application logger; events live in a
+ *   bounded in-memory buffer and are lost on crash or sustained API outage.
+ * - Durable (`durable: true`, #282): events are written to a crash-safe on-disk
+ *   spool (fsync-on-insert) and delivered by a background pump (at-least-once,
+ *   survives restarts). Under backpressure it bounded-blocks the logger rather
+ *   than dropping silently — a deliberate trade of non-blocking for no-loss.
+ *   Requires Node >= 22.5 (built-in node:sqlite).
  *
  * Each transport instance maps to one service + one environment.
  * If you need to send logs from multiple services, create separate instances.
@@ -13,6 +22,10 @@
 import TransportStream from 'winston-transport'
 import { BufferManager } from './buffer.js'
 import { retryFetch } from './retry.js'
+import { SpoolWriter } from './spool/backpressure.js'
+import { DEFAULT_MAX_RETAINED_EVENTS } from './spool/memory-spool.js'
+import { Pump } from './spool/pump.js'
+import { SqliteSpoolStore } from './spool/sqlite-spool.js'
 import type { BatchPayload, LogEvent, TransportOptions, TransportStats } from './types.js'
 
 const DEFAULT_ENDPOINT = 'http://localhost:3000/v1/ingest/batch'
@@ -21,9 +34,19 @@ const DEFAULT_FLUSH_INTERVAL_MS = 5000
 const DEFAULT_TIMEOUT_MS = 2000
 const DEFAULT_MAX_RETRIES = 3
 const CLOSE_TIMEOUT_MS = 2000
+const CLOSE_DRAIN_POLL_MS = 50
 
 /** Keys to exclude when extracting metadata from Winston info */
 const EXCLUDED_KEYS = new Set(['level', 'message', 'timestamp'])
+
+/**
+ * Default durable spool path: per-service so two transports don't share a file
+ * (the pump stamps each batch with its own service). In the current working dir.
+ */
+function defaultSpoolPath(service: string): string {
+  const safe = service.replace(/[^a-zA-Z0-9_-]/g, '_')
+  return `logweave-spool-${safe}.db`
+}
 
 let productionWarningShown = false
 
@@ -36,7 +59,12 @@ export class LogWeaveTransport extends TransportStream {
   private readonly maxRetries: number
   private readonly fetchFn: typeof globalThis.fetch
   private readonly onDrop: ((events: readonly LogEvent[], error: Error) => void) | undefined
-  private readonly buffer: BufferManager
+  // Non-durable (default) path: in-memory double buffer.
+  private readonly buffer: BufferManager | null = null
+  // Durable path (#282): crash-safe spool + background pump + backpressure.
+  private readonly spool: SqliteSpoolStore | null = null
+  private readonly spoolWriter: SpoolWriter | null = null
+  private readonly pump: Pump | null = null
   private closeController: AbortController | null = null
   private closing = false
   private droppedEvents = 0
@@ -73,6 +101,36 @@ export class LogWeaveTransport extends TransportStream {
       productionWarningShown = true
     }
 
+    if (opts.durable) {
+      // Durable path: spool to disk (fsync-on-insert), drain via a background
+      // pump, apply backpressure on a full spool. Constructing SqliteSpoolStore
+      // throws a clear error on Node < 22.5.
+      const spool = new SqliteSpoolStore({
+        path: opts.spoolPath ?? defaultSpoolPath(this.service),
+      })
+      this.spool = spool
+      this.spoolWriter = new SpoolWriter({
+        spool,
+        maxSpooledEvents: opts.maxSpooledEvents ?? DEFAULT_MAX_RETAINED_EVENTS,
+        blockMs: opts.blockMs,
+        onBackpressure: opts.onBackpressure,
+        onDrop: (events, error) => this.handleDrop(events, error),
+      })
+      this.pump = new Pump({
+        spool,
+        endpoint: this.endpoint,
+        apiKey: this.apiKey,
+        service: this.service,
+        environment: this.environment,
+        batchSize: opts.bufferSize ?? DEFAULT_BUFFER_SIZE,
+        timeoutMs: this.timeoutMs,
+        fetchFn: this.fetchFn,
+        onDrop: (events, error) => this.handleDrop(events, error),
+      })
+      this.pump.start()
+      return
+    }
+
     this.buffer = new BufferManager({
       bufferSize: opts.bufferSize ?? DEFAULT_BUFFER_SIZE,
       maxRetainedEvents: opts.maxRetainedEvents,
@@ -87,7 +145,7 @@ export class LogWeaveTransport extends TransportStream {
    */
   getStats(): TransportStats {
     return {
-      bufferedEvents: this.buffer.size(),
+      bufferedEvents: this.spool ? this.spool.count() : (this.buffer?.size() ?? 0),
       droppedEvents: this.droppedEvents,
     }
   }
@@ -114,7 +172,18 @@ export class LogWeaveTransport extends TransportStream {
    */
   log(info: Record<string | symbol, unknown>, callback: () => void): void {
     const event = this.extractEvent(info)
-    this.buffer.push(event)
+
+    if (this.spoolWriter) {
+      // Durable mode: persist (fsync) before acking, and let backpressure flow
+      // back to the Winston stream by deferring callback() until enqueue settles.
+      this.spoolWriter
+        .enqueue(event)
+        .catch((err) => this.handleDrop([event], err as Error))
+        .finally(() => callback())
+      return
+    }
+
+    this.buffer?.push(event)
     callback()
   }
 
@@ -184,6 +253,25 @@ export class LogWeaveTransport extends TransportStream {
     if (this.closing) return
     this.closing = true
 
+    // Durable mode: give the pump a bounded window to drain, then stop it and
+    // close the spool. Anything still spooled is on disk (fsynced) and resumes
+    // on the next start — no loss.
+    if (this.pump && this.spool) {
+      const deadline = Date.now() + CLOSE_TIMEOUT_MS
+      while (this.spool.count() > 0 && Date.now() < deadline) {
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, CLOSE_DRAIN_POLL_MS)
+          timer.unref()
+        })
+      }
+      await this.pump.stop()
+      this.spool.close()
+      return
+    }
+
+    const buffer = this.buffer
+    if (!buffer) return
+
     this.closeController = new AbortController()
 
     const timeout = new Promise<'timeout'>((resolve) => {
@@ -193,11 +281,11 @@ export class LogWeaveTransport extends TransportStream {
 
     const doClose = async (): Promise<'done'> => {
       // 1. Await any in-flight flush from triggerFlush()
-      await this.buffer.awaitInflight()
+      await buffer.awaitInflight()
 
       // 2. Drain remaining buffer and send final batch
-      const remaining = this.buffer.drain()
-      this.buffer.destroy()
+      const remaining = buffer.drain()
+      buffer.destroy()
 
       if (remaining.length > 0) {
         await this.sendBatch(remaining)
@@ -208,7 +296,7 @@ export class LogWeaveTransport extends TransportStream {
     const result = await Promise.race([doClose().catch(() => 'error' as const), timeout])
     if (result === 'timeout') {
       this.closeController.abort()
-      this.buffer.destroy()
+      buffer.destroy()
     }
   }
 
