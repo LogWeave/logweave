@@ -4,19 +4,19 @@
 # OWN bucket as the system of record. The landed object key becomes the
 # `source_ref` LogWeave stores in ClickHouse (wired in #275).
 #
-# No-loss guarantee (proven by #274): `acknowledgements.enabled = true` at the
-# S3 sink withholds the http_server source's HTTP 200 until S3 has durably
-# accepted the object. A disk buffer with `when_full = "block"` then applies
-# backpressure up to the SDK rather than dropping when S3 is slow/unavailable —
-# this disk buffer + block IS the durability backstop.
+# No-loss guarantee (proven by #274): a MEMORY buffer + `acknowledgements.enabled
+# = true` + `when_full = "block"` withholds the http_server source's HTTP 200
+# until the aws_s3 sink has durably PUT the object. Vector's buffer is NOT the
+# durability backstop — the SDK's durable spool (#269/#282) is: an un-acked event
+# was never 2xx'd, so it stays spooled and replays. A DISK buffer would BREAK
+# this (it acks on local-disk write, before S3 — POST returns in ~2ms), so do
+# NOT change the buffer back to disk. See the buffer block below for detail.
 #
 # NOTE on the DLQ the issue sketched: a second aws_s3 sink fanned out from the
 # same source (`inputs = ["in"]`) would DOUBLE-WRITE every event, not just
 # failures — Vector's aws_s3 sink has no per-event dead-letter route. So we do
-# NOT add a fan-out DLQ; the blocking disk buffer is the correct no-loss
-# mechanism. (See #273 discussion.)
-
-data_dir = "/vector-data"
+# NOT add a fan-out DLQ; the SDK spool + blocking backpressure is the no-loss
+# mechanism. (See #273 / #274 discussion.)
 
 # Internal Vector GraphQL/playground API — off in prod.
 [api]
@@ -81,19 +81,37 @@ method = "newline_delimited"
 # Batch to large objects — the ~40-60x cost win over CloudWatch is CONDITIONAL
 # on not emitting tiny objects. `max_bytes` is measured on the UNCOMPRESSED
 # batch (Vector semantics, verified against vector.dev docs); 16 MiB
-# uncompressed gzips to roughly 1-2 MiB objects. Size or timeout, whichever
-# trips first, flushes the batch.
+# uncompressed gzips to roughly 1-2 MiB objects.
+#
+# timeout_secs is the UPPER BOUND on how long a gated POST blocks (see the
+# buffer note): the 200 is withheld until the batch flushes to S3, so this
+# cannot be the old 300s or the SDK pump POST would hang for minutes. 30s
+# bounds latency while still batching large objects under load (size wins);
+# only low-volume partitions flush on the timer, where object count is
+# naturally tiny so the cost impact is negligible.
 [sinks.archive.batch]
 max_bytes = 16777216
-timeout_secs = 300
+timeout_secs = 30
 
-# Disk buffer + block = no silent drops. If S3 is slow/down, backpressure
-# propagates to the HTTP 200 and on to the SDK's durable spool.
+# MEMORY buffer, NOT disk — this is what makes the 200 an S3-delivery gate
+# (#274). A disk buffer acks the event as soon as it is durably on local disk
+# (verified: POST returns in ~2ms, before S3), which would let the SDK delete
+# its spool row while the bytes are only on this instance — at-most-once if the
+# instance dies. With a memory buffer + acknowledgements + when_full="block",
+# the source withholds the 200 until the aws_s3 sink has durably PUT the
+# object. Vector's buffer does NOT need to be durable: an un-acked event was
+# never 2xx'd, so it stays in the SDK's durable spool (#269/#282) and replays.
+#
+# max_events is set explicitly (Vector's default is only ~500). When S3 is slow
+# the buffer fills, then when_full="block" backpressures the caller — which the
+# SDK absorbs into its durable spool, so a larger buffer just smooths bursts
+# before backpressure kicks in. Events are raw log lines (~hundreds of bytes),
+# so 10k fits comfortably under the 512M container limit.
 [sinks.archive.buffer]
-type = "disk"
-max_size = 1073741824
+type = "memory"
+max_events = 10000
 when_full = "block"
 
-# Gate the source's 200 on durable S3 delivery (the no-loss claim; #274).
+# Gate the source's 200 on durable S3 delivery — the no-loss claim (#274).
 [sinks.archive.acknowledgements]
 enabled = true
