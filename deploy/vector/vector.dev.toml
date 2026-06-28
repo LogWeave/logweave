@@ -1,0 +1,66 @@
+# LogWeave archive engine (Vector) — dev / integration-test config.
+#
+# Same topology as vector.toml but pointed at the Floci S3 emulator (the same
+# one the S3-adapter integration tests use) instead of real AWS, with a small
+# batch threshold so the "big batch ships immediately / tiny batch waits for the
+# timeout" behaviour is fast and deterministic to assert.
+#
+# Differences from prod (deploy/vector/vector.toml):
+#   - endpoint -> Floci; static test creds via env (AWS_ACCESS_KEY_ID/SECRET).
+#   - batch.max_bytes lowered to 64 KiB and timeout to 5s so a test can prove
+#     both flush paths in seconds.
+
+data_dir = "/vector-data"
+
+[api]
+enabled = false
+
+[sources.in]
+type = "http_server"
+address = "0.0.0.0:8686"
+path = "/v1/archive"
+method = "POST"
+
+[sources.in.framing]
+method = "newline_delimited"
+
+[sources.in.decoding]
+codec = "json"
+
+[transforms.partition]
+type = "remap"
+inputs = ["in"]
+source = '''
+.tenant_id = to_string(.tenant_id) ?? "unknown"
+.service = to_string(.service) ?? "unknown"
+'''
+
+[sinks.archive]
+type = "aws_s3"
+inputs = ["partition"]
+bucket = "${LOGWEAVE_ARCHIVE_BUCKET:-logweave-logs}"
+region = "${AWS_REGION:-us-east-1}"
+# Floci / S3-compatible emulator. Path-style addressing for the bucket.
+endpoint = "${LOGWEAVE_S3_ENDPOINT:-http://floci:4566}"
+compression = "gzip"
+content_type = "application/x-ndjson"
+key_prefix = "tenant={{ tenant_id }}/service={{ service }}/date=%F/hour=%H/"
+
+[sinks.archive.encoding]
+codec = "json"
+
+[sinks.archive.framing]
+method = "newline_delimited"
+
+# Small threshold + short timeout so the batching test runs in seconds.
+[sinks.archive.batch]
+max_bytes = 65536
+timeout_secs = 5
+
+[sinks.archive.buffer]
+type = "disk"
+max_size = 268435456
+when_full = "block"
+
+[sinks.archive.acknowledgements]
+enabled = true
