@@ -27,12 +27,15 @@ method = "newline_delimited"
 [sources.in.decoding]
 codec = "json"
 
+[sources.in.acknowledgements]
+enabled = true
+
 [transforms.partition]
 type = "remap"
 inputs = ["in"]
 source = '''
-.tenant_id = to_string(.tenant_id) ?? "unknown"
-.service = to_string(.service) ?? "unknown"
+.tenant_id = if is_nullish(.tenant_id) { "unknown" } else { to_string(.tenant_id) }
+.service = if is_nullish(.service) { "unknown" } else { to_string(.service) }
 '''
 
 [sinks.archive]
@@ -40,8 +43,10 @@ type = "aws_s3"
 inputs = ["partition"]
 bucket = "${LOGWEAVE_ARCHIVE_BUCKET:-logweave-logs}"
 region = "${AWS_REGION:-us-east-1}"
-# Floci / S3-compatible emulator. Path-style addressing for the bucket.
+# Floci / S3-compatible emulator. Path-style addressing (bucket in the URL
+# path, not the hostname) — Floci does not serve virtual-hosted style.
 endpoint = "${LOGWEAVE_S3_ENDPOINT:-http://floci:4566}"
+force_path_style = true
 compression = "gzip"
 content_type = "application/x-ndjson"
 key_prefix = "tenant={{ tenant_id }}/service={{ service }}/date=%F/hour=%H/"
@@ -49,17 +54,15 @@ key_prefix = "tenant={{ tenant_id }}/service={{ service }}/date=%F/hour=%H/"
 [sinks.archive.encoding]
 codec = "json"
 
-[sinks.archive.framing]
-method = "newline_delimited"
-
 # Small threshold + short timeout so the batching test runs in seconds.
 [sinks.archive.batch]
 max_bytes = 65536
 timeout_secs = 5
 
+# 256 MiB is the disk-buffer floor; use the exact documented minimum bytes.
 [sinks.archive.buffer]
 type = "disk"
-max_size = 268435456
+max_size = 268435488
 when_full = "block"
 
 [sinks.archive.acknowledgements]

@@ -119,6 +119,13 @@ Resources:
         Fn::ImportValue: !Sub "${NetworkStackName}-InstanceProfileName"
       SecurityGroupIds:
         - !Ref SecurityGroup
+      # The Vector container runs on the Docker bridge and reaches instance-role
+      # credentials via IMDS — one extra network hop. The default hop limit of 1
+      # drops that response, so Vector gets no creds and S3 archiving fails.
+      # Require IMDSv2 and allow the container hop.
+      MetadataOptions:
+        HttpTokens: required
+        HttpPutResponseHopLimit: 2
       BlockDeviceMappings:
         - DeviceName: /dev/xvda
           Ebs:
@@ -359,12 +366,15 @@ Resources:
             [sources.in.decoding]
             codec = "json"
 
+            [sources.in.acknowledgements]
+            enabled = true
+
             [transforms.partition]
             type = "remap"
             inputs = ["in"]
             source = '''
-            .tenant_id = to_string(.tenant_id) ?? "unknown"
-            .service = to_string(.service) ?? "unknown"
+            .tenant_id = if is_nullish(.tenant_id) { "unknown" } else { to_string(.tenant_id) }
+            .service = if is_nullish(.service) { "unknown" } else { to_string(.service) }
             '''
 
             [sinks.archive]
@@ -378,9 +388,6 @@ Resources:
 
             [sinks.archive.encoding]
             codec = "json"
-
-            [sinks.archive.framing]
-            method = "newline_delimited"
 
             [sinks.archive.batch]
             max_bytes = 16777216

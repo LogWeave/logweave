@@ -4,17 +4,17 @@
  * Proves seam B end to end against real Vector + the Floci S3 emulator:
  *   - gzip NDJSON objects land at the deterministic key_prefix
  *     `tenant=.../service=.../date=%F/hour=%H/`;
- *   - the object decompresses back to exactly the events we POSTed;
- *   - BATCHING is enforced: a batch over `batch.max_bytes` flushes on size
- *     (the POST returns quickly), while a tiny batch only flushes on
- *     `batch.timeout_secs` (the POST blocks until the timeout) — the cost
- *     guarantee depends on this. With `acknowledgements.enabled=true` the
- *     http_server 200 is withheld until S3 has the object, so POST latency is
- *     a faithful proxy for "when did it become durable".
+ *   - objects are SIZE-BOUNDED: one POST that exceeds `batch.max_bytes` lands
+ *     as MULTIPLE objects (a single timer flush would yield one) and every
+ *     event survives — the cost guarantee depends on not emitting one tiny
+ *     object per event;
+ *   - a TINY batch flushes only on `batch.timeout_secs`: with
+ *     `acknowledgements.enabled=true` the http_server 200 is withheld until S3
+ *     has the object, so the POST blocks ~timeout — a faithful proxy for "when
+ *     did it become durable".
  *
  * Requires the dev stack up (Floci + Vector on the dev config, whose
- * batch.max_bytes=64KiB / timeout=5s make both flush paths assertable in
- * seconds):
+ * batch.max_bytes=64KiB / timeout=5s make both paths assertable in seconds):
  *   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d floci floci-init vector
  *
  * Auto-skips if either Floci (FLOCI_ENDPOINT) or Vector (VECTOR_ENDPOINT) is
@@ -75,6 +75,18 @@ async function listUnderPrefix(prefix: string): Promise<string[]> {
   return (out.Contents ?? []).map((o) => o.Key ?? '').filter(Boolean)
 }
 
+async function readGzipNdjson(key: string): Promise<Record<string, unknown>[]> {
+  const obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }))
+  assert.ok(obj.Body, `object ${key} has a body`)
+  const raw = Buffer.from(await obj.Body.transformToByteArray())
+  assert.deepEqual([...raw.subarray(0, 2)], [0x1f, 0x8b], `object ${key} must be gzip`)
+  return gunzipSync(raw)
+    .toString('utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l))
+}
+
 describe('Vector archive integration (Floci + Vector)', async () => {
   let up = false
 
@@ -82,14 +94,15 @@ describe('Vector archive integration (Floci + Vector)', async () => {
     up = (await reachable(FLOCI_ENDPOINT)) && (await reachable(VECTOR_ENDPOINT))
   })
 
-  it('flushes a large batch on size, gzipped, at the deterministic prefix', async (t) => {
+  it('size-bounds a large batch into multiple gzip objects with no loss', async (t) => {
     if (!up) return t.skip('Floci/Vector not reachable')
 
     // Unique partition per run so concurrent/repeat runs never collide.
     const tenant = `t-${Date.now()}`
     const service = `svc-${Date.now()}`
-    // ~400 events * ~200B > 64KiB → exceeds batch.max_bytes, flushes on size.
-    const events = Array.from({ length: 400 }, (_, i) => ({
+    // ~1000 events * ~195 B ≈ 195 KB, comfortably over 2x the 64 KiB cap, so
+    // Vector flushes several size-bounded objects from this one POST.
+    const events = Array.from({ length: 1000 }, (_, i) => ({
       event_id: `evt-${i}`,
       tenant_id: tenant,
       service,
@@ -97,29 +110,26 @@ describe('Vector archive integration (Floci + Vector)', async () => {
       level: 'error',
     }))
     const totalBytes = events.map((e) => JSON.stringify(e)).join('\n').length
-    assert.ok(totalBytes > BATCH_MAX_BYTES, `fixture must exceed batch.max_bytes (${totalBytes}B)`)
+    assert.ok(totalBytes > 2 * BATCH_MAX_BYTES, `fixture must exceed 2x cap (${totalBytes}B)`)
 
-    const { status, ms } = await postBatch(events)
+    const { status } = await postBatch(events)
     assert.equal(status, 200)
-    // Size-flush: 200 (ack-gated on S3) returns well before the timeout.
-    assert.ok(ms < BATCH_TIMEOUT_SECS * 1000, `expected size-flush < timeout, took ${ms}ms`)
 
     const prefix = `tenant=${tenant}/service=${service}/`
     const keys = await listUnderPrefix(prefix)
-    assert.equal(keys.length, 1, `expected exactly one archived object, got ${keys.length}`)
-    const key = keys[0]
-    assert.match(key, /^tenant=[^/]+\/service=[^/]+\/date=\d{4}-\d{2}-\d{2}\/hour=\d{2}\//)
+    // Multiple objects from one POST = size triggered the flush (a timer flush
+    // of the whole request would be a single object).
+    assert.ok(keys.length >= 2, `expected size-split into >=2 objects, got ${keys.length}`)
 
-    // Object is gzip and decompresses to exactly the NDJSON we sent.
-    const obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }))
-    assert.ok(obj.Body, 'archived object has a body')
-    const raw = Buffer.from(await obj.Body.transformToByteArray())
-    assert.deepEqual([...raw.subarray(0, 2)], [0x1f, 0x8b], 'object must be gzip')
-    const lines = gunzipSync(raw).toString('utf8').trim().split('\n')
-    assert.equal(lines.length, events.length)
-    const decoded = lines.map((l) => JSON.parse(l))
-    assert.equal(decoded[0].event_id, 'evt-0')
-    assert.equal(decoded[0].tenant_id, tenant)
+    const seen = new Set<string>()
+    for (const key of keys) {
+      assert.match(key, /^tenant=[^/]+\/service=[^/]+\/date=\d{4}-\d{2}-\d{2}\/hour=\d{2}\//)
+      for (const ev of await readGzipNdjson(key)) {
+        seen.add(String(ev.event_id))
+      }
+    }
+    // Every event landed exactly once across the objects — no loss, no dupes.
+    assert.equal(seen.size, events.length, `expected all ${events.length} events, got ${seen.size}`)
   })
 
   it('holds a tiny batch until the timeout flush', async (t) => {

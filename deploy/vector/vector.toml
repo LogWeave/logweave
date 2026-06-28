@@ -37,16 +37,24 @@ method = "newline_delimited"
 [sources.in.decoding]
 codec = "json"
 
+# Make the source wait for the sink's end-to-end ack before responding 200.
+# Belt-and-suspenders with the sink-level setting so the no-loss gate (#274)
+# does not depend on which level Vector honours.
+[sources.in.acknowledgements]
+enabled = true
+
 # ---------------------------------------------------------------------------
 # Default the partition keys so a missing field never fails key_prefix
-# templating (an unrenderable key_prefix drops the event).
+# templating (an unrenderable key_prefix drops the event). `to_string` is
+# infallible and returns "" for a null/missing field, so guard with
+# is_nullish rather than `??` (which would be a VRL compile error here).
 # ---------------------------------------------------------------------------
 [transforms.partition]
 type = "remap"
 inputs = ["in"]
 source = '''
-.tenant_id = to_string(.tenant_id) ?? "unknown"
-.service = to_string(.service) ?? "unknown"
+.tenant_id = if is_nullish(.tenant_id) { "unknown" } else { to_string(.tenant_id) }
+.service = if is_nullish(.service) { "unknown" } else { to_string(.service) }
 '''
 
 # ---------------------------------------------------------------------------
@@ -64,9 +72,6 @@ key_prefix = "tenant={{ tenant_id }}/service={{ service }}/date=%F/hour=%H/"
 
 [sinks.archive.encoding]
 codec = "json"
-
-[sinks.archive.framing]
-method = "newline_delimited"
 
 # Batch to large objects — the ~40-60x cost win over CloudWatch is CONDITIONAL
 # on not emitting tiny objects. `max_bytes` is measured on the UNCOMPRESSED
