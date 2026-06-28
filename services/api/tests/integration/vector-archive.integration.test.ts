@@ -176,4 +176,29 @@ describe('Vector archive integration (Floci + Vector)', async () => {
       `expected timeout-flush (~${BATCH_TIMEOUT_SECS}s), landed in ${landedAfterMs}ms`,
     )
   })
+
+  // The no-loss gate (#274): a 200 must NOT be returned before the bytes are in
+  // S3. This holds only because the archive sink uses a MEMORY buffer with
+  // acknowledgements + when_full="block"; a disk buffer would ack on local disk
+  // (before S3) and this test would fail — which is exactly the regression we
+  // want the build to catch. Note: NO polling — we list S3 the instant the POST
+  // resolves, so a passing assertion proves the 200 was withheld until delivery.
+  it('does not return 200 before the object is durable in S3 (delivery gate)', async (t) => {
+    if (!up) return t.skip('Floci/Vector not reachable')
+
+    const tenant = `t-gate-${Date.now()}`
+    const prefix = `tenant=${tenant}/`
+    assert.equal(
+      await postBatch([{ event_id: 'g1', tenant_id: tenant, service: 'svc', message: 'gate' }]),
+      200,
+    )
+
+    // Synchronously after the awaited 200 — no sleep, no retry. If the 200 were
+    // returned before S3 delivery (e.g. a disk buffer), this list is empty.
+    const keys = await listUnderPrefix(prefix)
+    assert.equal(keys.length, 1, `200 returned but object not yet in S3 (found ${keys.length})`)
+    const events = await readGzipNdjson(keys[0])
+    assert.equal(events.length, 1)
+    assert.equal(events[0].event_id, 'g1')
+  })
 })

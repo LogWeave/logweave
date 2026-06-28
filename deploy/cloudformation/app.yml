@@ -392,13 +392,17 @@ Resources:
             [sinks.archive.framing]
             method = "newline_delimited"
 
+            # timeout_secs bounds how long a gated POST blocks (the 200 waits
+            # for the batch to flush to S3); keep it small, not 300s.
             [sinks.archive.batch]
             max_bytes = 16777216
-            timeout_secs = 300
+            timeout_secs = 30
 
+            # MEMORY buffer so the 200 gates on S3 delivery (#274); a disk
+            # buffer acks on local disk, before S3. Un-acked events stay in the
+            # SDK's durable spool, so Vector's buffer need not be durable.
             [sinks.archive.buffer]
-            type = "disk"
-            max_size = 1073741824
+            type = "memory"
             when_full = "block"
 
             [sinks.archive.acknowledgements]

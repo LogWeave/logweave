@@ -64,10 +64,11 @@ method = "newline_delimited"
 max_bytes = 65536
 timeout_secs = 5
 
-# 256 MiB is the disk-buffer floor; use the exact documented minimum bytes.
+# MEMORY buffer (not disk) so the 200 gates on S3 delivery, matching prod —
+# see vector.toml for why. The gate test asserts the object is in S3 the
+# instant the 200 returns, which only holds with a memory buffer.
 [sinks.archive.buffer]
-type = "disk"
-max_size = 268435488
+type = "memory"
 when_full = "block"
 
 [sinks.archive.acknowledgements]
