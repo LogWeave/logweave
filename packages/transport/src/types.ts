@@ -38,6 +38,32 @@ export interface TransportOptions {
    * The callback must not throw; if it does, the error is silently caught.
    */
   readonly onDrop?: (events: readonly LogEvent[], error: Error) => void
+  /**
+   * Enable durable mode: events are written to a crash-safe on-disk spool and
+   * delivered by a background pump (at-least-once, survives restarts). Trades
+   * the default never-block-the-logger behaviour for no-loss under backpressure.
+   * Requires Node >= 22.5 (built-in node:sqlite). Default: false (in-memory).
+   */
+  readonly durable?: boolean
+  /**
+   * Path to the durable spool database file. Only used when `durable` is true.
+   * Default: `logweave-spool-<service>.db` in the current working directory.
+   * Use a distinct path per transport instance.
+   */
+  readonly spoolPath?: string
+  /**
+   * Durable mode: max events held on disk before backpressure kicks in. Beyond
+   * it, new log() calls bounded-block waiting for the pump to drain, then fail
+   * open with a loud onDrop (never a silent drop). Default: 50000.
+   */
+  readonly maxSpooledEvents?: number
+  /**
+   * Durable mode: longest a log() may block under backpressure before failing
+   * open, in ms (soft). Default: 5000.
+   */
+  readonly blockMs?: number
+  /** Durable mode: called when the spool is full and applying backpressure. */
+  readonly onBackpressure?: (stats: { spooled: number; cap: number }) => void
 }
 
 /**
