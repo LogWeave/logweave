@@ -103,6 +103,17 @@ describe('POST /v1/ingest/notify', () => {
     assert.equal(queue.size(), 0)
   })
 
+  it('400 when source_ref contains a path-traversal marker', async () => {
+    const { app, queue } = createTestApp()
+    const res = await request(app)
+      .post('/v1/ingest/notify')
+      .set('X-Internal-Secret', SECRET)
+      // Starts with the tenant prefix but escapes it via '..'.
+      .send(envelope({ source_ref: 'tenant=tenant-a/../tenant=victim/x.log.gz' }))
+    assert.equal(res.status, 400)
+    assert.equal(queue.size(), 0)
+  })
+
   it('400 on an unknown source_type', async () => {
     const { app } = createTestApp()
     const res = await request(app)

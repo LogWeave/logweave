@@ -33,6 +33,12 @@ const envelopeSchema = z
     message: 'source_ref must be under the tenant prefix (tenant=<tenant_id>/…)',
     path: ['source_ref'],
   })
+  // Reject path-traversal markers so the prefix guard can't be escaped if the
+  // consumer (#277) ever normalises the key (matches s3-adapter's isSafeObjectKey).
+  .refine((e) => !e.source_ref.includes('..'), {
+    message: 'source_ref must not contain ".."',
+    path: ['source_ref'],
+  })
 
 // Accept a single envelope or a batch (Vector may coalesce).
 const notifyBodySchema = z.union([envelopeSchema, z.array(envelopeSchema).min(1).max(1000)])

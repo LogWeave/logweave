@@ -134,6 +134,8 @@ export function createApp(deps: AppDependencies): CreatedApp {
           headers: {
             ...req.raw?.headers,
             authorization: req.raw?.headers?.authorization ? '[REDACTED]' : undefined,
+            // Internal service-to-service secret (archive notify, #276) — never log it.
+            'x-internal-secret': req.raw?.headers?.['x-internal-secret'] ? '[REDACTED]' : undefined,
           },
         }
       },
