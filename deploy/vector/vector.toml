@@ -1,0 +1,99 @@
+# LogWeave archive engine (Vector) — production config.
+#
+# Seam B of epic #265: the aws_s3 sink writes the customer's raw logs to their
+# OWN bucket as the system of record. The landed object key becomes the
+# `source_ref` LogWeave stores in ClickHouse (wired in #275).
+#
+# No-loss guarantee (proven by #274): `acknowledgements.enabled = true` at the
+# S3 sink withholds the http_server source's HTTP 200 until S3 has durably
+# accepted the object. A disk buffer with `when_full = "block"` then applies
+# backpressure up to the SDK rather than dropping when S3 is slow/unavailable —
+# this disk buffer + block IS the durability backstop.
+#
+# NOTE on the DLQ the issue sketched: a second aws_s3 sink fanned out from the
+# same source (`inputs = ["in"]`) would DOUBLE-WRITE every event, not just
+# failures — Vector's aws_s3 sink has no per-event dead-letter route. So we do
+# NOT add a fan-out DLQ; the blocking disk buffer is the correct no-loss
+# mechanism. (See #273 discussion.)
+
+data_dir = "/vector-data"
+
+# Internal Vector GraphQL/playground API — off in prod.
+[api]
+enabled = false
+
+# ---------------------------------------------------------------------------
+# Source — the SDK pump POSTs newline-delimited JSON batches here.
+# ---------------------------------------------------------------------------
+[sources.in]
+type = "http_server"
+address = "0.0.0.0:8686"
+path = "/v1/archive"
+method = "POST"
+
+[sources.in.framing]
+method = "newline_delimited"
+
+[sources.in.decoding]
+codec = "json"
+
+# Make the source wait for the sink's end-to-end ack before responding 200.
+# Belt-and-suspenders with the sink-level setting so the no-loss gate (#274)
+# does not depend on which level Vector honours.
+[sources.in.acknowledgements]
+enabled = true
+
+# ---------------------------------------------------------------------------
+# Default the partition keys so a missing field never fails key_prefix
+# templating (an unrenderable key_prefix drops the event). `string()` asserts
+# the value is a string and errors otherwise; `??` coalesces that error — and
+# a missing/null field — to "unknown".
+# ---------------------------------------------------------------------------
+[transforms.partition]
+type = "remap"
+inputs = ["in"]
+source = '''
+.tenant_id = string(.tenant_id) ?? "unknown"
+.service = string(.service) ?? "unknown"
+'''
+
+# ---------------------------------------------------------------------------
+# Archive sink — the system of record.
+# ---------------------------------------------------------------------------
+[sinks.archive]
+type = "aws_s3"
+inputs = ["partition"]
+bucket = "${LOGWEAVE_ARCHIVE_BUCKET}"
+region = "${AWS_REGION:-us-east-1}"
+compression = "gzip"
+content_type = "application/x-ndjson"
+# Deterministic, query-friendly partitioning. %F = YYYY-MM-DD, %H = hour (UTC).
+key_prefix = "tenant={{ tenant_id }}/service={{ service }}/date=%F/hour=%H/"
+
+[sinks.archive.encoding]
+codec = "json"
+
+# Newline-delimited JSON objects. WITHOUT this the aws_s3 sink writes each
+# batch as a single JSON array, which breaks line-oriented drill-down (#275).
+[sinks.archive.framing]
+method = "newline_delimited"
+
+# Batch to large objects — the ~40-60x cost win over CloudWatch is CONDITIONAL
+# on not emitting tiny objects. `max_bytes` is measured on the UNCOMPRESSED
+# batch (Vector semantics, verified against vector.dev docs); 16 MiB
+# uncompressed gzips to roughly 1-2 MiB objects. Size or timeout, whichever
+# trips first, flushes the batch.
+[sinks.archive.batch]
+max_bytes = 16777216
+timeout_secs = 300
+
+# Disk buffer + block = no silent drops. If S3 is slow/down, backpressure
+# propagates to the HTTP 200 and on to the SDK's durable spool.
+[sinks.archive.buffer]
+type = "disk"
+max_size = 1073741824
+when_full = "block"
+
+# Gate the source's 200 on durable S3 delivery (the no-loss claim; #274).
+[sinks.archive.acknowledgements]
+enabled = true

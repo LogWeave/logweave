@@ -119,6 +119,13 @@ Resources:
         Fn::ImportValue: !Sub "${NetworkStackName}-InstanceProfileName"
       SecurityGroupIds:
         - !Ref SecurityGroup
+      # The Vector container runs on the Docker bridge and reaches instance-role
+      # credentials via IMDS — one extra network hop. The default hop limit of 1
+      # drops that response, so Vector gets no creds and S3 archiving fails.
+      # Require IMDSv2 and allow the container hop.
+      MetadataOptions:
+        HttpTokens: required
+        HttpPutResponseHopLimit: 2
       BlockDeviceMappings:
         - DeviceName: /dev/xvda
           Ebs:
@@ -154,6 +161,7 @@ Resources:
             ADMIN_EMAIL='${AdminEmail}'
             EXPECTED_IP='${ExpectedIp}'
             SECRET_ARN='${SecretArn}'
+            ARCHIVE_BUCKET='${ArchiveBucketImport}'
             REGION='${AWS::Region}'
 
             # Pinned versions — bump deliberately, never use "latest".
@@ -299,6 +307,8 @@ Resources:
             CLICKHOUSE_DB=logweave
             LOGWEAVE_LOG_LEVEL=info
             LOGWEAVE_CLUSTERER_TIMEOUT_MS=2000
+            LOGWEAVE_ARCHIVE_BUCKET=$ARCHIVE_BUCKET
+            AWS_REGION=$REGION
             ENV
             chmod 600 /opt/logweave/.env
             umask 022
@@ -333,6 +343,67 @@ Resources:
                 </users>
             </clickhouse>
             CHUSERS
+
+            # Vector archive-engine config (epic #265). Mirrors
+            # deploy/vector/vector.toml in the repo; ${!...} escapes Fn::Sub so
+            # Vector resolves its own env interpolation at runtime.
+            mkdir -p /opt/logweave/deploy/vector
+            cat >/opt/logweave/deploy/vector/vector.toml <<'VECTOR'
+            data_dir = "/vector-data"
+
+            [api]
+            enabled = false
+
+            [sources.in]
+            type = "http_server"
+            address = "0.0.0.0:8686"
+            path = "/v1/archive"
+            method = "POST"
+
+            [sources.in.framing]
+            method = "newline_delimited"
+
+            [sources.in.decoding]
+            codec = "json"
+
+            [sources.in.acknowledgements]
+            enabled = true
+
+            [transforms.partition]
+            type = "remap"
+            inputs = ["in"]
+            source = '''
+            .tenant_id = string(.tenant_id) ?? "unknown"
+            .service = string(.service) ?? "unknown"
+            '''
+
+            [sinks.archive]
+            type = "aws_s3"
+            inputs = ["partition"]
+            bucket = "${!LOGWEAVE_ARCHIVE_BUCKET}"
+            region = "${!AWS_REGION:-us-east-1}"
+            compression = "gzip"
+            content_type = "application/x-ndjson"
+            key_prefix = "tenant={{ tenant_id }}/service={{ service }}/date=%F/hour=%H/"
+
+            [sinks.archive.encoding]
+            codec = "json"
+
+            [sinks.archive.framing]
+            method = "newline_delimited"
+
+            [sinks.archive.batch]
+            max_bytes = 16777216
+            timeout_secs = 300
+
+            [sinks.archive.buffer]
+            type = "disk"
+            max_size = 1073741824
+            when_full = "block"
+
+            [sinks.archive.acknowledgements]
+            enabled = true
+            VECTOR
 
             cat >/opt/logweave/docker-compose.prod.yml <<'COMPOSE'
             services:
@@ -422,8 +493,28 @@ Resources:
                       memory: 512M
                       cpus: "1.0"
 
+              vector:
+                # Pinned by digest (= timberio/vector:0.40.0-debian).
+                image: timberio/vector@sha256:1163571c8b59ab6755c1b5488bb2f129151c3b72130ad0500b10420fcc504d9d
+                restart: unless-stopped
+                command: ["--config", "/etc/vector/vector.toml"]
+                expose:
+                  - "8686"
+                volumes:
+                  - ./deploy/vector/vector.toml:/etc/vector/vector.toml:ro
+                  - vector_buffer:/vector-data
+                environment:
+                  LOGWEAVE_ARCHIVE_BUCKET: ${!LOGWEAVE_ARCHIVE_BUCKET}
+                  AWS_REGION: ${!AWS_REGION}
+                deploy:
+                  resources:
+                    limits:
+                      memory: 512M
+                      cpus: "1.0"
+
             volumes:
               drain3_checkpoints:
+              vector_buffer:
             COMPOSE
 
             mkdir -p /etc/caddy
@@ -509,6 +600,8 @@ Resources:
               Fn::ImportValue: !Sub "${NetworkStackName}-SecretArn"
             DataVolumeIdImport:
               Fn::ImportValue: !Sub "${NetworkStackName}-DataVolumeId"
+            ArchiveBucketImport:
+              Fn::ImportValue: !Sub "${NetworkStackName}-ArchiveBucketName"
 
   # ---------------------------------------------------------------------------
   # Volume + EIP attachments — defer to after the instance exists.

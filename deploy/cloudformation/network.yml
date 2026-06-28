@@ -54,6 +54,33 @@ Resources:
           Value: LogWeave
 
   # ---------------------------------------------------------------------------
+  # Archive bucket — the system of record for raw logs (epic #265). Vector
+  # writes gzip NDJSON objects here; ClickHouse stores only the `source_ref`
+  # pointer. Retain-on-delete so tearing down a stack never destroys logs.
+  # ---------------------------------------------------------------------------
+  ArchiveBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-archive-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      Tags:
+        - Key: Project
+          Value: LogWeave
+
+  # ---------------------------------------------------------------------------
   # Secret generation Lambda — produces three independent random values
   # (clickhousePassword, encryptionKey, apiKey) and stores them as a single
   # JSON secret. Inline ZipFile so this template is fully self-contained.
@@ -158,6 +185,21 @@ Resources:
                   - secretsmanager:GetSecretValue
                   - secretsmanager:DescribeSecret
                 Resource: !Ref Secret
+        - PolicyName: WriteArchiveBucket
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Vector writes (and re-PUTs on replay) archive objects. No
+              # delete/read needed for archiving; least-privilege.
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:AbortMultipartUpload
+                Resource: !Sub "${ArchiveBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt ArchiveBucket.Arn
       Tags:
         - Key: Project
           Value: LogWeave
@@ -210,3 +252,9 @@ Outputs:
     Value: !Ref InstanceProfile
     Export:
       Name: !Sub "${AWS::StackName}-InstanceProfileName"
+
+  ArchiveBucketName:
+    Description: S3 bucket holding raw log archives (the system of record). Passed to Vector by the app stack.
+    Value: !Ref ArchiveBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-ArchiveBucketName"

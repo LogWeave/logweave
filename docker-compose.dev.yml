@@ -41,6 +41,27 @@ services:
         aws --endpoint-url http://floci:4566 s3 mb s3://logweave-logs 2>/dev/null || true
         echo 'Bucket logweave-logs ready'
 
+  # Vector — the archive engine (epic #265, seam B). Dev config points the
+  # aws_s3 sink at Floci with a small batch threshold so the batching
+  # integration test runs in seconds. http_server source on :8686.
+  vector:
+    # Pinned by digest (= timberio/vector:0.40.0-debian); matches prod.
+    image: timberio/vector@sha256:1163571c8b59ab6755c1b5488bb2f129151c3b72130ad0500b10420fcc504d9d
+    command: ["--config", "/etc/vector/vector.dev.toml"]
+    ports:
+      - "8686:8686"
+    volumes:
+      - ./deploy/vector/vector.dev.toml:/etc/vector/vector.dev.toml:ro
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      LOGWEAVE_ARCHIVE_BUCKET: logweave-logs
+      LOGWEAVE_S3_ENDPOINT: http://floci:4566
+    depends_on:
+      floci-init:
+        condition: service_completed_successfully
+
   # Log simulator — generates realistic multi-service events.
   # Primary mode: pnpm simulate (runs on host, targets localhost:3000).
   simulator:

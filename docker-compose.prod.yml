@@ -133,7 +133,32 @@ services:
           memory: 512M
           cpus: "1.0"
 
+  # Vector — archive engine (epic #265, seam B). Writes gzip NDJSON batches to
+  # the customer's own S3 bucket as the system of record; the landed key becomes
+  # the `source_ref`. On EC2 it authenticates via the instance role (no creds in
+  # this file); LOGWEAVE_ARCHIVE_BUCKET is supplied from the network stack.
+  vector:
+    # Pinned by digest (= timberio/vector:0.40.0-debian) so an upstream retag
+    # can't silently change the system-of-record engine. Bump deliberately.
+    image: timberio/vector@sha256:1163571c8b59ab6755c1b5488bb2f129151c3b72130ad0500b10420fcc504d9d
+    restart: unless-stopped
+    command: ["--config", "/etc/vector/vector.toml"]
+    expose:
+      - "8686"
+    volumes:
+      - ./deploy/vector/vector.toml:/etc/vector/vector.toml:ro
+      - vector_buffer:/vector-data
+    environment:
+      LOGWEAVE_ARCHIVE_BUCKET: ${LOGWEAVE_ARCHIVE_BUCKET}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
 volumes:
   clickhouse_data:
   drain3_checkpoints:
   api_data:
+  vector_buffer:
