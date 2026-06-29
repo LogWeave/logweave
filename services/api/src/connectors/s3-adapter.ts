@@ -1,5 +1,5 @@
 import type { Readable } from 'node:stream'
-import { createGunzip } from 'node:zlib'
+import { createGunzip, gunzipSync } from 'node:zlib'
 import {
   GetObjectCommand,
   ListObjectsV2Command,
@@ -478,6 +478,45 @@ export class S3Adapter implements LogSourceAdapter {
       bytesScanned,
       truncated,
       truncatedReason,
+    }
+  }
+
+  /**
+   * Fetch ALL events from a single archived object (epic #265, #277 consumer).
+   * Unlike `fetchRawLogs` (which regex-filters lines for drill-down), this
+   * returns every NDJSON record so the async consumer can re-cluster the batch.
+   * GETs the object, gunzips when gzipped, and parses one JSON object per line;
+   * unparseable lines are skipped. Objects are batch-sized, so buffering is fine.
+   */
+  async fetchObjectEvents(
+    config: S3ConnectorConfig,
+    key: string,
+    auditContext?: AdapterAuditContext,
+  ): Promise<unknown[]> {
+    const client = await this.createClient(config, auditContext)
+    try {
+      const result = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }))
+      if (!result.Body) return []
+      let bytes = Buffer.from(
+        await (
+          result.Body as Readable & { transformToByteArray(): Promise<Uint8Array> }
+        ).transformToByteArray(),
+      )
+      if (config.compression === 'gzip' || key.endsWith('.gz')) {
+        bytes = gunzipSync(bytes)
+      }
+      const events: unknown[] = []
+      for (const line of bytes.toString('utf8').split('\n')) {
+        if (!line.trim()) continue
+        try {
+          events.push(JSON.parse(line))
+        } catch {
+          // Skip a corrupt line rather than fail the whole object.
+        }
+      }
+      return events
+    } finally {
+      client.destroy()
     }
   }
 
