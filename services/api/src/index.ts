@@ -236,7 +236,7 @@ const tailBuffer = new TailBuffer()
 tailBuffer.start()
 const eventBus = new LocalEventBus(tailBuffer, settingsStore)
 
-const { app, tailTokenStore } = createApp({
+const { app, tailTokenStore, archiveNotifyConsumer } = createApp({
   config,
   logger,
   db,
@@ -336,6 +336,7 @@ async function shutdown(signal: string): Promise<void> {
   apiKeyStore?.stop()
   await recovery.stop()
   await retention.stop()
+  await archiveNotifyConsumer?.stop()
   // Stop tail-related background timers (token cleanup, buffer eviction)
   tailTokenStore.stop()
   tailBuffer.stop()

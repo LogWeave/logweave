@@ -5,6 +5,7 @@ import express, { Router } from 'express'
 import helmet from 'helmet'
 import type pino from 'pino'
 import { type Options as PinoHttpOptions, pinoHttp } from 'pino-http'
+import { ArchiveNotifyConsumer } from './archive/notify-consumer.js'
 import { ArchiveNotifyQueue } from './archive/notify-queue.js'
 import type { ApiKeyStore } from './auth/api-key-store.js'
 import type { SessionProvider } from './auth/session.js'
@@ -13,6 +14,7 @@ import type { UserStore } from './auth/user-store.js'
 import type { ClustererHealthChecker } from './clients/clusterer.js'
 import type { Config } from './config.js'
 import { buildArchiveConfig } from './connectors/archive-config.js'
+import { S3Adapter } from './connectors/s3-adapter.js'
 import type { DbClient } from './db/client.js'
 import { notFound } from './errors.js'
 import type { EventBus } from './events/event-bus.js'
@@ -78,6 +80,8 @@ export interface CreatedApp {
   tailTokenStore: TailTokenStore
   /** Archive notify queue (#276); the async consumer (#277) drains it. */
   archiveNotifyQueue: ArchiveNotifyQueue
+  /** Async Drain3 consumer (#277); present only when an archive bucket is set. */
+  archiveNotifyConsumer?: ArchiveNotifyConsumer
 }
 
 export function createApp(deps: AppDependencies): CreatedApp {
@@ -336,22 +340,40 @@ export function createApp(deps: AppDependencies): CreatedApp {
       logger: deps.logger,
     }),
   )
+  // Dev static creds (AWS_ACCESS_KEY_ID/SECRET) are only used when an archive S3
+  // endpoint is set (Floci); prod uses the EC2 instance role. Shared by both the
+  // drill-down read path (rawLogsRoutes) and the async consumer below.
+  const archiveConfig = buildArchiveConfig({
+    bucket: deps.config.archiveBucket,
+    region: deps.config.archiveRegion,
+    endpoint: deps.config.archiveS3Endpoint,
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  })
   v1.use(
     rawLogsRoutes({
       db: deps.db,
       logger: deps.logger,
       encryptionKey: deps.config.encryptionKey,
-      // Dev static creds (AWS_ACCESS_KEY_ID/SECRET) are only used when an
-      // archive S3 endpoint is set (Floci); prod uses the EC2 instance role.
-      archiveConfig: buildArchiveConfig({
-        bucket: deps.config.archiveBucket,
-        region: deps.config.archiveRegion,
-        endpoint: deps.config.archiveS3Endpoint,
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      }),
+      archiveConfig,
     }),
   )
+
+  // Async Drain3 consumer (#277): drains the notify queue, GETs each archived
+  // object, clusters it, and writes log_metadata with source_ref. Only runs when
+  // an archive bucket is configured. Started here; index.ts stops it on shutdown.
+  let archiveNotifyConsumer: ArchiveNotifyConsumer | undefined
+  if (archiveConfig) {
+    archiveNotifyConsumer = new ArchiveNotifyConsumer({
+      queue: archiveNotifyQueue,
+      archiveConfig,
+      ingest: ingestDeps,
+      adapter: new S3Adapter(),
+      logger: deps.logger,
+    })
+    archiveNotifyConsumer.start()
+  }
+
   const tailTokenStore = new TailTokenStore()
   tailTokenStore.start()
 
@@ -399,5 +421,5 @@ export function createApp(deps: AppDependencies): CreatedApp {
   // Centralized error handler (must be last)
   app.use(createErrorHandler(deps.logger))
 
-  return { app, tailTokenStore, archiveNotifyQueue }
+  return { app, tailTokenStore, archiveNotifyQueue, archiveNotifyConsumer }
 }
