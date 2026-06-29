@@ -9,9 +9,10 @@ import type { IngestDependencies } from '../../src/pipeline/ingest.js'
 
 const logger = pino({ level: 'silent' })
 const archiveConfig = { type: 's3', bucket: 'b' } as S3ConnectorConfig
-// ingest is only reached when an object has events; the orchestration tests use
-// empty objects or throwing fetches, so this fake is never actually invoked.
-const ingest = {} as IngestDependencies
+// ingestBatch is only reached when an object has events; the orchestration
+// tests use empty objects or throwing fetches, so it's never actually invoked.
+// clusterClient.isCircuitOpen IS read each drain (the circuit-breaker skip).
+const ingest = { clusterClient: { isCircuitOpen: false } } as unknown as IngestDependencies
 
 function fakeAdapter(fetch: (key: string) => Promise<unknown[]>): S3Adapter {
   return {
@@ -60,6 +61,24 @@ describe('ArchiveNotifyConsumer (orchestration)', () => {
     // attempt 3 → dropped (reconciliation #279 is the backstop)
     assert.equal(await consumer.drainOnce(), 0)
     assert.equal(queue.size(), 0)
+  })
+
+  it('skips draining while the clusterer circuit is open (leaves items queued)', async () => {
+    const queue = new ArchiveNotifyQueue()
+    queue.enqueue({ tenantId: 't', sourceRef: 'tenant=t/a' })
+    const consumer = new ArchiveNotifyConsumer(
+      {
+        queue,
+        archiveConfig,
+        adapter: fakeAdapter(async () => []),
+        logger,
+        ingest: { clusterClient: { isCircuitOpen: true } } as unknown as IngestDependencies,
+      },
+      {},
+    )
+
+    assert.equal(await consumer.drainOnce(), 0)
+    assert.equal(queue.size(), 1, 'item stays queued for reconciliation / circuit close')
   })
 
   it('honours batchSize per drain', async () => {

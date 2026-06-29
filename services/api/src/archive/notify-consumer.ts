@@ -80,6 +80,11 @@ export class ArchiveNotifyConsumer {
    */
   async drainOnce(): Promise<number> {
     if (this.running) return 0
+    // Skip while the clusterer circuit is open (like RecoverySweep): leave items
+    // queued rather than eagerly producing template_id=0 rows the reconciliation
+    // sweep (#279) would have to re-cluster. Reconciliation backfills if the
+    // queue overflows or the process restarts during a long outage.
+    if (this.deps.ingest.clusterClient.isCircuitOpen) return 0
     this.running = true
     let processed = 0
     try {

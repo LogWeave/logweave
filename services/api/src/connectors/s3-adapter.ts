@@ -1,5 +1,6 @@
 import type { Readable } from 'node:stream'
-import { createGunzip, gunzipSync } from 'node:zlib'
+import { promisify } from 'node:util'
+import { createGunzip, gunzip } from 'node:zlib'
 import {
   GetObjectCommand,
   ListObjectsV2Command,
@@ -22,6 +23,15 @@ import {
   type S3ConnectorConfig,
   SCAN_DEFAULTS,
 } from './types.js'
+
+const gunzipAsync = promisify(gunzip)
+
+/**
+ * Cap on decompressed archive-object size — a gzip-bomb guard for the (async,
+ * #277) consumer. Prod objects are <=16 MiB uncompressed (Vector batch cap);
+ * 64 MiB leaves headroom while still bounding a malicious object.
+ */
+const MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024
 
 // ---------------------------------------------------------------------------
 // STS error handling
@@ -503,7 +513,12 @@ export class S3Adapter implements LogSourceAdapter {
         ).transformToByteArray(),
       )
       if (config.compression === 'gzip' || key.endsWith('.gz')) {
-        bytes = gunzipSync(bytes)
+        // Async (libuv threadpool) so a large object doesn't block the event
+        // loop — the consumer shares the API process. maxOutputLength caps
+        // decompression so a gzip-bomb in the customer's bucket can't OOM us;
+        // exceeding it rejects, the object fails, and reconciliation (#279)
+        // backfills. Prod objects are <=16 MiB uncompressed (vector batch cap).
+        bytes = await gunzipAsync(bytes, { maxOutputLength: MAX_DECOMPRESSED_BYTES })
       }
       const events: unknown[] = []
       for (const line of bytes.toString('utf8').split('\n')) {
