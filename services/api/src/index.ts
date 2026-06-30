@@ -236,7 +236,7 @@ const tailBuffer = new TailBuffer()
 tailBuffer.start()
 const eventBus = new LocalEventBus(tailBuffer, settingsStore)
 
-const { app, tailTokenStore, archiveNotifyConsumer } = createApp({
+const { app, tailTokenStore, archiveNotifyConsumer, archiveReconcileSweep } = createApp({
   config,
   logger,
   db,
@@ -301,6 +301,19 @@ const server = app.listen(config.port, () => {
   } else {
     logger.info('Recovery sweep disabled (LOGWEAVE_RECOVERY_ENABLED=false)')
   }
+
+  if (config.archiveReconcileEnabled) {
+    if (archiveReconcileSweep) {
+      archiveReconcileSweep.start()
+    } else {
+      logger.warn(
+        'Archive reconciliation enabled but no archive bucket configured — sweep not started',
+      )
+    }
+  } else {
+    logger.info('Archive reconciliation sweep disabled (LOGWEAVE_ARCHIVE_RECONCILE_ENABLED=false)')
+  }
+
   anomalyScorer.start()
   alertEvaluator.start()
   thresholdEvaluator.start()
@@ -337,6 +350,7 @@ async function shutdown(signal: string): Promise<void> {
   await recovery.stop()
   await retention.stop()
   await archiveNotifyConsumer?.stop()
+  await archiveReconcileSweep?.stop()
   // Stop tail-related background timers (token cleanup, buffer eviction)
   tailTokenStore.stop()
   tailBuffer.stop()

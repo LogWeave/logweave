@@ -90,6 +90,14 @@ const configSchema = z.object({
     .transform((v) => v === 'true'),
   recoveryIntervalMs: z.coerce.number().int().min(1000).max(300_000).default(60_000),
   recoveryLookbackHours: z.coerce.number().int().min(1).max(168).default(24),
+  // Archive reconciliation sweep (epic #265, #279) — backfills objects the
+  // best-effort notify hop missed. Defaults off; only runs when an archive
+  // bucket is also configured.
+  archiveReconcileEnabled: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  archiveReconcileIntervalMs: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
   apiKeys: apiKeysSchema,
   dashboardBaseUrl: z.string().url().optional(),
   rateLimitRpm: z.coerce.number().int().min(1).max(10_000).default(300),
@@ -142,6 +150,8 @@ export function loadConfig(): Config {
     shutdownTimeoutMs: process.env.LOGWEAVE_SHUTDOWN_TIMEOUT_MS,
     recoveryEnabled: process.env.LOGWEAVE_RECOVERY_ENABLED,
     recoveryIntervalMs: process.env.LOGWEAVE_RECOVERY_INTERVAL_MS,
+    archiveReconcileEnabled: process.env.LOGWEAVE_ARCHIVE_RECONCILE_ENABLED,
+    archiveReconcileIntervalMs: process.env.LOGWEAVE_ARCHIVE_RECONCILE_INTERVAL_MS,
     recoveryLookbackHours: process.env.LOGWEAVE_RECOVERY_LOOKBACK_HOURS,
     apiKeys: process.env.LOGWEAVE_API_KEYS,
     dashboardBaseUrl: process.env.LOGWEAVE_DASHBOARD_BASE_URL,
