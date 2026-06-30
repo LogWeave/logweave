@@ -385,6 +385,46 @@ export class S3Adapter implements LogSourceAdapter {
     }
   }
 
+  /**
+   * List object keys under `prefix`, lexically after `startAfter`, up to
+   * `maxKeys` (across pages). Used by the reconciliation sweep (#279) to find
+   * archived objects whose metadata was never created. `startAfter` is S3's
+   * native cursor (`StartAfter`), so paging resumes without re-reading history.
+   * Returns the keys in lexical order plus the last key seen (the new cursor).
+   */
+  async listObjectKeys(
+    config: S3ConnectorConfig,
+    prefix: string,
+    startAfter: string | undefined,
+    maxKeys: number,
+  ): Promise<{ keys: string[]; lastKey: string | undefined }> {
+    const client = await this.createClient(config, undefined)
+    const keys: string[] = []
+    let continuationToken: string | undefined
+    // S3 ignores StartAfter once a ContinuationToken is supplied, so only the
+    // first page carries it; subsequent pages page on the token.
+    let firstPage = true
+
+    do {
+      const result: ListObjectsV2CommandOutput = await client.send(
+        new ListObjectsV2Command({
+          Bucket: config.bucket,
+          Prefix: prefix,
+          StartAfter: firstPage ? startAfter : undefined,
+          ContinuationToken: continuationToken,
+          MaxKeys: Math.min(1000, maxKeys - keys.length),
+        }),
+      )
+      firstPage = false
+      for (const obj of result.Contents ?? []) {
+        if (obj.Key && keys.length < maxKeys) keys.push(obj.Key)
+      }
+      continuationToken = result.NextContinuationToken
+    } while (continuationToken && keys.length < maxKeys)
+
+    return { keys, lastKey: keys.at(-1) }
+  }
+
   async fetchRawLogs(params: FetchRawLogsParams): Promise<RawLogResult> {
     const config = params.config as S3ConnectorConfig
     const client = await this.createClient(config, params.auditContext)

@@ -134,6 +134,19 @@ const DDL_STATEMENTS = [
     is_deleted     UInt8 DEFAULT 0
   ) ENGINE = ReplacingMergeTree(version, is_deleted)
   ORDER BY (tenant_id, setting_key)`,
+
+  // 9. Archive reconciliation cursor (epic #265, #279) — per-tenant watermark.
+  // Every archived object lexically <= last_key is confirmed present in
+  // log_metadata; the reconciliation sweep lists from here forward and backfills
+  // anything the best-effort notify hop missed. ReplacingMergeTree keeps the
+  // highest-version row per tenant.
+  `CREATE TABLE IF NOT EXISTS logweave.archive_reconcile_cursor (
+    tenant_id   LowCardinality(String),
+    last_key    String DEFAULT '',
+    version     UInt64,
+    updated_at  DateTime DEFAULT now()
+  ) ENGINE = ReplacingMergeTree(version)
+  ORDER BY (tenant_id)`,
 ]
 
 // Migrations — add columns that may be missing from older schema versions.

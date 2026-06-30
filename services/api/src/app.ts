@@ -7,6 +7,7 @@ import type pino from 'pino'
 import { type Options as PinoHttpOptions, pinoHttp } from 'pino-http'
 import { ArchiveNotifyConsumer } from './archive/notify-consumer.js'
 import { ArchiveNotifyQueue } from './archive/notify-queue.js'
+import { ArchiveReconcileSweep } from './archive/reconcile-sweep.js'
 import type { ApiKeyStore } from './auth/api-key-store.js'
 import type { SessionProvider } from './auth/session.js'
 import { SessionValidationCache } from './auth/session-cache.js'
@@ -18,6 +19,7 @@ import { S3Adapter } from './connectors/s3-adapter.js'
 import type { DbClient } from './db/client.js'
 import { notFound } from './errors.js'
 import type { EventBus } from './events/event-bus.js'
+import { getInternalEvents } from './internal-events/emitter.js'
 import { requestContext } from './logger.js'
 import { createAccessAuditMiddleware } from './middleware/audit-access.js'
 import { createAuthMiddleware, KeyStore } from './middleware/auth.js'
@@ -82,6 +84,8 @@ export interface CreatedApp {
   archiveNotifyQueue: ArchiveNotifyQueue
   /** Async Drain3 consumer (#277); present only when an archive bucket is set. */
   archiveNotifyConsumer?: ArchiveNotifyConsumer
+  /** Reconciliation sweep (#279); present only when an archive bucket is set. */
+  archiveReconcileSweep?: ArchiveReconcileSweep
 }
 
 export function createApp(deps: AppDependencies): CreatedApp {
@@ -378,6 +382,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
   // object, clusters it, and writes log_metadata with source_ref. Only runs when
   // an archive bucket is configured. Started here; index.ts stops it on shutdown.
   let archiveNotifyConsumer: ArchiveNotifyConsumer | undefined
+  let archiveReconcileSweep: ArchiveReconcileSweep | undefined
   if (archiveConfig) {
     archiveNotifyConsumer = new ArchiveNotifyConsumer({
       queue: archiveNotifyQueue,
@@ -387,6 +392,22 @@ export function createApp(deps: AppDependencies): CreatedApp {
       logger: deps.logger,
     })
     archiveNotifyConsumer.start()
+
+    // Reconciliation sweep (#279): finds objects the notify hop missed and
+    // re-feeds them through the same queue+consumer. Constructed here (it needs
+    // the in-proc queue); index.ts starts/stops it, gated on its enable flag.
+    archiveReconcileSweep = new ArchiveReconcileSweep(
+      {
+        db: deps.db,
+        adapter: new S3Adapter(),
+        archiveConfig,
+        queue: archiveNotifyQueue,
+        settingsStore: deps.settingsStore,
+        logger: deps.logger,
+        emitter: getInternalEvents(),
+      },
+      { intervalMs: deps.config.archiveReconcileIntervalMs },
+    )
   }
 
   const tailTokenStore = new TailTokenStore()
@@ -436,5 +457,11 @@ export function createApp(deps: AppDependencies): CreatedApp {
   // Centralized error handler (must be last)
   app.use(createErrorHandler(deps.logger))
 
-  return { app, tailTokenStore, archiveNotifyQueue, archiveNotifyConsumer }
+  return {
+    app,
+    tailTokenStore,
+    archiveNotifyQueue,
+    archiveNotifyConsumer,
+    archiveReconcileSweep,
+  }
 }
