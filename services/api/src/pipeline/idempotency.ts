@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { uuidv7 } from '../uuid.js'
 import type { IngestResult } from './ingest.js'
 
 /**
@@ -51,6 +52,16 @@ export function extractEventId(raw: unknown): string | undefined {
     if (typeof v === 'string' && UUID_RE.test(v)) return v
   }
   return undefined
+}
+
+/**
+ * The final dedup key for an event: its source-assigned `event_id` when
+ * well-formed, else a generated UUIDv7 fallback. Shared by `ingestBatch` (the
+ * synchronous insert path) and the Vector forwarder so both stamp the same key
+ * — ReplacingMergeTree collapses the two only if they agree.
+ */
+export function ensureEventId(raw: unknown): string {
+  return extractEventId(raw) ?? uuidv7()
 }
 
 /** Deterministic batch key from source-assigned event_ids (order-independent). */

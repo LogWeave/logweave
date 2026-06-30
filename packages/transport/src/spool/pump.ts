@@ -41,7 +41,13 @@ export interface PumpOptions {
   readonly initialBackoffMs?: number
   /** Cap on the exponential retry backoff, ms. Default: 30000 */
   readonly maxBackoffMs?: number
-  /** Per-POST timeout, ms. Default: 2000 */
+  /**
+   * Per-POST timeout, ms. Default: 40000. The ingest endpoint forwards to the
+   * Vector archive engine and withholds its 2xx until the batch is durable in
+   * S3 (gated 200, up to ~30s). This outer budget must exceed the API's own
+   * forward timeout (35s) so it never aborts a forward that is about to
+   * succeed — a premature abort re-sends and duplicates the S3 object.
+   */
   readonly timeoutMs?: number
   /** Injectable fetch (testing). Default: globalThis.fetch */
   readonly fetchFn?: typeof globalThis.fetch
@@ -99,7 +105,7 @@ export class Pump {
     this.pollIntervalMs = options.pollIntervalMs ?? 1000
     this.initialBackoffMs = options.initialBackoffMs ?? 500
     this.maxBackoffMs = options.maxBackoffMs ?? 30_000
-    this.timeoutMs = options.timeoutMs ?? 2000
+    this.timeoutMs = options.timeoutMs ?? 40_000
     this.fetchFn = options.fetchFn ?? globalThis.fetch
     this.sleepFn = options.sleepFn ?? defaultSleep
     this.onDrop = options.onDrop

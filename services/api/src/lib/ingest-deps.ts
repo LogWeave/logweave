@@ -15,4 +15,13 @@ export interface IngestDeps {
   tailBuffer?: TailBuffer
   settingsStore?: TenantSettingsStore
   eventBus?: EventBus
+  /**
+   * Vector archive endpoint (LOGWEAVE_VECTOR_ARCHIVE_URL). When set, the public
+   * ingest routes forward batches to Vector for durable S3 archival instead of
+   * clustering synchronously — the async consumer (#277) clusters off the hot
+   * path. When unset, the legacy synchronous cluster+insert path is used.
+   */
+  vectorArchiveUrl?: string
+  /** Injectable fetch for the archive forward (testing). Default: global fetch. */
+  archiveFetchFn?: typeof globalThis.fetch
 }

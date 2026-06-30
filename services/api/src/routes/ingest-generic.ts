@@ -28,6 +28,12 @@ export function genericIngestRoutes(deps: IngestDeps): Router {
         throw validationError(`Batch size ${events.length} exceeds maximum of ${MAX_BATCH_SIZE}`)
       }
 
+      // NOTE: this route is NOT forwarded to the Vector archive path. It parses
+      // with GenericLogParser (message under message/msg/log/body + alias
+      // fields), but the async consumer re-ingests landed objects with the
+      // default JsonLogParser, which would drop log/body-message events and lose
+      // alias fields. Durable forwarding for non-SDK routes needs the consumer
+      // to select the parser by source — deferred (epic #265 follow-up).
       const result = await ingestBatch(
         {
           clusterClient: deps.clusterClient,

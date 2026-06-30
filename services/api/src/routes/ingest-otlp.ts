@@ -115,6 +115,10 @@ export function otlpIngestRoutes(deps: IngestDeps): Router {
           return
         }
 
+        // NOTE: OTLP is not forwarded to the Vector archive path either — a
+        // retrying collector (no stable event_id) would produce duplicate rows
+        // the consumer can't collapse, and the legacy path's Idempotency-Key
+        // dedup is bypassed. Deferred with generic (epic #265 follow-up).
         // Convert flat events to the shape ingestBatch expects
         // OtlpFlatEvent already has all fields extracted — pass as-is
         const result = await ingestBatch(

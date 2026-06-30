@@ -28,7 +28,12 @@ function mockFetch(status: number, body: unknown): typeof globalThis.fetch {
     })
 }
 
-function createTestApp(options?: { fetchFn?: typeof globalThis.fetch; insertError?: Error }) {
+function createTestApp(options?: {
+  fetchFn?: typeof globalThis.fetch
+  insertError?: Error
+  vectorArchiveUrl?: string
+  archiveFetchFn?: typeof globalThis.fetch
+}) {
   const logger = pino({ level: 'silent' })
   const insertedRows: LogMetadataRow[][] = []
 
@@ -60,6 +65,8 @@ function createTestApp(options?: { fetchFn?: typeof globalThis.fetch; insertErro
       db: mockDb,
       logger,
       anomalyScorer,
+      vectorArchiveUrl: options?.vectorArchiveUrl,
+      archiveFetchFn: options?.archiveFetchFn,
     }),
   )
 
@@ -304,5 +311,67 @@ describe('POST /v1/ingest/batch', () => {
     const row = insertedRows[0]?.[0]
     assert.equal(row?.source_type, 'transport')
     assert.equal(row?.source_ref, '')
+  })
+})
+
+describe('POST /v1/ingest/batch — Vector forwarding (epic #265)', () => {
+  const VECTOR_URL = 'http://vector:8686/v1/archive'
+
+  function captureArchive(status = 200) {
+    const calls: { url: string; lines: Record<string, unknown>[] }[] = []
+    const archiveFetchFn = (async (url: string | URL, init?: RequestInit) => {
+      const raw = String(init?.body ?? '')
+      calls.push({
+        url: String(url),
+        lines: raw
+          .split('\n')
+          .filter((l) => l.length > 0)
+          .map((l) => JSON.parse(l) as Record<string, unknown>),
+      })
+      return new Response(null, { status })
+    }) as unknown as typeof globalThis.fetch
+    return { calls, archiveFetchFn }
+  }
+
+  it('forwards to Vector and returns 202 pending without clustering', async () => {
+    const { calls, archiveFetchFn } = captureArchive(200)
+    // A cluster call would throw — proving the sync clusterer is NOT hit.
+    const clusterMustNotRun: typeof globalThis.fetch = async () => {
+      throw new Error('clusterer must not be called on the forwarding path')
+    }
+    const { app, insertedRows } = createTestApp({
+      fetchFn: clusterMustNotRun,
+      vectorArchiveUrl: VECTOR_URL,
+      archiveFetchFn,
+    })
+
+    const res = await request(app)
+      .post('/v1/ingest/batch')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({ events: [validEvent(), validEvent({ message: 'second' })] })
+
+    assert.equal(res.status, 202)
+    assert.equal(res.body.accepted, 2)
+    assert.equal(res.body.status, 'pending')
+    // Forwarded to Vector as NDJSON with server-stamped tenant_id; nothing inserted here.
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0]?.url, VECTOR_URL)
+    assert.equal(calls[0]?.lines.length, 2)
+    assert.equal(calls[0]?.lines[0]?.tenant_id, TENANT_ID)
+    assert.equal(insertedRows.length, 0)
+  })
+
+  it('returns 503 + Retry-After when the archive forward fails (pump retries)', async () => {
+    const { archiveFetchFn } = captureArchive(503)
+    const { app } = createTestApp({ vectorArchiveUrl: VECTOR_URL, archiveFetchFn })
+
+    const res = await request(app)
+      .post('/v1/ingest/batch')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({ events: [validEvent()] })
+
+    assert.equal(res.status, 503)
+    assert.equal(res.body.error.code, 'SERVICE_UNAVAILABLE')
+    assert.equal(res.headers['retry-after'], '30')
   })
 })

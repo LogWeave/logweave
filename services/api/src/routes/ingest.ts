@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
+import { forwardToArchive } from '../archive/forward-or-throw.js'
 import { HttpStatus } from '../http-status.js'
 import type { IngestDeps } from '../lib/ingest-deps.js'
 import { getTenantId } from '../middleware/auth.js'
@@ -22,6 +23,19 @@ export function ingestRoutes(deps: IngestDeps): Router {
     try {
       const tenantId = getTenantId(res)
       const body = req.body as z.infer<typeof ingestBatchSchema>
+
+      // Durable-archive path: forward to Vector (gated on S3) instead of
+      // clustering synchronously; the async consumer (#277) enriches off the
+      // hot path. Falls through to the legacy path when no archive is wired.
+      if (deps.vectorArchiveUrl) {
+        await forwardToArchive(deps, body.events, {
+          tenantId,
+          service: body.service,
+          environment: body.environment,
+        })
+        res.status(HttpStatus.ACCEPTED).json({ accepted: body.events.length, status: 'pending' })
+        return
+      }
 
       const result = await ingestBatch(
         {

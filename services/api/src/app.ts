@@ -243,6 +243,17 @@ export function createApp(deps: AppDependencies): CreatedApp {
   v1.use(mcpDetect)
   v1.use(createAccessAuditMiddleware({ db: deps.db, logger: deps.logger }))
   v1.use(rateLimiter)
+  // Fail loud on a black-hole misconfig: forwarding ingest to Vector relies on
+  // the async consumer (#277) to cluster + insert the landed objects, and the
+  // consumer only runs when an archive bucket is configured. With the URL set
+  // but no bucket, events would land in S3 with nothing ever ingesting them.
+  if (deps.config.vectorArchiveUrl && !deps.config.archiveBucket) {
+    throw new Error(
+      'LOGWEAVE_VECTOR_ARCHIVE_URL is set but LOGWEAVE_ARCHIVE_BUCKET is not. ' +
+        'Forwarding ingest to Vector without the async consumer running would ' +
+        'black-hole events. Set the archive bucket or unset the Vector URL.',
+    )
+  }
   const ingestDeps = {
     clusterClient: deps.clusterClient,
     db: deps.db,
@@ -251,6 +262,10 @@ export function createApp(deps: AppDependencies): CreatedApp {
     tailBuffer: deps.tailBuffer,
     settingsStore: deps.settingsStore,
     eventBus: deps.eventBus,
+    // When set, ingest routes forward to the Vector archive engine (durable S3)
+    // and the async consumer clusters off the hot path, instead of clustering
+    // synchronously here (epic #265).
+    vectorArchiveUrl: deps.config.vectorArchiveUrl,
   }
   // Ingest routes are mounted BEFORE the concurrent-query guard so the guard
   // (sized for heavy read/analytics queries) does not also cap ingest
