@@ -74,3 +74,33 @@ when_full = "block"
 
 [sinks.archive.acknowledgements]
 enabled = true
+
+# --- Delivery-lag metrics → CloudWatch (Floci in dev) — #283 ---
+# Vector's own internal metrics, filtered to just the archive sink's delivery
+# health, shipped to CloudWatch so a backed-up/failing archive is observable.
+# Custom CloudWatch metrics cost ~30 cents/metric/mo, so the filter keeps a
+# small allowlist scoped to component_id=archive (errors, throughput, buffer
+# depth, healthcheck) rather than all of Vector's internal series.
+[sources.metrics]
+type = "internal_metrics"
+scrape_interval_secs = 1
+
+[transforms.archive_health]
+type = "filter"
+inputs = ["metrics"]
+condition.type = "vrl"
+condition.source = '''
+.tags.component_id == "archive" &&
+  includes(
+    ["component_errors_total", "component_sent_events_total", "buffer_byte_size", "healthcheck"],
+    .name,
+  )
+'''
+
+[sinks.cloudwatch]
+type = "aws_cloudwatch_metrics"
+inputs = ["archive_health"]
+namespace = "LogWeave/Archive"
+region = "${AWS_REGION:-us-east-1}"
+# Floci serves CloudWatch on the same endpoint as S3/STS in dev.
+endpoint = "${LOGWEAVE_S3_ENDPOINT:-http://floci:4566}"
