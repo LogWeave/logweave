@@ -115,3 +115,41 @@ when_full = "block"
 # Gate the source's 200 on durable S3 delivery — the no-loss claim (#274).
 [sinks.archive.acknowledgements]
 enabled = true
+
+# ---------------------------------------------------------------------------
+# Delivery-lag observability (#283). Vector's own internal metrics, filtered to
+# just the archive sink's delivery health, shipped to CloudWatch so a backed-up
+# or failing archive (S3 slow/down, buffer filling, errors) is visible and can
+# be alarmed (AWS::CloudWatch::Alarm in app.yml). Custom CloudWatch metrics cost
+# ~30 cents/metric/mo, so the filter keeps a small allowlist scoped to
+# component_id=archive rather than all of Vector's internal series.
+# ---------------------------------------------------------------------------
+[sources.metrics]
+type = "internal_metrics"
+
+[transforms.archive_health]
+type = "filter"
+inputs = ["metrics"]
+condition.type = "vrl"
+condition.source = '''
+.tags.component_id == "archive" &&
+  includes(["component_errors_total", "component_sent_events_total", "buffer_byte_size"], .name)
+'''
+
+# Collapse each metric to a single CloudWatch series keyed ONLY by component_id.
+# Vector's aws_cloudwatch_metrics sink maps EVERY tag to a CloudWatch dimension,
+# so without this the published series also carry error_type/stage/host/
+# component_kind/component_type — and (a) the alarm, which keys on
+# component_id=archive alone, would watch a series that never receives data and
+# so never fires; (b) cost fans out to one custom metric per tag combination.
+# Stripping to component_id makes the alarm match and bounds cost to ~3 series.
+[transforms.archive_dims]
+type = "remap"
+inputs = ["archive_health"]
+source = '.tags = { "component_id": "archive" }'
+
+[sinks.cloudwatch]
+type = "aws_cloudwatch_metrics"
+inputs = ["archive_dims"]
+namespace = "LogWeave/Archive"
+region = "${AWS_REGION:-us-east-1}"

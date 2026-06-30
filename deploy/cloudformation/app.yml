@@ -67,8 +67,17 @@ Resources:
   # ---------------------------------------------------------------------------
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
+    # This stack deploys into the account's default VPC (no VpcId is threaded
+    # through), so the SG is a default-VPC security group and the egress rule is
+    # valid. cfn-lint's E3021 assumes a VpcId must accompany egress rules; that
+    # is a false positive for the intentional default-VPC design here.
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - E3021
     Properties:
-      GroupDescription: !Sub "${AWS::StackName} — LogWeave HTTP/HTTPS only, no SSH"
+      GroupDescription: !Sub "${AWS::StackName} - LogWeave HTTP/HTTPS only, no SSH"
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -624,6 +633,45 @@ Resources:
       AllocationId:
         Fn::ImportValue: !Sub "${NetworkStackName}-EipAllocationId"
       InstanceId: !Ref Instance
+
+  # ---------------------------------------------------------------------------
+  # Archive delivery-lag alarm (epic #265, #283).
+  # Vector ships the archive sink's delivery-health metrics to CloudWatch
+  # (LogWeave/Archive); this alarm fires when the sink reports errors — i.e. raw
+  # logs are failing to reach the customer's S3 (S3 slow/down, the memory buffer
+  # filling and back-pressuring the SDK). Notifies the operator by email.
+  # ---------------------------------------------------------------------------
+  ArchiveAlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: LogWeave archive alarms
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AdminEmail
+
+  ArchiveDeliveryErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-archive-delivery-errors"
+      AlarmDescription: >-
+        The Vector archive sink reported delivery errors — raw logs may not be
+        reaching the customer's S3 bucket. Check Vector logs and S3 health.
+      Namespace: LogWeave/Archive
+      MetricName: component_errors_total
+      Dimensions:
+        - Name: component_id
+          Value: archive
+      # component_errors_total is a counter; Vector emits the increment, so Sum
+      # over the period is "errors in the last 5 min". It is not published while
+      # zero, hence notBreaching when missing (no errors == healthy).
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref ArchiveAlarmTopic
 
 Outputs:
   DashboardUrl:

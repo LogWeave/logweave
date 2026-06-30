@@ -200,6 +200,20 @@ Resources:
                 Action:
                   - s3:ListBucket
                 Resource: !GetAtt ArchiveBucket.Arn
+        - PolicyName: PublishArchiveMetrics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Vector ships archive-sink delivery metrics to CloudWatch (#283).
+              # PutMetricData has no resource scope; namespace is constrained via
+              # a condition so the instance can only write LogWeave/Archive.
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: LogWeave/Archive
       Tags:
         - Key: Project
           Value: LogWeave
