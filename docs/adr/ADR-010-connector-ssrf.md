@@ -47,9 +47,14 @@ Production S3 connectors use a customer-created IAM role that trusts the LogWeav
 AWS account, scoped by a per-connector **external ID** (the second factor in the
 trust policy). LogWeave assumes the role to read the bucket; it never stores
 long-lived customer keys. The `quick-create-url` endpoint generates a
-CloudFormation quick-create link plus the external ID. Static
-`accessKeyId`/`secretAccessKey`/`endpoint` are **dev-only** (for an
-S3-compatible emulator) and are rejected when `NODE_ENV=production`.
+CloudFormation quick-create link plus the external ID. A custom `endpoint` (for
+an S3-compatible emulator) has its host **SSRF-validated** with the same
+`externalUrl` check as the Loki/ES URLs — internal targets are blocked unless
+allowlisted via `LOGWEAVE_CONNECTOR_ALLOWED_HOSTS`. It is **not** gated on
+`NODE_ENV`, which silently failed open under the base `docker-compose` (where
+`NODE_ENV` is unset), letting `endpoint` reach internal hosts and cloud metadata
+(LW-281 F2). Static `accessKeyId`/`secretAccessKey` are only accepted alongside
+an `endpoint`.
 
 ### 3. Authorization and secret handling
 
@@ -84,3 +89,9 @@ and wildcard count to bound in-process backtracking.
   internal access.
 - Self-hosters reaching an internal sidecar must opt in explicitly via
   `LOGWEAVE_CONNECTOR_ALLOWED_HOSTS`; there is no implicit dev bypass.
+- **The S3 `endpoint` only gets the create-time host check, not the fetch-time
+  resolved-IP guard.** S3 traffic goes through the AWS SDK, which does its own
+  DNS and does not use `safe-fetch.ts`, so a DNS-rebinding endpoint
+  (resolve-public, connect-internal) is a theoretical residual. Mitigated by:
+  the endpoint is for emulators only, internal hosts require explicit
+  allowlisting, and production uses IAM AssumeRole (no endpoint).

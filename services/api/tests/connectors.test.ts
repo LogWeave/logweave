@@ -225,6 +225,52 @@ describe('POST /v1/connectors SSRF guard', () => {
       .send(esBody('http://10.0.0.5:9200'))
     assert.equal(res.status, 201)
   })
+
+  // LW-281 F2: the S3 connector `endpoint` used to be gated only on
+  // NODE_ENV === 'production'. Under the base docker-compose (NODE_ENV unset) an
+  // endpoint aimed at cloud metadata or an internal host was accepted. It now
+  // runs through the same host check as the ES/Loki URLs.
+  function s3Body(endpoint: string) {
+    return {
+      name: 'S3',
+      config: {
+        type: 's3',
+        bucket: 'my-bucket',
+        pathPattern: '{prefix}{service}/{year}/{month}/{day}/',
+        region: 'us-east-1',
+        logFormat: 'jsonl',
+        compression: 'none',
+        endpoint,
+      },
+    }
+  }
+
+  it('rejects an s3 endpoint pointed at cloud metadata', async () => {
+    delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
+    const res = await request(createTestApp())
+      .post('/v1/connectors')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(s3Body('http://169.254.169.254/latest/meta-data/iam/security-credentials/'))
+    assert.equal(res.status, 400)
+  })
+
+  it('rejects an s3 endpoint pointed at localhost regardless of NODE_ENV', async () => {
+    delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
+    const res = await request(createTestApp())
+      .post('/v1/connectors')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(s3Body('http://localhost:4566'))
+    assert.equal(res.status, 400)
+  })
+
+  it('accepts an internal s3 endpoint only when explicitly allowlisted', async () => {
+    process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS = '10.0.0.5'
+    const res = await request(createTestApp())
+      .post('/v1/connectors')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send(s3Body('http://10.0.0.5:4566'))
+    assert.equal(res.status, 201)
+  })
 })
 
 // ---------------------------------------------------------------------------

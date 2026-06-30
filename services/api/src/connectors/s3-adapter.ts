@@ -214,9 +214,10 @@ export class S3Adapter implements LogSourceAdapter {
     config: S3ConnectorConfig,
     auditContext: AdapterAuditContext | undefined,
   ): Promise<S3Client> {
-    // Dev mode: static credentials against a custom S3-compatible endpoint
-    // (e.g. Floci). Production never takes this branch — see the validation
-    // schema in routes/connectors.ts which blocks `endpoint` in prod.
+    // Static credentials against a custom S3-compatible endpoint (e.g.
+    // Floci/MinIO). The endpoint host is SSRF-validated at create time in
+    // routes/connectors.ts (LW-281 F2); production normally uses the AssumeRole
+    // branch below rather than a custom endpoint.
     if (config.endpoint) {
       return new S3Client({
         region: config.region,
