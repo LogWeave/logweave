@@ -13,24 +13,32 @@ const archiveConfig = {
   region: 'us-east-1',
 } as unknown as S3ConnectorConfig
 
-/** Fake DbClient: answers the cursor read + source_ref membership by query text. */
-function fakeDb(opts: { cursor?: string; existing?: string[] }): {
+/**
+ * Fake DbClient: answers the cursor read + source_ref membership by query text.
+ * Persists the written cursor (so the `newCursor !== cursor` dedup is exercised)
+ * and supports a mutable `existing` (a function) for multi-sweep scenarios.
+ */
+function fakeDb(opts: { cursor?: string; existing?: string[] | (() => string[]) }): {
   db: DbClient
   cursorWrites: string[]
 } {
   const cursorWrites: string[] = []
+  let current = opts.cursor ?? ''
+  const existingOf = (): string[] =>
+    typeof opts.existing === 'function' ? opts.existing() : (opts.existing ?? [])
   const db = {
     async query(params: { query: string }) {
       if (params.query.includes('archive_reconcile_cursor')) {
-        return opts.cursor ? [{ last_key: opts.cursor }] : []
+        return current ? [{ last_key: current }] : []
       }
       if (params.query.includes('source_ref IN')) {
-        return (opts.existing ?? []).map((s) => ({ source_ref: s }))
+        return existingOf().map((s) => ({ source_ref: s }))
       }
       return []
     },
     async insert(params: { values: { last_key: string }[] }) {
-      cursorWrites.push(params.values[0]?.last_key ?? '')
+      current = params.values[0]?.last_key ?? ''
+      cursorWrites.push(current)
     },
   } as unknown as DbClient
   return { db, cursorWrites }
@@ -56,6 +64,7 @@ function build(opts: {
   cursor?: string
   existing?: string[]
   behindThreshold?: number
+  quarantineThreshold?: number
 }) {
   const { db, cursorWrites } = fakeDb({ cursor: opts.cursor, existing: opts.existing })
   const queue = new ArchiveNotifyQueue()
@@ -70,7 +79,7 @@ function build(opts: {
       logger,
       emitter: { emit: (i) => emitted.push({ event: i.event, fields: i.fields }) },
     },
-    { behindThreshold: opts.behindThreshold ?? 100 },
+    { behindThreshold: opts.behindThreshold ?? 100, quarantineThreshold: opts.quarantineThreshold },
   )
   return { sweep, queue, cursorWrites, emitted }
 }
@@ -123,6 +132,54 @@ describe('ArchiveReconcileSweep.reconcileOnce', () => {
     assert.equal(emitted.length, 1)
     assert.equal(emitted[0]?.event, 'archive.reconcile_behind')
     assert.equal(emitted[0]?.fields?.missing, 5)
+  })
+
+  it('quarantines a persistently-missing head key so the watermark can advance', async () => {
+    // a is never ingested (poison); b, c are present. With threshold 2, the
+    // second sweep gives up on a and the watermark jumps to the last key.
+    const { sweep, cursorWrites, emitted } = build({
+      keys: ['tenant=t1/a', 'tenant=t1/b', 'tenant=t1/c'],
+      existing: ['tenant=t1/b', 'tenant=t1/c'],
+      quarantineThreshold: 2,
+    })
+
+    await sweep.reconcileOnce() // sweep 1: a missing (count 1) blocks → no advance
+    assert.deepEqual(cursorWrites, [])
+    assert.equal(emitted.length, 0)
+
+    await sweep.reconcileOnce() // sweep 2: a hits threshold → quarantined
+    assert.deepEqual(cursorWrites, ['tenant=t1/c'])
+    assert.equal(emitted.length, 1)
+    assert.equal(emitted[0]?.event, 'archive.object_quarantined')
+    assert.equal(emitted[0]?.fields?.source_ref, 'tenant=t1/a')
+  })
+
+  it('resets the miss count when a previously-missing key lands', async () => {
+    // a missing on sweep 1, present after → never quarantined; the watermark
+    // advances once and the dedup suppresses a redundant rewrite.
+    let landed = false
+    const { db, cursorWrites } = fakeDb({ existing: () => (landed ? ['tenant=t1/a'] : []) })
+    const emitted: { event: string }[] = []
+    const sweep = new ArchiveReconcileSweep(
+      {
+        db,
+        adapter: fakeAdapter(['tenant=t1/a']),
+        archiveConfig,
+        queue: new ArchiveNotifyQueue(),
+        settingsStore: { getAllTenantIds: () => ['t1'] },
+        logger,
+        emitter: { emit: (i) => emitted.push({ event: i.event }) },
+      },
+      { quarantineThreshold: 2 },
+    )
+
+    await sweep.reconcileOnce() // a missing (count 1)
+    landed = true
+    await sweep.reconcileOnce() // a present → count cleared, watermark advances to a
+    await sweep.reconcileOnce() // still present — would quarantine if count had survived
+
+    assert.equal(emitted.length, 0, 'a transient miss must never quarantine')
+    assert.deepEqual(cursorWrites, ['tenant=t1/a'])
   })
 
   it('is a no-op when the tenant has no archived objects', async () => {

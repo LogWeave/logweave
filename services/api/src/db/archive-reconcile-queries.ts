@@ -54,13 +54,24 @@ export async function setReconcileCursor(
   })
 }
 
+// @clickhouse/client binds array params into the HTTP query string; a few
+// thousand ~80-byte keys would approach http_max_uri_size. Chunk to keep each
+// request's URL comfortably bounded.
+const MEMBERSHIP_CHUNK = 1000
+
 /** Subset of `keys` already ingested for this tenant (matched by source_ref). */
 export async function getExistingSourceRefs(
   db: DbClient,
   tenantId: string,
   keys: readonly string[],
 ): Promise<Set<string>> {
-  if (keys.length === 0) return new Set()
-  const rows = await db.query<SourceRefRow>(tenantQuery(EXISTING_SOURCE_REFS, tenantId, { keys }))
-  return new Set(rows.map((r) => r.source_ref))
+  const found = new Set<string>()
+  for (let i = 0; i < keys.length; i += MEMBERSHIP_CHUNK) {
+    const chunk = keys.slice(i, i + MEMBERSHIP_CHUNK)
+    const rows = await db.query<SourceRefRow>(
+      tenantQuery(EXISTING_SOURCE_REFS, tenantId, { keys: chunk }),
+    )
+    for (const r of rows) found.add(r.source_ref)
+  }
+  return found
 }

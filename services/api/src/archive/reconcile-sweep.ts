@@ -11,9 +11,18 @@
  * idempotent by event_id). It writes no metadata itself.
  *
  * Watermark semantics: the cursor is "every object lexically <= last_key is
- * confirmed in log_metadata". A run advances it only to the key just before the
- * earliest still-missing object, so a transiently-dropped object stays in the
- * listing window across sweeps until it actually lands — it is never skipped.
+ * confirmed (ingested or quarantined)". A run advances it only to the key just
+ * before the earliest *actively-retrying* gap, so a transiently-dropped object
+ * stays in the listing window across sweeps until it lands — never skipped.
+ *
+ * Quarantine: some objects can never produce a row — e.g. an object whose events
+ * all fail parsing, or a corrupt/zero-event object the consumer treats as a
+ * no-op success. Such a poison object would otherwise block the watermark
+ * forever, and (past `maxKeysPerSweep`) starve every later object from ever
+ * being listed. So a gap that is still missing after `quarantineThreshold`
+ * consecutive sweeps stops blocking the watermark and emits a loud operator
+ * event — the sweep gives up on it, exactly as the consumer drops after its own
+ * retry budget. Miss counts are in-memory (a restart just re-attempts).
  */
 import type pino from 'pino'
 import type { S3ConnectorConfig } from '../connectors/types.js'
@@ -53,6 +62,11 @@ export interface ReconcileSweepConfig {
   maxKeysPerSweep?: number
   /** Missing objects in a single tenant run that trips the alert. Default: 100. */
   behindThreshold?: number
+  /**
+   * Consecutive sweeps a gap may stay missing before it is quarantined (stops
+   * blocking the watermark + alerts). Default: 5.
+   */
+  quarantineThreshold?: number
 }
 
 export interface ReconcileResult {
@@ -65,6 +79,9 @@ export class ArchiveReconcileSweep {
   private readonly intervalMs: number
   private readonly maxKeysPerSweep: number
   private readonly behindThreshold: number
+  private readonly quarantineThreshold: number
+  /** Per-key consecutive-miss count (`tenantId\nkey` → count). Bounds the wedge. */
+  private readonly missCounts = new Map<string, number>()
   private intervalHandle: ReturnType<typeof setInterval> | null = null
   private running = false
 
@@ -75,9 +92,11 @@ export class ArchiveReconcileSweep {
     this.intervalMs = config.intervalMs ?? 300_000
     this.maxKeysPerSweep = config.maxKeysPerSweep ?? 5000
     this.behindThreshold = config.behindThreshold ?? 100
+    this.quarantineThreshold = config.quarantineThreshold ?? 5
   }
 
   start(): void {
+    if (this.intervalHandle) return // idempotent — don't leak a second timer
     this.intervalHandle = setInterval(() => {
       if (this.running) return
       this.running = true
@@ -100,6 +119,11 @@ export class ArchiveReconcileSweep {
     if (this.intervalHandle) {
       clearInterval(this.intervalHandle)
       this.intervalHandle = null
+    }
+    // Let an in-flight sweep settle before shutdown closes the DB (mirrors the
+    // consumer's stop()), bounded so a wedged sweep can't block shutdown.
+    for (let i = 0; this.running && i < 50; i++) {
+      await new Promise((r) => setTimeout(r, 100))
     }
   }
 
@@ -130,24 +154,46 @@ export class ArchiveReconcileSweep {
 
     const existing = await getExistingSourceRefs(this.deps.db, tenantId, keys)
 
-    // Walk keys in lexical (== S3 listing == cursor) order. Enqueue every gap;
-    // remember the first gap so the watermark never advances past it.
-    let earliestMissingIndex = -1
+    // Walk keys in lexical (== S3 listing == cursor) order. Enqueue every gap.
+    // The watermark may advance past confirmed keys and past quarantined gaps
+    // (still missing after quarantineThreshold sweeps), but NOT past a gap we
+    // are still actively retrying — that one stays in the listing window.
+    let earliestBlockingIndex = -1
     let missing = 0
     for (const [i, key] of keys.entries()) {
-      if (existing.has(key)) continue
-      if (earliestMissingIndex === -1) earliestMissingIndex = i
+      const mk = `${tenantId}\n${key}`
+      if (existing.has(key)) {
+        this.missCounts.delete(mk) // confirmed — forget any prior miss count
+        continue
+      }
       missing++
       this.deps.queue.enqueue({ tenantId, sourceRef: key })
+      const count = (this.missCounts.get(mk) ?? 0) + 1
+      if (count >= this.quarantineThreshold) {
+        // Give up on this poison object: let the watermark pass it so the tail
+        // beyond maxKeysPerSweep is never starved. Loud — an operator must see
+        // that an archived object will never be reflected in metadata.
+        this.missCounts.delete(mk)
+        this.deps.emitter.emit({
+          event: 'archive.object_quarantined',
+          severity: 'warn',
+          code: 'ARCHIVE_OBJECT_QUARANTINED',
+          summary: 'archived object never produced metadata after repeated retries',
+          fields: { tenant_id: tenantId, source_ref: key, sweeps: count },
+        })
+      } else {
+        this.missCounts.set(mk, count)
+        if (earliestBlockingIndex === -1) earliestBlockingIndex = i
+      }
     }
 
-    // New watermark: last contiguously-confirmed key. If the first listed key is
-    // already missing, there is nothing new to confirm — leave the cursor be.
+    // New watermark: last key before the earliest actively-retrying gap. If the
+    // first listed key is the blocker, there is nothing new to confirm.
     let newCursor: string | undefined
-    if (earliestMissingIndex === -1) {
+    if (earliestBlockingIndex === -1) {
       newCursor = keys.at(-1)
-    } else if (earliestMissingIndex > 0) {
-      newCursor = keys[earliestMissingIndex - 1]
+    } else if (earliestBlockingIndex > 0) {
+      newCursor = keys[earliestBlockingIndex - 1]
     }
     if (newCursor !== undefined && newCursor !== cursor) {
       await setReconcileCursor(this.deps.db, tenantId, newCursor)
