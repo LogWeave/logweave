@@ -80,7 +80,7 @@ enabled = true
 # health, shipped to CloudWatch so a backed-up/failing archive is observable.
 # Custom CloudWatch metrics cost ~30 cents/metric/mo, so the filter keeps a
 # small allowlist scoped to component_id=archive (errors, throughput, buffer
-# depth, healthcheck) rather than all of Vector's internal series.
+# depth) rather than all of Vector's internal series.
 [sources.metrics]
 type = "internal_metrics"
 scrape_interval_secs = 1
@@ -91,15 +91,20 @@ inputs = ["metrics"]
 condition.type = "vrl"
 condition.source = '''
 .tags.component_id == "archive" &&
-  includes(
-    ["component_errors_total", "component_sent_events_total", "buffer_byte_size", "healthcheck"],
-    .name,
-  )
+  includes(["component_errors_total", "component_sent_events_total", "buffer_byte_size"], .name)
 '''
+
+# Strip all tags but component_id so each metric is one CloudWatch series keyed
+# by component_id=archive — matching the alarm and bounding cost. (Vector's
+# cloudwatch sink maps every tag to a dimension; see vector.toml for the why.)
+[transforms.archive_dims]
+type = "remap"
+inputs = ["archive_health"]
+source = '.tags = { "component_id": "archive" }'
 
 [sinks.cloudwatch]
 type = "aws_cloudwatch_metrics"
-inputs = ["archive_health"]
+inputs = ["archive_dims"]
 namespace = "LogWeave/Archive"
 region = "${AWS_REGION:-us-east-1}"
 # Floci serves CloudWatch on the same endpoint as S3/STS in dev.

@@ -1,19 +1,23 @@
 /**
  * Archive delivery-metrics integration test (epic #265, #283).
  *
- * Proves the observability wiring end to end against real Vector + Floci's
- * CloudWatch: Vector's internal_metrics, filtered to the archive sink's delivery
- * health (component_id=archive) and shipped by the aws_cloudwatch_metrics sink,
- * actually land in CloudWatch under the LogWeave/Archive namespace after archive
- * traffic. This is the part static validation misses — that the source→filter→
- * sink topology compiles AND delivers metrics with the namespace mapping the
- * CFN alarm (app.yml) keys on.
+ * Guards the observability wiring against real Vector + Floci's CloudWatch: that
+ * the internal_metrics → filter → remap → aws_cloudwatch_metrics topology
+ * COMPILES and the cloudwatch sink CONNECTS and delivers to the LogWeave/Archive
+ * namespace. This is what static validation misses (and caught a real config
+ * crash: Vector interpolates `$` even in comments).
  *
- * NOTE on Floci fidelity: Floci accepts CloudWatch PutMetricData/alarms and the
- * pipeline delivers to it, but its metric *query* API is partial — only the
- * healthcheck series reliably surfaces under a namespace filter. So this asserts
- * the wiring (archive metrics reach CloudWatch), not exact counter semantics;
- * the precise alarm-metric (component_errors_total) wants a real-AWS smoke test.
+ * SCOPE / Floci fidelity — read before strengthening this test:
+ * Floci accepts CloudWatch PutMetricData/alarms, but its metric *query* API is
+ * PARTIAL: it surfaces the cloudwatch sink's own `healthcheck` series (which
+ * proves the sink reaches CloudWatch in the configured namespace) but does NOT
+ * return Vector's emitted data-metrics. So this test CANNOT assert the data
+ * metric names or — critically — their dimensions. The reviewer-found bug (the
+ * alarm keyed on component_id alone never matched, because the sink maps every
+ * tag to a dimension) is fixed by the `archive_dims` remap that strips tags to
+ * component_id; that fix is correct by Vector+CloudWatch semantics but is NOT
+ * verifiable here. REAL-AWS RESIDUAL: confirm component_errors_total publishes
+ * under LogWeave/Archive with exactly {component_id=archive} so the alarm fires.
  *
  * Requires the dev stack up (Floci + Vector). Auto-skips if either is down.
  */
