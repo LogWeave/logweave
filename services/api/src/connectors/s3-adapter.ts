@@ -2,9 +2,11 @@ import type { Readable } from 'node:stream'
 import { promisify } from 'node:util'
 import { createGunzip, gunzip } from 'node:zlib'
 import {
+  DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   type ListObjectsV2CommandOutput,
+  PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
 import { AssumeRoleCommand, type AssumeRoleCommandOutput, STSClient } from '@aws-sdk/client-sts'
@@ -423,6 +425,42 @@ export class S3Adapter implements LogSourceAdapter {
     } while (continuationToken && keys.length < maxKeys)
 
     return { keys, lastKey: keys.at(-1) }
+  }
+
+  /**
+   * Write a gzip object to the archive bucket (compaction, #279/#284). The body
+   * is the already-gzipped NDJSON bytes; key is the full object key.
+   */
+  async putObject(config: S3ConnectorConfig, key: string, gzipBody: Buffer): Promise<void> {
+    const client = await this.createClient(config, undefined)
+    await client.send(
+      new PutObjectCommand({
+        Bucket: config.bucket,
+        Key: key,
+        Body: gzipBody,
+        ContentType: 'application/x-ndjson',
+        ContentEncoding: 'gzip',
+      }),
+    )
+  }
+
+  /**
+   * Delete object keys from the archive bucket (compaction removes originals
+   * after the compacted object is durable and source_refs are repointed). S3's
+   * DeleteObjects caps at 1000 keys per call, so chunk.
+   */
+  async deleteObjects(config: S3ConnectorConfig, keys: readonly string[]): Promise<void> {
+    if (keys.length === 0) return
+    const client = await this.createClient(config, undefined)
+    for (let i = 0; i < keys.length; i += 1000) {
+      const chunk = keys.slice(i, i + 1000)
+      await client.send(
+        new DeleteObjectsCommand({
+          Bucket: config.bucket,
+          Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
+        }),
+      )
+    }
   }
 
   async fetchRawLogs(params: FetchRawLogsParams): Promise<RawLogResult> {

@@ -98,6 +98,18 @@ const configSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   archiveReconcileIntervalMs: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
+  // Nightly archive compaction (epic #265, #284) — merges small objects in
+  // closed partitions. Defaults off; only runs when an archive bucket is set.
+  archiveCompactionEnabled: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  archiveCompactionIntervalMs: z.coerce
+    .number()
+    .int()
+    .min(60_000)
+    .max(86_400_000)
+    .default(86_400_000),
   apiKeys: apiKeysSchema,
   dashboardBaseUrl: z.string().url().optional(),
   rateLimitRpm: z.coerce.number().int().min(1).max(10_000).default(300),
@@ -152,6 +164,8 @@ export function loadConfig(): Config {
     recoveryIntervalMs: process.env.LOGWEAVE_RECOVERY_INTERVAL_MS,
     archiveReconcileEnabled: process.env.LOGWEAVE_ARCHIVE_RECONCILE_ENABLED,
     archiveReconcileIntervalMs: process.env.LOGWEAVE_ARCHIVE_RECONCILE_INTERVAL_MS,
+    archiveCompactionEnabled: process.env.LOGWEAVE_ARCHIVE_COMPACTION_ENABLED,
+    archiveCompactionIntervalMs: process.env.LOGWEAVE_ARCHIVE_COMPACTION_INTERVAL_MS,
     recoveryLookbackHours: process.env.LOGWEAVE_RECOVERY_LOOKBACK_HOURS,
     apiKeys: process.env.LOGWEAVE_API_KEYS,
     dashboardBaseUrl: process.env.LOGWEAVE_DASHBOARD_BASE_URL,
