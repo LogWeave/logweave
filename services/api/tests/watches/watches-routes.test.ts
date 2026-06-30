@@ -253,6 +253,19 @@ describe('watch mutation audit trail', () => {
 
     assert.equal(auditRows(commands).length, 0)
   })
+
+  it('does not audit a no-op delete of an unknown watch (LW-281 F6)', async () => {
+    const { app, commands } = createTestApp()
+
+    const res = await request(app)
+      .delete('/v1/watches/never-created')
+      .set('Authorization', `Bearer ${TEST_KEY}`)
+
+    // Still idempotent (204), but a deletion that never happened must not forge
+    // an entry in the SOC2 audit trail.
+    assert.equal(res.status, 204)
+    assert.equal(auditRows(commands).length, 0)
+  })
 })
 
 describe('admin guard', () => {
