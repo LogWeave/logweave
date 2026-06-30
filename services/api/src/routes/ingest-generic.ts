@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { forwardToArchive } from '../archive/forward-or-throw.js'
 import { validationError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { MAX_BATCH_SIZE } from '../lib/constants.js'
@@ -26,6 +27,12 @@ export function genericIngestRoutes(deps: IngestDeps): Router {
 
       if (events.length > MAX_BATCH_SIZE) {
         throw validationError(`Batch size ${events.length} exceeds maximum of ${MAX_BATCH_SIZE}`)
+      }
+
+      if (deps.vectorArchiveUrl) {
+        await forwardToArchive(deps, events, { tenantId })
+        res.status(HttpStatus.ACCEPTED).json({ accepted: events.length, status: 'pending' })
+        return
       }
 
       const result = await ingestBatch(

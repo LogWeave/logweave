@@ -116,6 +116,10 @@ const configSchema = z.object({
   archiveRegion: z.string().default('us-east-1'),
   // Dev only: S3-compatible endpoint (Floci) for archive drill-down.
   archiveS3Endpoint: z.string().url().optional(),
+  // When set, ingest routes forward batches to the Vector archive engine
+  // (durable S3, gated 200) and the async consumer clusters off the hot path,
+  // instead of clustering synchronously (epic #265).
+  vectorArchiveUrl: z.string().url().optional(),
 })
 
 export type Config = z.infer<typeof configSchema>
@@ -153,5 +157,6 @@ export function loadConfig(): Config {
     archiveBucket: process.env.LOGWEAVE_ARCHIVE_BUCKET || undefined,
     archiveRegion: process.env.AWS_REGION || undefined,
     archiveS3Endpoint: process.env.LOGWEAVE_S3_ENDPOINT || undefined,
+    vectorArchiveUrl: process.env.LOGWEAVE_VECTOR_ARCHIVE_URL || undefined,
   })
 }

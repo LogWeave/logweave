@@ -103,6 +103,11 @@ services:
       # instance role (default credential chain, no static creds here).
       LOGWEAVE_ARCHIVE_BUCKET: ${LOGWEAVE_ARCHIVE_BUCKET:-}
       AWS_REGION: ${AWS_REGION:-us-east-1}
+      # Durable-archive ingest (epic #265): when set (requires the archive
+      # bucket above), ingest forwards batches to Vector for S3 archival and the
+      # async consumer clusters off the hot path, instead of clustering inline.
+      # Opt-in — default empty keeps the synchronous path.
+      LOGWEAVE_VECTOR_ARCHIVE_URL: ${LOGWEAVE_VECTOR_ARCHIVE_URL:-}
       # Forwarded to the clusterer's destructive endpoints; must match the
       # clusterer service value above.
       LOGWEAVE_INTERNAL_SECRET: ${LOGWEAVE_INTERNAL_SECRET:-}
