@@ -4,9 +4,11 @@ import cookieParser from 'cookie-parser'
 import express, { Router } from 'express'
 import pino from 'pino'
 import request from 'supertest'
+import type { ApiKeyStore } from '../src/auth/api-key-store.js'
 import { HmacSessionProvider, SESSION_COOKIE_NAME } from '../src/auth/session.js'
 import { createAuthMiddleware } from '../src/middleware/auth.js'
 import { createErrorHandler } from '../src/middleware/error-handler.js'
+import { apiKeyRoutes } from '../src/routes/api-keys.js'
 import { deployRoutes } from '../src/routes/deploys.js'
 import { ruleRoutes } from '../src/routes/rules.js'
 import { settingsRoutes } from '../src/routes/settings.js'
@@ -53,6 +55,11 @@ function createTestApp() {
   const settingsStore = new TenantSettingsStore()
   const tailTokenStore = new TailTokenStore()
 
+  // api-keys is also mounted path-less, so a router-level guard on it would leak
+  // onto every route after it. Viewers never reach its handlers (they 403 at the
+  // gate), so a bare stub store is enough.
+  const apiKeyStore = {} as unknown as ApiKeyStore
+
   const app = express()
   app.use(express.json())
   app.use(cookieParser())
@@ -60,6 +67,7 @@ function createTestApp() {
   v1.use(createAuthMiddleware(new Map(keyMap), sessionProvider))
   v1.use(watchRoutes({ watchStore: new WatchStore(), db, logger }))
   v1.use(ruleRoutes({ ruleStore: new RuleStore(), db, logger }))
+  v1.use(apiKeyRoutes({ db, logger, apiKeyStore }))
   v1.use(settingsRoutes({ settingsStore, db, logger }))
   v1.use(deployRoutes({ db, logger }))
   v1.use(
@@ -130,5 +138,34 @@ describe('admin write-gate is scoped per route, not leaked across path-less rout
 
     assert.equal(res.status, 200)
     assert.ok(res.body.data.token)
+  })
+
+  // api-keys.ts had the same bug, but worse: it used router-level `requireAdmin`
+  // (not the GET-permitting requireAdminForWrites), so on a path-less mount it
+  // 403'd viewers on EVERY route after it — including their GET reads. The tail
+  // and settings routes below are mounted after api-keys.
+  it('does not leak the api-keys admin gate onto later routes — viewer GET /settings/slack', async () => {
+    const res = await request(createTestApp())
+      .get('/v1/settings/slack')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 200)
+  })
+
+  it('still 403s a viewer on GET /api-keys (api-keys is admin-only, including reads)', async () => {
+    const res = await request(createTestApp())
+      .get('/v1/api-keys')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+
+    assert.equal(res.status, 403)
+  })
+
+  it('still 403s a viewer on POST /api-keys', async () => {
+    const res = await request(createTestApp())
+      .post('/v1/api-keys')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${viewerCookie()}`)
+      .send({ name: 'k' })
+
+    assert.equal(res.status, 403)
   })
 })
