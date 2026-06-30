@@ -34,9 +34,10 @@ const DEFAULT_BUFFER_SIZE = 1000
 const DEFAULT_FLUSH_INTERVAL_MS = 5000
 // The ingest endpoint may forward to the Vector archive engine and withhold its
 // 2xx until the batch is durable in S3 (gated 200, up to ~30s). This per-POST
-// ceiling must clear that hold so a still-succeeding flush isn't aborted and
-// re-sent; it only bounds a hung server, not the latency of a fast response.
-const DEFAULT_TIMEOUT_MS = 35_000
+// ceiling must exceed the API's own forward timeout (35s) so a still-succeeding
+// flush isn't aborted and re-sent; it only bounds a hung server, not the
+// latency of a fast response.
+const DEFAULT_TIMEOUT_MS = 40_000
 const DEFAULT_MAX_RETRIES = 3
 const CLOSE_TIMEOUT_MS = 2000
 const CLOSE_DRAIN_POLL_MS = 50

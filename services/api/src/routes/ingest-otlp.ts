@@ -2,7 +2,6 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createGunzip } from 'node:zlib'
 import express, { Router } from 'express'
-import { forwardToArchive } from '../archive/forward-or-throw.js'
 import { AppError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { MAX_BATCH_SIZE } from '../lib/constants.js'
@@ -116,16 +115,10 @@ export function otlpIngestRoutes(deps: IngestDeps): Router {
           return
         }
 
-        // Durable-archive path: forward the converted flat events to Vector
-        // instead of clustering synchronously (the async consumer enriches).
-        if (deps.vectorArchiveUrl) {
-          await forwardToArchive(deps, flatEvents, { tenantId })
-          res.status(HttpStatus.ACCEPTED).json({
-            partialSuccess: { rejectedLogRecords: 0, errorMessage: '' },
-          })
-          return
-        }
-
+        // NOTE: OTLP is not forwarded to the Vector archive path either — a
+        // retrying collector (no stable event_id) would produce duplicate rows
+        // the consumer can't collapse, and the legacy path's Idempotency-Key
+        // dedup is bypassed. Deferred with generic (epic #265 follow-up).
         // Convert flat events to the shape ingestBatch expects
         // OtlpFlatEvent already has all fields extracted — pass as-is
         const result = await ingestBatch(

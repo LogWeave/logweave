@@ -12,8 +12,11 @@
  *   - `tenant_id` — from the authenticated API key, overriding any client value
  *     (Vector's key_prefix partitions on it; a client-supplied tenant_id would
  *     be a cross-tenant write). Closes the #275 ingest-trust note.
- *   - `event_id` — the SDK-assigned UUIDv7 when present, else a fallback, so the
- *     consumer's insert dedups a replayed batch.
+ *   - `event_id` — the SDK-assigned UUIDv7 when present (a stable spool id, so a
+ *     replayed batch collapses on the consumer's ReplacingMergeTree insert),
+ *     else a generated fallback purely to satisfy the UUID column. The fallback
+ *     is fresh per call, so id-less sources get no replay-dedup; this path is
+ *     intended for the SDK, which always carries a stable event_id.
  *
  * No-loss contract: resolve ONLY on Vector's gated 2xx. Any non-2xx / network /
  * timeout throws, so the route returns 5xx and the durable pump retains the
