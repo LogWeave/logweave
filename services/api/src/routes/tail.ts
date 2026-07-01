@@ -5,6 +5,7 @@ import { insertAuditEvent } from '../db/audit-queries.js'
 import type { DbClient } from '../db/client.js'
 import { AppError, unauthorized } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
+import { getInternalEvents } from '../internal-events/emitter.js'
 import { respond } from '../lib/respond.js'
 import { getTenantId } from '../middleware/auth.js'
 import { getClientIp } from '../middleware/client-ip.js'
@@ -339,8 +340,17 @@ export function tailSseRoute(deps: TailDeps): Router {
         details: JSON.stringify({ reason }),
         durationMs,
         eventsStreamed,
-      }).catch(() => {
-        /* audit write failure must not crash cleanup */
+      }).catch((err) => {
+        // Fire-and-forget but visible (matches api-keys.ts): a lost tail.disconnect
+        // audit row must not vanish silently. Log + emit to internal_events.
+        deps.logger.warn({ err, keyId }, 'tail.disconnect audit insert failed')
+        getInternalEvents().emit({
+          event: 'audit.insert_failed',
+          severity: 'error',
+          code: 'AUDIT_INSERT_FAILED',
+          summary: 'audit row could not be inserted',
+          fields: { action: 'tail.disconnect', tenant_id: resolvedTenantId, key_id: keyId },
+        })
       })
 
       try {
@@ -367,8 +377,15 @@ export function tailSseRoute(deps: TailDeps): Router {
       action: 'tail.connect',
       sourceIp: getClientIp(req),
       details: JSON.stringify(filters),
-    }).catch(() => {
-      /* audit write failure must not crash the connection */
+    }).catch((err) => {
+      deps.logger.warn({ err, keyId }, 'tail.connect audit insert failed')
+      getInternalEvents().emit({
+        event: 'audit.insert_failed',
+        severity: 'error',
+        code: 'AUDIT_INSERT_FAILED',
+        summary: 'audit row could not be inserted',
+        fields: { action: 'tail.connect', tenant_id: resolvedTenantId, key_id: keyId },
+      })
     })
   })
 

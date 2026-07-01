@@ -347,15 +347,21 @@ export function createApp(deps: AppDependencies): CreatedApp {
       logger: deps.logger,
     }),
   )
-  v1.use(
-    connectorRoutes({
-      db: deps.db,
-      logger: deps.logger,
-      encryptionKey: deps.config.encryptionKey,
-      awsAccountId: deps.config.awsAccountId,
-      s3CfnTemplateUrl: deps.config.s3CfnTemplateUrl,
-    }),
-  )
+  // Connectors encrypt/decrypt their stored config, so they only mount when an
+  // encryption key is configured — without it the feature can't function.
+  if (deps.config.encryptionKey) {
+    v1.use(
+      connectorRoutes({
+        db: deps.db,
+        logger: deps.logger,
+        encryptionKey: deps.config.encryptionKey,
+        awsAccountId: deps.config.awsAccountId,
+        s3CfnTemplateUrl: deps.config.s3CfnTemplateUrl,
+      }),
+    )
+  } else {
+    deps.logger.warn('Connector routes disabled — LOGWEAVE_ENCRYPTION_KEY not set')
+  }
   v1.use(
     tagRoutes({
       db: deps.db,

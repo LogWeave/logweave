@@ -27,7 +27,8 @@ import { uuidv7 } from '../uuid.js'
 export interface ConnectorDeps {
   db: DbClient
   logger: pino.Logger
-  encryptionKey?: string
+  /** Required: connectors encrypt/decrypt their stored config with this key. */
+  encryptionKey: string
   /** LogWeave's AWS account ID (the trusted principal in CFN trust policies). */
   awsAccountId?: string
   /** Public HTTPS URL of the S3 connector CFN template. */
@@ -337,11 +338,6 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
 
       const config = JSON.parse(await decrypt(row.config, deps.encryptionKey)) as ConnectorConfig
       const adapter = getAdapter(config.type)
-      // decrypt above already required deps.encryptionKey to be set; the
-      // narrowing for sessionNameSecret is a safety net, not a real branch.
-      if (!deps.encryptionKey) {
-        throw new Error('encryptionKey is required to test connectors')
-      }
       const result = await adapter.testConnection(config, {
         tenantId,
         connectorId,
