@@ -107,6 +107,40 @@ describe('ArchiveCompactionSweep.compactOnce', () => {
     assert.deepEqual(repoints[0]?.old_keys.sort(), [`${part}a.log.gz`, `${part}b.log.gz`])
   })
 
+  it('never deletes an original that reads empty — only merges readable objects', async () => {
+    const part = partitionPrefix('t1', 'svc', HOURS_AGO(25))
+    const { store, adapter } = fakeStore({
+      [`${part}a.log.gz`]: [{ event_id: 'e1' }],
+      [`${part}b.log.gz`]: [{ event_id: 'e2' }],
+      [`${part}empty.log.gz`]: [], // unreadable/empty — must survive
+    })
+    const { db, repoints } = fakeDb()
+
+    const res = await build(adapter, db).compactOnce()
+
+    assert.equal(res.objectsRemoved, 2, 'only the two readable objects merged')
+    assert.equal(store.has(`${part}empty.log.gz`), true, 'the empty object is NOT deleted')
+    assert.equal(store.has(`${part}a.log.gz`), false)
+    assert.equal(store.has(`${part}b.log.gz`), false)
+    assert.equal(compactedKeys(store).length, 1)
+    // The empty object's key is never repointed either.
+    assert.deepEqual(repoints[0]?.old_keys.sort(), [`${part}a.log.gz`, `${part}b.log.gz`])
+  })
+
+  it('skips the partition when fewer than two objects are readable', async () => {
+    const part = partitionPrefix('t1', 'svc', HOURS_AGO(25))
+    const { store, adapter } = fakeStore({
+      [`${part}a.log.gz`]: [{ event_id: 'e1' }],
+      [`${part}empty.log.gz`]: [], // only one readable → nothing to merge
+    })
+    const { db } = fakeDb()
+    const res = await build(adapter, db).compactOnce()
+    assert.equal(res.partitionsCompacted, 0)
+    assert.equal(store.has(`${part}a.log.gz`), true, 'readable object retained')
+    assert.equal(store.has(`${part}empty.log.gz`), true, 'empty object retained')
+    assert.equal(compactedKeys(store).length, 0)
+  })
+
   it('skips a partition with fewer than minObjects', async () => {
     const part = partitionPrefix('t1', 'svc', HOURS_AGO(25))
     const { store, adapter } = fakeStore({ [`${part}only.log.gz`]: [{ event_id: 'e1' }] })

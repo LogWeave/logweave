@@ -155,9 +155,11 @@ export class ArchiveCompactionSweep {
     for (const [prefix, originals] of partitions) {
       if (originals.length < this.minObjects) continue
       if (!this.isClosed(prefix)) continue
-      await this.compactPartition(tenantId, prefix, originals)
-      result.partitionsCompacted++
-      result.objectsRemoved += originals.length
+      const removed = await this.compactPartition(tenantId, prefix, originals)
+      if (removed > 0) {
+        result.partitionsCompacted++
+        result.objectsRemoved += removed
+      }
     }
     return result
   }
@@ -172,16 +174,26 @@ export class ArchiveCompactionSweep {
     return Date.now() - hourEnd > this.safetyLagMs
   }
 
+  /** Returns the number of originals merged away (0 if the partition was skipped). */
   private async compactPartition(
     tenantId: string,
     prefix: string,
     originals: string[],
-  ): Promise<void> {
-    // 1. Read + dedupe by event_id (events without one are always kept).
+  ): Promise<number> {
+    // 1. Read + dedupe by event_id (events without one are always kept). CRITICAL
+    // no-loss rule: only an object that actually yields events is a candidate for
+    // deletion. An original that reads empty (0-byte, all-corrupt lines, or a
+    // transient read that returns []) is LEFT IN PLACE — never deleted without
+    // its bytes being in the compacted object. (A GET *failure* throws and aborts
+    // the whole partition before anything is written or deleted.)
     const seen = new Set<string>()
     const merged: unknown[] = []
+    const readKeys: string[] = []
     for (const key of originals) {
-      for (const event of await this.deps.adapter.fetchObjectEvents(this.deps.archiveConfig, key)) {
+      const events = await this.deps.adapter.fetchObjectEvents(this.deps.archiveConfig, key)
+      if (events.length === 0) continue // unreadable/empty — do NOT delete it
+      readKeys.push(key)
+      for (const event of events) {
         const id =
           typeof event === 'object' && event !== null
             ? (event as Record<string, unknown>).event_id
@@ -193,11 +205,12 @@ export class ArchiveCompactionSweep {
         merged.push(event)
       }
     }
-    if (merged.length === 0) return // nothing readable — leave originals alone
+    if (readKeys.length < 2) return 0 // fewer than two readable objects — not worth merging
 
-    // 2. PUT the compacted object at a deterministic key (idempotent re-runs).
+    // 2. PUT the compacted object at a key deterministic in the READ set (so a
+    // crash-retry over the same readable objects rebuilds the identical object).
     const hash = createHash('sha256')
-      .update([...originals].sort().join('\n'))
+      .update([...readKeys].sort().join('\n'))
       .digest('hex')
       .slice(0, 16)
     const compactedKey = `${prefix}${COMPACTED_MARKER}${hash}.log.gz`
@@ -205,8 +218,10 @@ export class ArchiveCompactionSweep {
     const body = await gzipAsync(Buffer.from(ndjson))
     await this.deps.adapter.putObject(this.deps.archiveConfig, compactedKey, body)
 
-    // 3. Repoint source_refs (synchronous), THEN 4. delete originals.
-    await repointSourceRefs(this.deps.db, tenantId, originals, compactedKey)
-    await this.deps.adapter.deleteObjects(this.deps.archiveConfig, originals)
+    // 3. Repoint source_refs of ONLY the merged objects (synchronous), THEN
+    // 4. delete just those originals. Unreadable ones keep their own rows/objects.
+    await repointSourceRefs(this.deps.db, tenantId, readKeys, compactedKey)
+    await this.deps.adapter.deleteObjects(this.deps.archiveConfig, readKeys)
+    return readKeys.length
   }
 }
