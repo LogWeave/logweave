@@ -33,6 +33,7 @@ import {
 } from '../db/archive-reconcile-queries.js'
 import type { DbClient } from '../db/client.js'
 import type { EmitInput } from '../internal-events/emitter.js'
+import { COMPACTED_MARKER } from './compaction-sweep.js'
 import type { ArchiveNotifyQueue } from './notify-queue.js'
 
 interface ObjectLister {
@@ -144,11 +145,17 @@ export class ArchiveReconcileSweep {
 
   private async reconcileTenant(tenantId: string): Promise<{ listed: number; missing: number }> {
     const cursor = await getReconcileCursor(this.deps.db, tenantId)
-    const { keys } = await this.deps.adapter.listObjectKeys(
+    const { keys: allKeys } = await this.deps.adapter.listObjectKeys(
       this.deps.archiveConfig,
       `tenant=${tenantId}/`,
       cursor || undefined,
       this.maxKeysPerSweep,
+    )
+    // Skip compacted objects (#284): their events are already represented by
+    // repointed rows, so reconciling them would (in the PUT→repoint window)
+    // re-ingest the compacted object and duplicate event_id-less rows.
+    const keys = allKeys.filter(
+      (k) => !k.slice(k.lastIndexOf('/') + 1).startsWith(COMPACTED_MARKER),
     )
     if (keys.length === 0) return { listed: 0, missing: 0 }
 

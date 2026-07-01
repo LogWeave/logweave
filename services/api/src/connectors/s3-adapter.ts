@@ -454,12 +454,21 @@ export class S3Adapter implements LogSourceAdapter {
     const client = await this.createClient(config, undefined)
     for (let i = 0; i < keys.length; i += 1000) {
       const chunk = keys.slice(i, i + 1000)
-      await client.send(
+      const res = await client.send(
         new DeleteObjectsCommand({
           Bucket: config.bucket,
           Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
         }),
       )
+      // DeleteObjects returns 200 even when individual keys fail (Quiet omits the
+      // successes). Surface partial failures so the caller doesn't silently leave
+      // orphaned originals or overstate how many were removed.
+      if (res.Errors && res.Errors.length > 0) {
+        const first = res.Errors[0]
+        throw new Error(
+          `DeleteObjects failed for ${res.Errors.length} key(s): ${first?.Key} (${first?.Code})`,
+        )
+      }
     }
   }
 

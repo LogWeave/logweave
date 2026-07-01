@@ -30,8 +30,13 @@ import type { DbClient } from '../db/client.js'
 
 const gzipAsync = promisify(gzip)
 
-/** Marks a compacted object so the sweep never re-compacts its own output. */
-const COMPACTED_MARKER = '_compacted-'
+/**
+ * Filename prefix marking a compacted object. Compaction never re-compacts its
+ * own output, and the reconciliation sweep (#279) skips these too — their events
+ * are already represented by repointed rows, so they must never be independently
+ * re-ingested.
+ */
+export const COMPACTED_MARKER = '_compacted-'
 
 interface CompactionAdapter {
   listObjectKeys(
