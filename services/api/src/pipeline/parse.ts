@@ -80,7 +80,9 @@ export class JsonLogParser implements LogParser {
 
       if (coerce === 'number') {
         const num = Number(raw)
-        if (!Number.isNaN(num)) {
+        // Number.isFinite (not !isNaN) to reject Infinity/-Infinity, matching
+        // the twin GenericLogParser (parse-generic.ts).
+        if (Number.isFinite(num)) {
           ;(fields as Record<string, unknown>)[output] = num
         }
       } else {
