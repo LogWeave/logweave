@@ -67,7 +67,7 @@ export function watchRoutes(deps: WatchDeps): Router {
   router.delete('/watches/:templateId', requireAdmin, async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
-      const { templateId } = req.params
+      const templateId = req.params.templateId as string
       if (templateId) {
         // Only record the audit event when a watch was actually removed —
         // a no-op delete (unknown id) must not forge a deletion entry in the
