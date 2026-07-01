@@ -97,6 +97,23 @@ describe('ArchiveReconcileSweep.reconcileOnce', () => {
     assert.deepEqual(enqueuedRefs(queue), ['tenant=t1/c', 'tenant=t1/d'])
   })
 
+  it('never enqueues compacted objects (#284) even when they look missing', async () => {
+    const { sweep, queue } = build({
+      keys: [
+        'tenant=t1/svc/date=2026-06-30/hour=00/obj-a.log.gz',
+        'tenant=t1/svc/date=2026-06-30/hour=00/_compacted-deadbeef.log.gz',
+      ],
+      existing: [], // both absent from log_metadata
+    })
+    await sweep.reconcileOnce()
+    const refs = enqueuedRefs(queue)
+    assert.ok(
+      !refs.some((r) => r.includes('_compacted-')),
+      'a compacted object must never be reconciled (its rows are already repointed)',
+    )
+    assert.deepEqual(refs, ['tenant=t1/svc/date=2026-06-30/hour=00/obj-a.log.gz'])
+  })
+
   it('advances the watermark to the last key when nothing is missing', async () => {
     const { sweep, queue, cursorWrites } = build({
       keys: ['tenant=t1/a', 'tenant=t1/b'],

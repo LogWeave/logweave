@@ -236,7 +236,13 @@ const tailBuffer = new TailBuffer()
 tailBuffer.start()
 const eventBus = new LocalEventBus(tailBuffer, settingsStore)
 
-const { app, tailTokenStore, archiveNotifyConsumer, archiveReconcileSweep } = createApp({
+const {
+  app,
+  tailTokenStore,
+  archiveNotifyConsumer,
+  archiveReconcileSweep,
+  archiveCompactionSweep,
+} = createApp({
   config,
   logger,
   db,
@@ -314,6 +320,16 @@ const server = app.listen(config.port, () => {
     logger.info('Archive reconciliation sweep disabled (LOGWEAVE_ARCHIVE_RECONCILE_ENABLED=false)')
   }
 
+  if (config.archiveCompactionEnabled) {
+    if (archiveCompactionSweep) {
+      archiveCompactionSweep.start()
+    } else {
+      logger.warn('Archive compaction enabled but no archive bucket configured — sweep not started')
+    }
+  } else {
+    logger.info('Archive compaction sweep disabled (LOGWEAVE_ARCHIVE_COMPACTION_ENABLED=false)')
+  }
+
   anomalyScorer.start()
   alertEvaluator.start()
   thresholdEvaluator.start()
@@ -351,6 +367,7 @@ async function shutdown(signal: string): Promise<void> {
   await retention.stop()
   await archiveNotifyConsumer?.stop()
   await archiveReconcileSweep?.stop()
+  await archiveCompactionSweep?.stop()
   // Stop tail-related background timers (token cleanup, buffer eviction)
   tailTokenStore.stop()
   tailBuffer.stop()

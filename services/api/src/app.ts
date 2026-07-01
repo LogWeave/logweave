@@ -5,6 +5,7 @@ import express, { Router } from 'express'
 import helmet from 'helmet'
 import type pino from 'pino'
 import { type Options as PinoHttpOptions, pinoHttp } from 'pino-http'
+import { ArchiveCompactionSweep } from './archive/compaction-sweep.js'
 import { ArchiveNotifyConsumer } from './archive/notify-consumer.js'
 import { ArchiveNotifyQueue } from './archive/notify-queue.js'
 import { ArchiveReconcileSweep } from './archive/reconcile-sweep.js'
@@ -86,6 +87,8 @@ export interface CreatedApp {
   archiveNotifyConsumer?: ArchiveNotifyConsumer
   /** Reconciliation sweep (#279); present only when an archive bucket is set. */
   archiveReconcileSweep?: ArchiveReconcileSweep
+  /** Compaction sweep (#284); present only when an archive bucket is set. */
+  archiveCompactionSweep?: ArchiveCompactionSweep
 }
 
 export function createApp(deps: AppDependencies): CreatedApp {
@@ -383,6 +386,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
   // an archive bucket is configured. Started here; index.ts stops it on shutdown.
   let archiveNotifyConsumer: ArchiveNotifyConsumer | undefined
   let archiveReconcileSweep: ArchiveReconcileSweep | undefined
+  let archiveCompactionSweep: ArchiveCompactionSweep | undefined
   if (archiveConfig) {
     archiveNotifyConsumer = new ArchiveNotifyConsumer({
       queue: archiveNotifyQueue,
@@ -407,6 +411,19 @@ export function createApp(deps: AppDependencies): CreatedApp {
         emitter: getInternalEvents(),
       },
       { intervalMs: deps.config.archiveReconcileIntervalMs },
+    )
+
+    // Compaction sweep (#284): merges small objects in closed partitions.
+    // index.ts starts/stops it, gated on its enable flag.
+    archiveCompactionSweep = new ArchiveCompactionSweep(
+      {
+        db: deps.db,
+        adapter: new S3Adapter(),
+        archiveConfig,
+        settingsStore: deps.settingsStore,
+        logger: deps.logger,
+      },
+      { intervalMs: deps.config.archiveCompactionIntervalMs },
     )
   }
 
@@ -463,5 +480,6 @@ export function createApp(deps: AppDependencies): CreatedApp {
     archiveNotifyQueue,
     archiveNotifyConsumer,
     archiveReconcileSweep,
+    archiveCompactionSweep,
   }
 }
