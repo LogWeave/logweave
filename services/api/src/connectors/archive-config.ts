@@ -25,8 +25,9 @@ export interface ArchiveConfigEnv {
  *
  * Auth: in production there is NO `roleArn` / static creds, so `S3Adapter`
  * falls through to the default credential chain — i.e. the EC2 instance role
- * that already has `s3:PutObject`/`ListBucket` on this bucket (network.yml).
- * In dev, `endpoint` + static creds point it at Floci, path-style.
+ * that has `s3:Put/Get/DeleteObject` + `ListBucket` on this bucket (network.yml;
+ * Get/Delete are for the compaction sweep, #284). In dev, `endpoint` + static
+ * creds point it at Floci, path-style.
  *
  * `logFormat: 'jsonl'` + `compression: 'gzip'` match what Vector writes
  * (newline-delimited JSON, gzip, `.log.gz`); the line-scanner extracts the

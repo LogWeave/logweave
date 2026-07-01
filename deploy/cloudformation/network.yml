@@ -189,11 +189,14 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              # Vector writes (and re-PUTs on replay) archive objects. No
-              # delete/read needed for archiving; least-privilege.
+              # Vector writes (and re-PUTs on replay) archive objects. The API's
+              # compaction sweep (#284) also GETs originals, PUTs the merged
+              # object, and DELETEs the originals — scoped to this bucket only.
               - Effect: Allow
                 Action:
                   - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
                   - s3:AbortMultipartUpload
                 Resource: !Sub "${ArchiveBucket.Arn}/*"
               - Effect: Allow
