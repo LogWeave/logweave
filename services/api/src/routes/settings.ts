@@ -5,7 +5,7 @@ import type { DbClient } from '../db/client.js'
 import { AppError } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { respond } from '../lib/respond.js'
-import { getTenantId, requireAdminForWrites } from '../middleware/auth.js'
+import { getTenantId, requireAdmin } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
 import { sendSlackTestMessage } from '../watches/slack-observer.js'
@@ -31,8 +31,10 @@ export function settingsRoutes(deps: SettingsDeps): Router {
   const router = Router()
 
   // State-changing settings (Slack webhook, clustering, tags, cost thresholds,
-  // …) are admin-only; viewers keep read access to the GET routes.
-  router.use(requireAdminForWrites)
+  // …) are admin-only; viewers keep read access to the GET routes. The guard is
+  // applied per write route rather than via `router.use`, because this router is
+  // mounted path-less under /v1 — a router-level guard would run for every /v1
+  // request, not just these routes (LW-281 F1).
 
   // GET /settings/slack -- returns config status (never exposes the URL)
   router.get('/settings/slack', async (_req, res, next) => {
@@ -51,22 +53,27 @@ export function settingsRoutes(deps: SettingsDeps): Router {
   })
 
   // POST /settings/slack -- store webhook URL
-  router.post('/settings/slack', validateBody(slackWebhookSchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const body = req.body as z.infer<typeof slackWebhookSchema>
+  router.post(
+    '/settings/slack',
+    requireAdmin,
+    validateBody(slackWebhookSchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const body = req.body as z.infer<typeof slackWebhookSchema>
 
-      await deps.settingsStore.set(tenantId, { slackWebhookUrl: body.webhookUrl })
-      deps.logger.info({ tenantId }, 'Slack webhook configured')
+        await deps.settingsStore.set(tenantId, { slackWebhookUrl: body.webhookUrl })
+        deps.logger.info({ tenantId }, 'Slack webhook configured')
 
-      respond(res, { configured: true })
-    } catch (err) {
-      next(err)
-    }
-  })
+        respond(res, { configured: true })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   // DELETE /settings/slack -- remove webhook config
-  router.delete('/settings/slack', async (_req, res, next) => {
+  router.delete('/settings/slack', requireAdmin, async (_req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       await deps.settingsStore.clearSlack(tenantId)
@@ -108,22 +115,27 @@ export function settingsRoutes(deps: SettingsDeps): Router {
       .max(20, 'Maximum 20 tag keys'),
   })
 
-  router.put('/settings/tags', validateBody(extractTagsSchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const body = req.body as z.infer<typeof extractTagsSchema>
+  router.put(
+    '/settings/tags',
+    requireAdmin,
+    validateBody(extractTagsSchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const body = req.body as z.infer<typeof extractTagsSchema>
 
-      await deps.settingsStore.set(tenantId, { extractTags: body.extractTags })
-      deps.logger.info(
-        { tenantId, tagCount: body.extractTags.length },
-        'Tag extraction keys updated',
-      )
+        await deps.settingsStore.set(tenantId, { extractTags: body.extractTags })
+        deps.logger.info(
+          { tenantId, tagCount: body.extractTags.length },
+          'Tag extraction keys updated',
+        )
 
-      respond(res, { extractTags: body.extractTags })
-    } catch (err) {
-      next(err)
-    }
-  })
+        respond(res, { extractTags: body.extractTags })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   // GET /settings/onboarding-status -- lightweight onboarding progress check
   router.get('/settings/onboarding-status', async (_req, res, next) => {
@@ -158,7 +170,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
   })
 
   // POST /settings/onboarding/dismiss -- mark onboarding as dismissed
-  router.post('/settings/onboarding/dismiss', async (_req, res, next) => {
+  router.post('/settings/onboarding/dismiss', requireAdmin, async (_req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const settings = deps.settingsStore.get(tenantId)
@@ -181,22 +193,27 @@ export function settingsRoutes(deps: SettingsDeps): Router {
     sensitivity: z.number().min(0.2).max(0.8),
   })
 
-  router.put('/settings/clustering', validateBody(clusteringSchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const body = req.body as z.infer<typeof clusteringSchema>
+  router.put(
+    '/settings/clustering',
+    requireAdmin,
+    validateBody(clusteringSchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const body = req.body as z.infer<typeof clusteringSchema>
 
-      await deps.settingsStore.set(tenantId, { clusteringSensitivity: body.sensitivity })
-      deps.logger.info(
-        { tenantId, sensitivity: body.sensitivity },
-        'Clustering sensitivity updated',
-      )
+        await deps.settingsStore.set(tenantId, { clusteringSensitivity: body.sensitivity })
+        deps.logger.info(
+          { tenantId, sensitivity: body.sensitivity },
+          'Clustering sensitivity updated',
+        )
 
-      respond(res, { sensitivity: body.sensitivity })
-    } catch (err) {
-      next(err)
-    }
-  })
+        respond(res, { sensitivity: body.sensitivity })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   // GET /settings/clustering -- get current clustering sensitivity
   router.get('/settings/clustering', async (_req, res, next) => {
@@ -217,6 +234,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
   router.post(
     '/settings/clustering/preview',
+    requireAdmin,
     validateBody(previewSchema),
     async (req, res, next) => {
       try {
@@ -284,25 +302,30 @@ export function settingsRoutes(deps: SettingsDeps): Router {
     sensitivity: z.number().min(0.2).max(0.8),
   })
 
-  router.post('/settings/clustering/reset', validateBody(resetSchema), async (req, res, next) => {
-    try {
-      const tenantId = getTenantId(res)
-      const body = req.body as z.infer<typeof resetSchema>
+  router.post(
+    '/settings/clustering/reset',
+    requireAdmin,
+    validateBody(resetSchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const body = req.body as z.infer<typeof resetSchema>
 
-      await deps.settingsStore.set(tenantId, { clusteringSensitivity: body.sensitivity })
+        await deps.settingsStore.set(tenantId, { clusteringSensitivity: body.sensitivity })
 
-      let cleared = false
-      if (deps.clusterClient) {
-        cleared = await deps.clusterClient.resetTenant(tenantId)
+        let cleared = false
+        if (deps.clusterClient) {
+          cleared = await deps.clusterClient.resetTenant(tenantId)
+        }
+
+        deps.logger.info({ tenantId, sensitivity: body.sensitivity, cleared }, 'Clustering reset')
+
+        respond(res, { sensitivity: body.sensitivity, cleared })
+      } catch (err) {
+        next(err)
       }
-
-      deps.logger.info({ tenantId, sensitivity: body.sensitivity, cleared }, 'Clustering reset')
-
-      respond(res, { sensitivity: body.sensitivity, cleared })
-    } catch (err) {
-      next(err)
-    }
-  })
+    },
+  )
 
   // GET /settings/cost-thresholds -- returns cost optimizer thresholds or defaults
   router.get('/settings/cost-thresholds', async (_req, res, next) => {
@@ -333,6 +356,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
   router.put(
     '/settings/cost-thresholds',
+    requireAdmin,
     validateBody(costThresholdsSchema),
     async (req, res, next) => {
       try {
@@ -361,7 +385,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
   )
 
   // POST /settings/slack/test -- send test message
-  router.post('/settings/slack/test', async (_req, res, next) => {
+  router.post('/settings/slack/test', requireAdmin, async (_req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const webhookUrl = deps.settingsStore.getSlackUrl(tenantId)
@@ -411,6 +435,7 @@ export function settingsRoutes(deps: SettingsDeps): Router {
 
   router.put(
     '/settings/spike-baseline',
+    requireAdmin,
     validateBody(spikeBaselineSchema),
     async (req, res, next) => {
       try {

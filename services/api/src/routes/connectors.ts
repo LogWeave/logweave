@@ -38,6 +38,24 @@ export interface ConnectorDeps {
 // Validation schemas
 // ---------------------------------------------------------------------------
 
+// SSRF prevention (create-time, host-string check). Fast feedback only; for the
+// Loki/Elasticsearch URLs the authoritative guard runs at fetch-time in
+// safe-fetch.ts, which resolves DNS and re-validates every redirect against the
+// resolved IP. Internal targets are blocked unless explicitly allowlisted via
+// LOGWEAVE_CONNECTOR_ALLOWED_HOSTS — there is no NODE_ENV bypass. The S3
+// `endpoint` reuses this create-time check; it reaches S3 through the AWS SDK
+// (its own DNS), so it does not get the fetch-time rebinding guard — production
+// should use IAM AssumeRole rather than a custom endpoint.
+function externalUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    if (defaultAllowedHosts().has(u.hostname.toLowerCase())) return true
+    return !isBlockedHostname(u.hostname)
+  } catch {
+    return false
+  }
+}
+
 const s3ConfigSchema = z
   .object({
     type: z.literal('s3'),
@@ -57,25 +75,27 @@ const s3ConfigSchema = z
       .max(2048)
       .optional(),
     externalId: z.string().min(16).max(256).optional(),
-    // endpoint, forcePathStyle, accessKeyId, secretAccessKey — dev only,
-    // for pointing at an S3-compatible emulator like Floci. Blocked in
-    // production (SSRF risk — see ADR-010).
-    endpoint: z.string().url().optional(),
+    // endpoint, forcePathStyle, accessKeyId, secretAccessKey — for pointing at
+    // an S3-compatible emulator like Floci/MinIO. The endpoint host is
+    // SSRF-validated (same check as the Loki/ES URLs) rather than gated on
+    // NODE_ENV: an unset NODE_ENV under the base docker-compose used to let
+    // internal targets through (LW-281 F2). Production normally uses IAM
+    // AssumeRole (no endpoint) — see ADR-010.
+    endpoint: z
+      .string()
+      .url()
+      .max(1024)
+      .refine(externalUrl, {
+        message:
+          'endpoint must point to an external host. Loopback, link-local, and private ranges are ' +
+          'blocked (SSRF prevention); allowlist a host with LOGWEAVE_CONNECTOR_ALLOWED_HOSTS for ' +
+          'local development (e.g. a Floci/MinIO emulator).',
+      })
+      .optional(),
     forcePathStyle: z.boolean().optional(),
     accessKeyId: z.string().max(128).optional(),
     secretAccessKey: z.string().max(128).optional(),
   })
-  .refine(
-    (c) => {
-      // endpoint only allowed in dev mode (SSRF prevention — see ADR-010)
-      if (c.endpoint && process.env.NODE_ENV === 'production') return false
-      return true
-    },
-    {
-      message:
-        'Custom endpoint is not allowed in production (SSRF risk). Use IAM AssumeRole instead.',
-    },
-  )
   .refine(
     (c) => {
       // secretAccessKey only allowed with endpoint (dev mode)
@@ -108,21 +128,6 @@ const s3ConfigSchema = z
     },
     { message: 'roleArn and endpoint are mutually exclusive — use one or the other' },
   )
-
-// SSRF prevention (create-time, host-string check). This is fast feedback only;
-// the authoritative guard runs at fetch-time in safe-fetch.ts, which resolves
-// DNS and re-validates every redirect against the resolved IP. Internal targets
-// are blocked unless explicitly allowlisted via LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
-// — there is no NODE_ENV bypass.
-function externalUrl(url: string): boolean {
-  try {
-    const u = new URL(url)
-    if (defaultAllowedHosts().has(u.hostname.toLowerCase())) return true
-    return !isBlockedHostname(u.hostname)
-  } catch {
-    return false
-  }
-}
 
 const externalUrlSchema = z
   .string()

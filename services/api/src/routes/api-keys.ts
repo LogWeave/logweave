@@ -39,10 +39,14 @@ const createKeySchema = z.object({
 export function apiKeyRoutes(deps: ApiKeyRoutesDeps): Router {
   const router = Router()
 
-  router.use(requireAdmin)
+  // Every api-keys route is admin-only — including the GET, which lists key
+  // metadata. The guard is applied per route rather than via `router.use`,
+  // because this router is mounted path-less under /v1 — a router-level guard
+  // would run for every /v1 request and 403 viewers on unrelated routes mounted
+  // after it, even their GET reads (LW-281 F1, same bug class).
 
   // POST /api-keys — create a new key. Returns the raw key once.
-  router.post('/api-keys', validateBody(createKeySchema), async (req, res, next) => {
+  router.post('/api-keys', requireAdmin, validateBody(createKeySchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const createdBy = getKeyId(res)
@@ -96,7 +100,7 @@ export function apiKeyRoutes(deps: ApiKeyRoutesDeps): Router {
   })
 
   // GET /api-keys — list active keys for the tenant. No raw key, no hash.
-  router.get('/api-keys', async (_req, res, next) => {
+  router.get('/api-keys', requireAdmin, async (_req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const keys = await deps.apiKeyStore.list(tenantId)
@@ -107,7 +111,7 @@ export function apiKeyRoutes(deps: ApiKeyRoutesDeps): Router {
   })
 
   // DELETE /api-keys/:keyId — revoke. Tenant-scoped — the store enforces this.
-  router.delete('/api-keys/:keyId', async (req, res, next) => {
+  router.delete('/api-keys/:keyId', requireAdmin, async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const revokedBy = getKeyId(res)

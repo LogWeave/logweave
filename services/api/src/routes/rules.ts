@@ -7,7 +7,7 @@ import { AppError, notFound } from '../errors.js'
 import { HttpStatus } from '../http-status.js'
 import { recordAuditEvent } from '../lib/audit.js'
 import { respond } from '../lib/respond.js'
-import { getKeyId, getTenantId, requireAdminForWrites } from '../middleware/auth.js'
+import { getKeyId, getTenantId, requireAdmin } from '../middleware/auth.js'
 import { getClientIp } from '../middleware/client-ip.js'
 import { validateBody } from '../middleware/validate.js'
 import { getQuery, validateQuery } from '../middleware/validate-query.js'
@@ -184,11 +184,13 @@ export function ruleRoutes(deps: RuleDeps): Router {
   const router = Router()
 
   // Creating, updating and deleting alert rules is admin-only; viewers keep
-  // read access to GET /rules and GET /alerts.
-  router.use(requireAdminForWrites)
+  // read access to GET /rules and GET /alerts. The guard is applied per write
+  // route rather than via `router.use`, because this router is mounted
+  // path-less under /v1 — a router-level guard would run for every /v1
+  // request, not just these routes (LW-281 F1).
 
   // POST /rules — create a rule
-  router.post('/rules', validateBody(createRuleSchema), async (req, res, next) => {
+  router.post('/rules', requireAdmin, validateBody(createRuleSchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const body = req.body as CreateRuleBody
@@ -246,7 +248,7 @@ export function ruleRoutes(deps: RuleDeps): Router {
   })
 
   // PUT /rules/:id — update a rule
-  router.put('/rules/:id', validateBody(updateRuleSchema), async (req, res, next) => {
+  router.put('/rules/:id', requireAdmin, validateBody(updateRuleSchema), async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const ruleId = req.params.id as string
@@ -295,19 +297,23 @@ export function ruleRoutes(deps: RuleDeps): Router {
   })
 
   // DELETE /rules/:id — delete a rule
-  router.delete('/rules/:id', async (req, res, next) => {
+  router.delete('/rules/:id', requireAdmin, async (req, res, next) => {
     try {
       const tenantId = getTenantId(res)
       const ruleId = req.params.id as string
-      await deps.ruleStore.remove(tenantId, ruleId)
-
-      recordAuditEvent(deps, {
-        tenantId,
-        keyId: getKeyId(res),
-        action: 'rule.delete',
-        sourceIp: getClientIp(req),
-        details: JSON.stringify({ ruleId }),
-      })
+      // Only record the audit event when a rule was actually removed — a no-op
+      // delete (unknown id) must not forge a deletion entry in the SOC2 audit
+      // trail (LW-281 F6).
+      const removed = await deps.ruleStore.remove(tenantId, ruleId)
+      if (removed) {
+        recordAuditEvent(deps, {
+          tenantId,
+          keyId: getKeyId(res),
+          action: 'rule.delete',
+          sourceIp: getClientIp(req),
+          details: JSON.stringify({ ruleId }),
+        })
+      }
 
       res.status(HttpStatus.NO_CONTENT).end()
     } catch (err) {

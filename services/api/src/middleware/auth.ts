@@ -237,25 +237,18 @@ export function getRole(res: Response): string {
   return typeof res.locals[ROLE_KEY] === 'string' ? (res.locals[ROLE_KEY] as string) : 'viewer'
 }
 
-/** Middleware: rejects non-admin sessions with 403. API keys are always admin. */
+/**
+ * Middleware: rejects non-admin sessions with 403. API keys are always admin.
+ *
+ * Apply this per write route (POST/PUT/DELETE). The routers in this service are
+ * mounted path-less under /v1, so a router-level `router.use(requireAdmin…)`
+ * would run for every /v1 request, not just the router's own routes — see the
+ * LW-281 F1 regression. Per-route guards keep the admin gate scoped correctly.
+ */
 export const requireAdmin: RequestHandler = (_req, res, next): void => {
   if (getRole(res) !== 'admin') {
     next(forbidden('Admin role required'))
     return
   }
   next()
-}
-
-/**
- * Middleware: requires admin for any state-changing request, leaving reads open
- * to viewers. Mount with `router.use(...)` so every non-GET route on the router
- * is admin-by-default — new write routes are protected without remembering to
- * add a guard. API keys are always admin. HEAD is treated as a read.
- */
-export const requireAdminForWrites: RequestHandler = (req, res, next): void => {
-  if (req.method === 'GET' || req.method === 'HEAD') {
-    next()
-    return
-  }
-  requireAdmin(req, res, next)
 }
