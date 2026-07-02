@@ -70,6 +70,11 @@ describe('S3Adapter integration (Floci)', async () => {
     flociUp = await isFlociUp()
     if (!flociUp) return
 
+    // The adapter now SSRF-guards tenant-endpoint DNS at connect time (#286); the
+    // dev/Floci endpoint resolves to an internal IP, so allow its host (mirrors
+    // LOGWEAVE_CONNECTOR_ALLOWED_HOSTS in the dev compose) or the guard blocks it.
+    process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS = new URL(FLOCI_ENDPOINT).hostname
+
     s3 = new S3Client({
       endpoint: FLOCI_ENDPOINT,
       region: REGION,
@@ -151,6 +156,7 @@ describe('S3Adapter integration (Floci)', async () => {
     delete process.env.AWS_ENDPOINT_URL_S3
     delete process.env.AWS_ACCESS_KEY_ID
     delete process.env.AWS_SECRET_ACCESS_KEY
+    delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_HOSTS
   })
 
   // node:test's t.skip() marks the test as skipped but does NOT abort the

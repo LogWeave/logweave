@@ -175,7 +175,7 @@ export function defaultAllowedHosts(): Set<string> {
 // Guarded DNS lookup
 // ---------------------------------------------------------------------------
 
-type LookupFn = (
+export type LookupFn = (
   hostname: string,
   options: { all?: boolean; family?: number },
   callback: (
@@ -213,7 +213,7 @@ export function assertAddressesAllowed(
  * invokes lookup for DNS names — IP-literal hosts connect directly and are
  * guarded by the synchronous {@link isBlockedHostname} pre-check in safeFetch.
  */
-function makeGuardedLookup(allowedHosts: Set<string>): LookupFn {
+export function makeGuardedLookup(allowedHosts: Set<string>): LookupFn {
   return (hostname, options, callback) => {
     // Resolve every address so we can reject if any one of them is internal,
     // then answer in the shape node asked for.

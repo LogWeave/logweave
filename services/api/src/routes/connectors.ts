@@ -44,9 +44,10 @@ export interface ConnectorDeps {
 // safe-fetch.ts, which resolves DNS and re-validates every redirect against the
 // resolved IP. Internal targets are blocked unless explicitly allowlisted via
 // LOGWEAVE_CONNECTOR_ALLOWED_HOSTS — there is no NODE_ENV bypass. The S3
-// `endpoint` reuses this create-time check; it reaches S3 through the AWS SDK
-// (its own DNS), so it does not get the fetch-time rebinding guard — production
-// should use IAM AssumeRole rather than a custom endpoint.
+// `endpoint` reuses this create-time check AND, because it reaches S3 through
+// the AWS SDK (its own DNS), is additionally guarded at connect time via
+// connectors/guarded-s3.ts — the same resolved-IP rebinding guard as the Loki/ES
+// fetch path (#286). Production should still use IAM AssumeRole (no endpoint).
 function externalUrl(url: string): boolean {
   try {
     const u = new URL(url)
