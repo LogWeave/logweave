@@ -106,8 +106,15 @@ services:
       # Durable-archive ingest (epic #265): when set (requires the archive
       # bucket above), ingest forwards batches to Vector for S3 archival and the
       # async consumer clusters off the hot path, instead of clustering inline.
-      # Opt-in — default empty keeps the synchronous path.
+      # Opt-in — default empty keeps the synchronous path. Setting this AUTO-ENABLES
+      # the reconciliation sweep (#287): there is no real-time notify producer, so
+      # the sweep is the only writer that backfills forwarded objects into
+      # log_metadata — without it forwarded logs land in S3 but stay unqueryable.
       LOGWEAVE_VECTOR_ARCHIVE_URL: ${LOGWEAVE_VECTOR_ARCHIVE_URL:-}
+      # Archive reconciliation sweep (#279). Auto-forced on when the Vector URL
+      # above is set; set it here only to run the sweep as a standalone backstop
+      # without forwarding (e.g. drill-down bucket configured, sync ingest path).
+      LOGWEAVE_ARCHIVE_RECONCILE_ENABLED: ${LOGWEAVE_ARCHIVE_RECONCILE_ENABLED:-}
       # Forwarded to the clusterer's destructive endpoints; must match the
       # clusterer service value above.
       LOGWEAVE_INTERNAL_SECRET: ${LOGWEAVE_INTERNAL_SECRET:-}

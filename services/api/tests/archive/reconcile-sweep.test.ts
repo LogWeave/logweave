@@ -97,6 +97,46 @@ describe('ArchiveReconcileSweep.reconcileOnce', () => {
     assert.deepEqual(enqueuedRefs(queue), ['tenant=t1/c', 'tenant=t1/d'])
   })
 
+  it('sweeps a forward-only tenant present only in the api-key store (#287)', async () => {
+    // The tenant has no settings row (getAllTenantIds → []) but does have an API
+    // key — the exact "forward-only" case #287 must cover. Without the union its
+    // forwarded objects would never be listed and stay unqueryable.
+    const { db } = fakeDb({ existing: [] })
+    const queue = new ArchiveNotifyQueue()
+    const sweep = new ArchiveReconcileSweep({
+      db,
+      adapter: fakeAdapter(['tenant=t1/a', 'tenant=t1/b']),
+      archiveConfig,
+      queue,
+      settingsStore: { getAllTenantIds: () => [] },
+      apiKeyStore: { getAllTenantIds: () => ['t1'] },
+      logger,
+      emitter: { emit: () => {} },
+    })
+    const res = await sweep.reconcileOnce()
+    assert.equal(res.tenantsProcessed, 1)
+    assert.deepEqual(enqueuedRefs(queue), ['tenant=t1/a', 'tenant=t1/b'])
+  })
+
+  it('dedupes a tenant present in both settings and the api-key store (#287)', async () => {
+    const { db } = fakeDb({ existing: [] })
+    const queue = new ArchiveNotifyQueue()
+    const sweep = new ArchiveReconcileSweep({
+      db,
+      adapter: fakeAdapter(['tenant=t1/a']),
+      archiveConfig,
+      queue,
+      settingsStore: { getAllTenantIds: () => ['t1'] },
+      apiKeyStore: { getAllTenantIds: () => ['t1'] },
+      logger,
+      emitter: { emit: () => {} },
+    })
+    const res = await sweep.reconcileOnce()
+    // Unioned via a Set — the shared tenant is processed once, not twice.
+    assert.equal(res.tenantsProcessed, 1)
+    assert.deepEqual(enqueuedRefs(queue), ['tenant=t1/a'])
+  })
+
   it('never enqueues compacted objects (#284) even when they look missing', async () => {
     const { sweep, queue } = build({
       keys: [

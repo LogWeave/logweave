@@ -51,6 +51,12 @@ export interface ReconcileSweepDeps {
   archiveConfig: S3ConnectorConfig
   queue: ArchiveNotifyQueue
   settingsStore: { getAllTenantIds(): string[] }
+  /**
+   * Second tenant source (#287): tenants that can authenticate but may have no
+   * settings row yet (forward-only tenants). Unioned with settingsStore so their
+   * forwarded objects are swept. Optional — omit to sweep settings tenants only.
+   */
+  apiKeyStore?: { getAllTenantIds(): string[] }
   logger: pino.Logger
   /** Operator-feed emitter for the "behind by > threshold" alert. */
   emitter: { emit(input: EmitInput): void }
@@ -130,7 +136,11 @@ export class ArchiveReconcileSweep {
 
   async reconcileOnce(): Promise<ReconcileResult> {
     const result: ReconcileResult = { tenantsProcessed: 0, objectsListed: 0, missingEnqueued: 0 }
-    for (const tenantId of this.deps.settingsStore.getAllTenantIds()) {
+    // Union both tenant sources so forward-only tenants (an API key but no
+    // settings row) are swept too (#287); a Set dedupes tenants in both.
+    const tenantIds = new Set(this.deps.settingsStore.getAllTenantIds())
+    for (const id of this.deps.apiKeyStore?.getAllTenantIds() ?? []) tenantIds.add(id)
+    for (const tenantId of tenantIds) {
       result.tenantsProcessed++
       try {
         const tenantResult = await this.reconcileTenant(tenantId)

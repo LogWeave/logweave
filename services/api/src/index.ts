@@ -310,6 +310,16 @@ const server = app.listen(config.port, () => {
 
   if (config.archiveReconcileEnabled) {
     if (archiveReconcileSweep) {
+      // Surface the fail-safe override (#287): if an operator set the flag to
+      // 'false' but the forward path forced it on, say so — otherwise they'd
+      // expect the sweep off and get no signal it is running.
+      if (config.vectorArchiveUrl && process.env.LOGWEAVE_ARCHIVE_RECONCILE_ENABLED === 'false') {
+        logger.warn(
+          'Archive reconciliation was forced on: LOGWEAVE_VECTOR_ARCHIVE_URL is set, so the ' +
+            'sweep is the only writer that backfills forwarded objects into log_metadata. ' +
+            'The explicit LOGWEAVE_ARCHIVE_RECONCILE_ENABLED=false is overridden (#287).',
+        )
+      }
       archiveReconcileSweep.start()
     } else {
       logger.warn(
