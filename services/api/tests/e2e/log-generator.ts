@@ -125,11 +125,14 @@ export function generateEvents(count: number): GeneratedEvent[] {
   const oneHourMs = 60 * 60 * 1000
 
   for (let i = 0; i < count; i++) {
-    const templateIdx = i % TEMPLATES.length
+    // `i % length` is always in range, so this is never undefined; the guard is
+    // only here to satisfy noUncheckedIndexedAccess without a non-null assertion.
+    const template = TEMPLATES[i % TEMPLATES.length]
+    if (!template) continue
     // Spread timestamps across a 1-hour window
     const offsetMs = Math.floor((i / count) * oneHourMs)
     const ts = new Date(now - oneHourMs + offsetMs).toISOString()
-    events.push(TEMPLATES[templateIdx]?.(ts))
+    events.push(template(ts))
   }
 
   return events
