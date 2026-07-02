@@ -21,6 +21,13 @@ export interface S3ConnectorConfig {
   externalId?: string
   /** Dev-only: S3-compatible endpoint URL (e.g. Floci). Blocked in production. */
   endpoint?: string
+  /**
+   * True only for the operator-provided archive endpoint (LOGWEAVE_S3_ENDPOINT),
+   * which is not attacker-influenced. Skips the fetch-time SSRF connect guard
+   * (#286) that wraps tenant-supplied connector endpoints. Never set from
+   * tenant input.
+   */
+  trustedEndpoint?: boolean
   /** Dev-only: required for path-style access against non-AWS endpoints. */
   forcePathStyle?: boolean
   /** Dev-only: static access key. Production uses AssumeRole. */

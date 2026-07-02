@@ -52,6 +52,10 @@ export function buildArchiveConfig(env: ArchiveConfigEnv): S3ConnectorConfig | u
     return {
       ...base,
       endpoint: env.endpoint,
+      // Operator-provided (LOGWEAVE_S3_ENDPOINT), not attacker-influenced — skip
+      // the tenant-connector SSRF connect guard (#286) so the dev/Floci archive
+      // flow works without allowlisting the emulator host.
+      trustedEndpoint: true,
       forcePathStyle: true,
       accessKeyId: env.accessKeyId ?? '',
       secretAccessKey: env.secretAccessKey ?? '',

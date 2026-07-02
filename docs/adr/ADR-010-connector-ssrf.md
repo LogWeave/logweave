@@ -89,9 +89,14 @@ and wildcard count to bound in-process backtracking.
   internal access.
 - Self-hosters reaching an internal sidecar must opt in explicitly via
   `LOGWEAVE_CONNECTOR_ALLOWED_HOSTS`; there is no implicit dev bypass.
-- **The S3 `endpoint` only gets the create-time host check, not the fetch-time
-  resolved-IP guard.** S3 traffic goes through the AWS SDK, which does its own
-  DNS and does not use `safe-fetch.ts`, so a DNS-rebinding endpoint
-  (resolve-public, connect-internal) is a theoretical residual. Mitigated by:
-  the endpoint is for emulators only, internal hosts require explicit
-  allowlisting, and production uses IAM AssumeRole (no endpoint).
+- **The S3 `endpoint` now gets the fetch-time resolved-IP guard too (#286).**
+  S3 traffic goes through the AWS SDK, which does its own DNS and does not use
+  `safe-fetch.ts`. A tenant-supplied `endpoint` client is therefore wrapped with
+  a request handler (`connectors/guarded-s3.ts`) whose http/https agents resolve
+  through the same `makeGuardedLookup` guard, closing the DNS-rebinding residual
+  (resolve-public, connect-internal) at connect time. Internal hosts still
+  require explicit allowlisting via `LOGWEAVE_CONNECTOR_ALLOWED_HOSTS`. The
+  operator-provided archive endpoint (`LOGWEAVE_S3_ENDPOINT`) is not
+  attacker-influenced and is marked `trustedEndpoint` to skip the guard, so the
+  dev/Floci archive flow works without allowlisting. Production uses IAM
+  AssumeRole (no endpoint) regardless.

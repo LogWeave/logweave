@@ -11,6 +11,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { AssumeRoleCommand, type AssumeRoleCommandOutput, STSClient } from '@aws-sdk/client-sts'
 import { getInternalEvents } from '../internal-events/emitter.js'
+import { guardedS3RequestHandler } from './guarded-s3.js'
 import { scanStream } from './line-scanner.js'
 import { buildRoleSessionName } from './session-name.js'
 import { templateToRegex } from './template-regex.js'
@@ -219,7 +220,10 @@ export class S3Adapter implements LogSourceAdapter {
     // Static credentials against a custom S3-compatible endpoint (e.g.
     // Floci/MinIO). The endpoint host is SSRF-validated at create time in
     // routes/connectors.ts (LW-281 F2); production normally uses the AssumeRole
-    // branch below rather than a custom endpoint.
+    // branch below rather than a custom endpoint. For a tenant-supplied endpoint
+    // we also guard the SDK's DNS at connect time (#286) so a hostname that
+    // rebinds to an internal IP is refused; the operator archive endpoint is
+    // trusted and skips it (see trustedEndpoint).
     if (config.endpoint) {
       return new S3Client({
         region: config.region,
@@ -229,6 +233,7 @@ export class S3Adapter implements LogSourceAdapter {
           accessKeyId: config.accessKeyId ?? '',
           secretAccessKey: config.secretAccessKey ?? '',
         },
+        ...(config.trustedEndpoint ? {} : { requestHandler: guardedS3RequestHandler() }),
       })
     }
 
