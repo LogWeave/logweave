@@ -35,6 +35,8 @@ describe('loadConfig', () => {
     'LOGWEAVE_RETENTION_INTERVAL_MS',
     'LOGWEAVE_AWS_ACCOUNT_ID',
     'LOGWEAVE_S3_CFN_TEMPLATE_URL',
+    'LOGWEAVE_ARCHIVE_RECONCILE_ENABLED',
+    'LOGWEAVE_VECTOR_ARCHIVE_URL',
   ] as const
 
   const envSnapshot = new Map<string, string | undefined>()
@@ -170,5 +172,43 @@ describe('loadConfig', () => {
     const { loadConfig } = await import('../src/config.js')
     const config = loadConfig()
     assert.equal(config.recoveryEnabled, false)
+  })
+
+  it('archiveReconcileEnabled defaults to false without the forward path', async () => {
+    Object.assign(process.env, validEnv)
+
+    const { loadConfig } = await import('../src/config.js')
+    const config = loadConfig()
+    assert.equal(config.archiveReconcileEnabled, false)
+  })
+
+  it('archiveReconcileEnabled honours the explicit flag without the forward path', async () => {
+    Object.assign(process.env, validEnv)
+    process.env.LOGWEAVE_ARCHIVE_RECONCILE_ENABLED = 'true'
+
+    const { loadConfig } = await import('../src/config.js')
+    const config = loadConfig()
+    assert.equal(config.archiveReconcileEnabled, true)
+  })
+
+  it('forces archiveReconcileEnabled on when the forward path is set (#287)', async () => {
+    // The reconcile sweep is the only writer that backfills forwarded objects
+    // into log_metadata; forwarding without it black-holes logs into S3.
+    Object.assign(process.env, validEnv)
+    process.env.LOGWEAVE_VECTOR_ARCHIVE_URL = 'http://vector:8686/v1/archive'
+
+    const { loadConfig } = await import('../src/config.js')
+    const config = loadConfig()
+    assert.equal(config.archiveReconcileEnabled, true)
+  })
+
+  it('forces archiveReconcileEnabled on even over an explicit false when forwarding (#287)', async () => {
+    Object.assign(process.env, validEnv)
+    process.env.LOGWEAVE_VECTOR_ARCHIVE_URL = 'http://vector:8686/v1/archive'
+    process.env.LOGWEAVE_ARCHIVE_RECONCILE_ENABLED = 'false'
+
+    const { loadConfig } = await import('../src/config.js')
+    const config = loadConfig()
+    assert.equal(config.archiveReconcileEnabled, true)
   })
 })

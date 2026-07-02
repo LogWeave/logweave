@@ -142,14 +142,30 @@ const configSchema = z.object({
   vectorArchiveUrl: z.string().url().optional(),
 })
 
-export type Config = z.infer<typeof configSchema>
+// Fail-safe coupling (#287): the durable-archive forward path has NO real-time
+// notify producer — Vector's aws_s3 sink is terminal (it can't fan out the
+// landed object key to an http sink), and an S3-ObjectCreated→SQS producer is
+// deferred by the no-SQS MVP constraint. That leaves the reconciliation sweep as
+// the ONLY writer that backfills forwarded objects into log_metadata. So when
+// forwarding is on (vectorArchiveUrl set), the sweep MUST run or forwarded logs
+// land in S3 but are permanently unqueryable. We force it on here — overriding
+// even an explicit LOGWEAVE_ARCHIVE_RECONCILE_ENABLED=false — because honouring a
+// false there would silently re-open the black hole. Backfill latency is the
+// sweep interval (~5 min default). When forwarding is off the flag is honoured
+// as-is (the synchronous ingest path writes log_metadata itself).
+const withReconcileCoupling = configSchema.transform((c) => ({
+  ...c,
+  archiveReconcileEnabled: c.archiveReconcileEnabled || c.vectorArchiveUrl !== undefined,
+}))
+
+export type Config = z.infer<typeof withReconcileCoupling>
 
 /**
  * Load and validate config from LOGWEAVE_* environment variables.
  * Throws ZodError on missing or invalid values.
  */
 export function loadConfig(): Config {
-  return configSchema.parse({
+  return withReconcileCoupling.parse({
     port: process.env.LOGWEAVE_PORT,
     trustProxy: process.env.LOGWEAVE_TRUST_PROXY,
     clickhouseUrl: process.env.LOGWEAVE_CLICKHOUSE_URL,
