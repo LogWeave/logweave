@@ -413,6 +413,9 @@ export function createApp(deps: AppDependencies): CreatedApp {
         archiveConfig,
         queue: archiveNotifyQueue,
         settingsStore: deps.settingsStore,
+        // Also sweep forward-only tenants that authenticate but have no settings
+        // row yet, so their forwarded objects aren't black-holed (#287).
+        apiKeyStore: deps.apiKeyStore,
         logger: deps.logger,
         emitter: getInternalEvents(),
       },

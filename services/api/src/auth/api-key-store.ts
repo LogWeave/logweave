@@ -412,6 +412,19 @@ export class ApiKeyStore {
     const first = this.cache.values().next()
     return first.done ? undefined : first.value.tenantId
   }
+
+  /**
+   * Distinct tenant IDs across all cached keys — the authoritative set of
+   * tenants that can authenticate to ingest. The archive reconcile sweep (#287)
+   * unions this with the settings-store tenants so a forward-only tenant (one
+   * that POSTs to /v1/ingest/batch but never persists a tenant_settings row) is
+   * still swept; without it, that tenant's forwarded objects stay unqueryable.
+   */
+  getAllTenantIds(): string[] {
+    const ids = new Set<string>()
+    for (const entry of this.cache.values()) ids.add(entry.tenantId)
+    return [...ids]
+  }
 }
 
 export class ApiKeyLimitError extends Error {

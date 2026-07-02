@@ -289,6 +289,35 @@ describe('ApiKeyStore', () => {
     )
   })
 
+  it('getAllTenantIds returns empty when the store has no keys', async () => {
+    const { db } = mockDb()
+    const store = await readyStore(db)
+    assert.deepEqual(store.getAllTenantIds(), [])
+  })
+
+  it('getAllTenantIds returns distinct tenants across cached keys (#287)', async () => {
+    const { db } = mockDb()
+    const store = await readyStore(db)
+    // Two keys for acme, one for globex — the reconcile sweep needs each tenant
+    // once, not once per key.
+    await store.seedFromBootstrap({
+      tenantId: 'acme',
+      rawKey: 'lw_acmekeyone1234567',
+      name: 'k1',
+    })
+    await store.seedFromBootstrap({
+      tenantId: 'acme',
+      rawKey: 'lw_acmekeytwo1234567',
+      name: 'k2',
+    })
+    await store.seedFromBootstrap({
+      tenantId: 'globex',
+      rawKey: 'lw_globexkey12345678',
+      name: 'k3',
+    })
+    assert.deepEqual([...store.getAllTenantIds()].sort(), ['acme', 'globex'])
+  })
+
   it('throws if hmacSecret is missing', () => {
     assert.throws(() => new ApiKeyStore({ hmacSecret: '' }))
   })
