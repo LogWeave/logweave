@@ -42,7 +42,33 @@ export interface ThresholdResolvedEvent {
   resolvedAt: string
 }
 
-export type AlertEvent = TemplateAlertEvent | ThresholdAlertEvent | ThresholdResolvedEvent
+/**
+ * A service's current-interval log count has dropped far below its expected
+ * baseline — automatic, not tied to a user-configured rule/watch. See
+ * AnomalyScorer.getServiceSilenceScores and SilenceEvaluator.
+ */
+export interface ServiceSilentEvent {
+  type: 'service_silent'
+  tenantId: string
+  service: string
+  expectedCount: number
+  actualCount: number
+  triggeredAt: string
+}
+
+export interface ServiceSilenceResolvedEvent {
+  type: 'service_silence_resolved'
+  tenantId: string
+  service: string
+  resolvedAt: string
+}
+
+export type AlertEvent =
+  | TemplateAlertEvent
+  | ThresholdAlertEvent
+  | ThresholdResolvedEvent
+  | ServiceSilentEvent
+  | ServiceSilenceResolvedEvent
 
 export function isTemplateAlert(e: AlertEvent): e is TemplateAlertEvent {
   return e.type === 'spike' || e.type === 'new_burst'
@@ -54,6 +80,19 @@ export function isResolvedAlert(e: AlertEvent): e is ThresholdResolvedEvent {
 
 export function isThresholdBreach(e: AlertEvent): e is ThresholdAlertEvent {
   return e.type === 'threshold_breach'
+}
+
+export function isServiceSilent(e: AlertEvent): e is ServiceSilentEvent {
+  return e.type === 'service_silent'
+}
+
+export function isServiceSilenceResolved(e: AlertEvent): e is ServiceSilenceResolvedEvent {
+  return e.type === 'service_silence_resolved'
+}
+
+/** Events that carry an explicit per-rule `channels` list (threshold rules only). */
+export function hasChannels(e: AlertEvent): e is ThresholdAlertEvent | ThresholdResolvedEvent {
+  return isThresholdBreach(e) || isResolvedAlert(e)
 }
 
 export interface AlertObserver {
@@ -111,6 +150,26 @@ export class ConsoleObserver implements AlertObserver {
           service: alert.service,
         },
         `RESOLVED: "${alert.ruleName}" in ${alert.service}`,
+      )
+      return
+    }
+    if (isServiceSilenceResolved(alert)) {
+      this.logger.info(
+        { alertType: 'service_silence_resolved', tenantId: alert.tenantId, service: alert.service },
+        `RESOLVED: ${alert.service} is logging again`,
+      )
+      return
+    }
+    if (isServiceSilent(alert)) {
+      this.logger.warn(
+        {
+          alertType: 'service_silent',
+          tenantId: alert.tenantId,
+          service: alert.service,
+          expectedCount: alert.expectedCount,
+          actualCount: alert.actualCount,
+        },
+        `ALERT: ${alert.service} has gone silent (${alert.actualCount} events, expected ~${alert.expectedCount})`,
       )
       return
     }

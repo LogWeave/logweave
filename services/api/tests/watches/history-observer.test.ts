@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import pino from 'pino'
 import type { DbClient } from '../../src/db/client.js'
-import type { TemplateAlertEvent, ThresholdAlertEvent } from '../../src/watches/alert-observer.js'
+import type {
+  ServiceSilenceResolvedEvent,
+  ServiceSilentEvent,
+  TemplateAlertEvent,
+  ThresholdAlertEvent,
+} from '../../src/watches/alert-observer.js'
 import { HistoryObserver } from '../../src/watches/history-observer.js'
 
 const silentLogger = pino({ level: 'silent' })
@@ -35,6 +40,26 @@ function makeThresholdAlert(): ThresholdAlertEvent {
     windowMinutes: 5,
     triggeredAt: '2026-03-22T10:00:00.000Z',
     channels: ['https://hooks.slack.com/abc'],
+  }
+}
+
+function makeServiceSilentAlert(): ServiceSilentEvent {
+  return {
+    type: 'service_silent',
+    tenantId: 't1',
+    service: 'checkout',
+    expectedCount: 20,
+    actualCount: 0,
+    triggeredAt: '2026-03-22T10:00:00.000Z',
+  }
+}
+
+function makeServiceSilenceResolvedAlert(): ServiceSilenceResolvedEvent {
+  return {
+    type: 'service_silence_resolved',
+    tenantId: 't1',
+    service: 'checkout',
+    resolvedAt: '2026-03-22T10:05:00.000Z',
   }
 }
 
@@ -142,6 +167,46 @@ describe('HistoryObserver', () => {
     const observer = new HistoryObserver({ db, logger: silentLogger })
     // Should resolve without throwing
     await observer.notify(makeTemplateAlert())
+  })
+
+  it('inserts service_silent alert into alert_history', async () => {
+    const insertedRows: unknown[] = []
+    const db = {
+      insert: async (params: { table: string; values: unknown[] }) => {
+        insertedRows.push(...params.values)
+      },
+    } as unknown as DbClient
+
+    const observer = new HistoryObserver({ db, logger: silentLogger })
+    await observer.notify(makeServiceSilentAlert())
+
+    assert.equal(insertedRows.length, 1)
+    const row = insertedRows[0] as Record<string, unknown>
+    assert.equal(row.tenant_id, 't1')
+    assert.equal(row.rule_id, 'checkout')
+    assert.equal(row.rule_type, 'service_silent')
+    assert.equal(row.metric_value, 0)
+    assert.equal(row.threshold_value, 20)
+    assert.equal(row.channels_notified, '[]')
+
+    const details = JSON.parse(row.details as string)
+    assert.equal(details.service, 'checkout')
+    assert.equal(details.expectedCount, 20)
+    assert.equal(details.actualCount, 0)
+  })
+
+  it('does not insert service_silence_resolved into alert_history', async () => {
+    const insertedRows: unknown[] = []
+    const db = {
+      insert: async (params: { table: string; values: unknown[] }) => {
+        insertedRows.push(...params.values)
+      },
+    } as unknown as DbClient
+
+    const observer = new HistoryObserver({ db, logger: silentLogger })
+    await observer.notify(makeServiceSilenceResolvedAlert())
+
+    assert.equal(insertedRows.length, 0)
   })
 
   it('inserts to logweave.alert_history table', async () => {

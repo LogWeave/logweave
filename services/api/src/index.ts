@@ -22,6 +22,7 @@ import { AlertEvaluator } from './watches/alert-evaluator.js'
 import { AlertDispatcher, ConsoleObserver } from './watches/alert-observer.js'
 import { HistoryObserver } from './watches/history-observer.js'
 import { RuleStore } from './watches/rule-store.js'
+import { SilenceEvaluator } from './watches/silence-evaluator.js'
 import { SlackObserver } from './watches/slack-observer.js'
 import { TenantSettingsStore } from './watches/tenant-settings.js'
 import { ThresholdEvaluator } from './watches/threshold-evaluator.js'
@@ -103,6 +104,12 @@ const thresholdEvaluator = new ThresholdEvaluator({
   ruleStore,
   dispatcher: alertDispatcher,
   db,
+  logger,
+  settingsStore,
+})
+const silenceEvaluator = new SilenceEvaluator({
+  scorer: anomalyScorer,
+  dispatcher: alertDispatcher,
   logger,
   settingsStore,
 })
@@ -343,6 +350,7 @@ const server = app.listen(config.port, () => {
   anomalyScorer.start()
   alertEvaluator.start()
   thresholdEvaluator.start()
+  silenceEvaluator.start()
   apiKeyStore?.start()
 })
 
@@ -371,6 +379,7 @@ async function shutdown(signal: string): Promise<void> {
   // Stop evaluators, scorer, and recovery sweep before closing connections
   alertEvaluator.stop()
   thresholdEvaluator.stop()
+  silenceEvaluator.stop()
   anomalyScorer.stop()
   apiKeyStore?.stop()
   await recovery.stop()

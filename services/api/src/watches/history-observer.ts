@@ -5,7 +5,10 @@ import {
   type AlertEvent,
   type AlertObserver,
   isResolvedAlert,
+  isServiceSilenceResolved,
+  isServiceSilent,
   isTemplateAlert,
+  type ServiceSilentEvent,
   type TemplateAlertEvent,
   type ThresholdAlertEvent,
 } from './alert-observer.js'
@@ -30,7 +33,7 @@ export class HistoryObserver implements AlertObserver {
 
   async notify(alert: AlertEvent): Promise<void> {
     // Resolve events are not logged to history — they're only for PagerDuty
-    if (isResolvedAlert(alert)) return
+    if (isResolvedAlert(alert) || isServiceSilenceResolved(alert)) return
     const row = this.toHistoryRow(alert)
     try {
       await this.db.insert({
@@ -43,7 +46,9 @@ export class HistoryObserver implements AlertObserver {
     }
   }
 
-  private toHistoryRow(alert: TemplateAlertEvent | ThresholdAlertEvent): Record<string, unknown> {
+  private toHistoryRow(
+    alert: TemplateAlertEvent | ThresholdAlertEvent | ServiceSilentEvent,
+  ): Record<string, unknown> {
     if (isTemplateAlert(alert)) {
       return {
         alert_id: uuidv7(),
@@ -57,6 +62,23 @@ export class HistoryObserver implements AlertObserver {
           service: alert.service,
           currentCount: alert.currentCount,
           baselineCount: alert.baselineCount,
+        }),
+        channels_notified: '[]',
+      }
+    }
+    if (isServiceSilent(alert)) {
+      return {
+        alert_id: uuidv7(),
+        tenant_id: alert.tenantId,
+        rule_id: alert.service,
+        rule_type: 'service_silent',
+        rule_name: `${alert.service} silence detection`,
+        metric_value: alert.actualCount,
+        threshold_value: alert.expectedCount,
+        details: JSON.stringify({
+          service: alert.service,
+          expectedCount: alert.expectedCount,
+          actualCount: alert.actualCount,
         }),
         channels_notified: '[]',
       }

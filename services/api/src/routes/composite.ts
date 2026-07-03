@@ -32,6 +32,7 @@ import {
 export interface CompositeDeps {
   db: DbClient
   logger: pino.Logger
+  anomalyScorer?: import('../pipeline/anomaly-scorer.js').AnomalyScorer
 }
 
 export function compositeRoutes(deps: CompositeDeps): Router {
@@ -144,6 +145,11 @@ export function compositeRoutes(deps: CompositeDeps): Router {
         const logCount = Number(match.log_count)
         const errorCount = Number(match.error_count)
         const warnCount = Number(match.warn_count)
+        const silent = deps.anomalyScorer
+          ? deps.anomalyScorer
+              .getServiceSilenceScores(tenantId)
+              .some((s) => s.service === serviceName)
+          : false
 
         const data: ServiceHealthData = {
           service: serviceName,
@@ -158,6 +164,7 @@ export function compositeRoutes(deps: CompositeDeps): Router {
             logCount: Number(r.log_count),
             errorCount: Number(r.error_count),
           })),
+          silent,
         }
 
         respond(res, data, { hours: params.hours, count: 1 })

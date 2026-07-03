@@ -3,9 +3,13 @@ import { getInternalEvents } from '../internal-events/emitter.js'
 import {
   type AlertEvent,
   type AlertObserver,
+  hasChannels,
   isResolvedAlert,
+  isServiceSilenceResolved,
+  isServiceSilent,
   isTemplateAlert,
   isThresholdBreach,
+  type ServiceSilentEvent,
   type TemplateAlertEvent,
   type ThresholdAlertEvent,
 } from './alert-observer.js'
@@ -17,6 +21,13 @@ const MIN_SEND_INTERVAL_MS = 1000
 
 function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max)}\u2026` : s
+}
+
+/** Log-friendly identifier for an alert \u2014 used only for correlation in logs. */
+function alertIdOf(alert: AlertEvent): string {
+  if (isTemplateAlert(alert)) return alert.templateId
+  if (isServiceSilent(alert) || isServiceSilenceResolved(alert)) return alert.service
+  return alert.ruleId
 }
 
 import { sleep } from '../lib/sleep.js'
@@ -55,10 +66,10 @@ export class SlackObserver implements AlertObserver {
 
   async notify(alert: AlertEvent): Promise<void> {
     // Resolve events are handled by WebhookObserver (PagerDuty only)
-    if (isResolvedAlert(alert)) return
+    if (isResolvedAlert(alert) || isServiceSilenceResolved(alert)) return
     // Threshold alerts may specify per-rule channels; fall back to tenant default
     const webhookUrls: string[] = []
-    if (!isTemplateAlert(alert) && alert.channels.length > 0) {
+    if (hasChannels(alert) && alert.channels.length > 0) {
       webhookUrls.push(...alert.channels)
     } else {
       const tenantUrl = this.settingsStore.getSlackUrl(alert.tenantId)
@@ -70,7 +81,7 @@ export class SlackObserver implements AlertObserver {
       return
     }
 
-    const alertId = isTemplateAlert(alert) ? alert.templateId : alert.ruleId
+    const alertId = alertIdOf(alert)
     this.logger.debug(
       { tenantId: alert.tenantId, alertId, alertType: alert.type },
       'Slack: queuing alert delivery',
@@ -122,7 +133,7 @@ export class SlackObserver implements AlertObserver {
       'no_service',
       'action_prohibited',
     ]
-    const alertId = alert ? (isTemplateAlert(alert) ? alert.templateId : alert.ruleId) : undefined
+    const alertId = alert ? alertIdOf(alert) : undefined
     const ctx = { attempt, alertId, tenantId: alert?.tenantId }
 
     try {
@@ -227,6 +238,9 @@ export class SlackObserver implements AlertObserver {
     if (isThresholdBreach(alert)) {
       return this.buildThresholdPayload(alert)
     }
+    if (isServiceSilent(alert)) {
+      return this.buildSilencePayload(alert)
+    }
     return {} // Resolved events are filtered in notify()
   }
 
@@ -276,6 +290,57 @@ export class SlackObserver implements AlertObserver {
             {
               type: 'mrkdwn',
               text: `LogWeave Alert \u2022 ${alert.tenantId} \u2022 ${alert.triggeredAt}`,
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  private buildSilencePayload(alert: ServiceSilentEvent): object {
+    const emoji = '🔇'
+    const title = 'Service Silent'
+    const dashboardUrl = this.dashboardBaseUrl
+      ? `${this.dashboardBaseUrl}/?service=${alert.service}`
+      : undefined
+
+    return {
+      unfurl_links: false,
+      unfurl_media: false,
+      text: `${emoji} ${title}: ${alert.service} has gone quiet (${alert.actualCount} events, expected ~${alert.expectedCount})`,
+      blocks: [
+        { type: 'header', text: { type: 'plain_text', text: `${emoji} ${title}` } },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: `*Service*\n${alert.service}` },
+            {
+              type: 'mrkdwn',
+              text: `*Events*\n${alert.actualCount.toLocaleString()} (expected: ~${alert.expectedCount.toLocaleString()})`,
+            },
+            { type: 'mrkdwn', text: `*Triggered*\n${new Date(alert.triggeredAt).toUTCString()}` },
+          ],
+        },
+        ...(dashboardUrl
+          ? [
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: { type: 'plain_text', text: 'View in Dashboard' },
+                    url: dashboardUrl,
+                  },
+                ],
+              },
+            ]
+          : []),
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `LogWeave Alert • ${alert.tenantId} • ${alert.triggeredAt}`,
             },
           ],
         },

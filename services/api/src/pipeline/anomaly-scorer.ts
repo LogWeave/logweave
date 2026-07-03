@@ -15,6 +15,16 @@ const DEFAULT_STEADY_THRESHOLD = 3
 // only if it occurs >20 times in the current 5-minute interval. Below that,
 // it's treated as routine first-occurrence noise rather than a spike.
 const DEFAULT_NEW_TEMPLATE_THRESHOLD = 20
+// Silence/drop detection: a service is "silent" when its actual count falls
+// below 1/10th of its expected (baseline) count for the current interval —
+// deliberately symmetric to the 10x spike threshold. Like the 3x/10x spike
+// thresholds, this is a placeholder pending real customer traffic to tune.
+const DEFAULT_DROP_THRESHOLD = 10
+// Services whose expected count is below this floor are excluded from
+// silence detection entirely — a service that normally logs 0-2 events per
+// 5-min interval would constantly false-positive on a ratio check. Mirrors
+// the Math.max(baseline, 1.0) floor RatioThresholdStrategy uses for spikes.
+const DEFAULT_MIN_EXPECTED_FOR_SILENCE = 5
 
 // Null byte delimiter — cannot appear in user-supplied strings (tenantId, service, templateId).
 // Prevents key collision when identifiers contain colons or other common delimiters.
@@ -38,6 +48,13 @@ export interface WatchedScore {
   baselineCount: number
 }
 
+/** A service whose current-interval count is anomalously below its expected baseline. */
+export interface ServiceSilenceScore {
+  service: string
+  expectedCount: number
+  actualCount: number
+}
+
 export interface AnomalyScorerOptions {
   db: DbClient
   logger: pino.Logger
@@ -47,6 +64,8 @@ export interface AnomalyScorerOptions {
   warmupThreshold?: number
   steadyThreshold?: number
   newTemplateThreshold?: number
+  dropThreshold?: number
+  minExpectedForSilence?: number
   now?: () => number
   /**
    * Anomaly algorithm. Defaults to {@link RatioThresholdStrategy} built from
@@ -77,6 +96,8 @@ export class AnomalyScorer {
   private readonly baselineRefreshMs: number
   private readonly now: () => number
   private readonly strategy: AnomalyStrategy
+  private readonly dropThreshold: number
+  private readonly minExpectedForSilence: number
 
   /** Current interval event counts: `{tenant}\0{service}\0{templateId}\0{intervalStart}` → count */
   private readonly intervalCounters = new Map<string, number>()
@@ -104,6 +125,8 @@ export class AnomalyScorer {
     this.warmupMs = options.warmupMs ?? DEFAULT_WARMUP_MS
     this.baselineRefreshMs = options.baselineRefreshMs ?? DEFAULT_BASELINE_REFRESH_MS
     this.now = options.now ?? Date.now
+    this.dropThreshold = options.dropThreshold ?? DEFAULT_DROP_THRESHOLD
+    this.minExpectedForSilence = options.minExpectedForSilence ?? DEFAULT_MIN_EXPECTED_FOR_SILENCE
     this.strategy =
       options.strategy ??
       new RatioThresholdStrategy({
@@ -219,6 +242,100 @@ export class AnomalyScorer {
     return results
   }
 
+  /** Distinct tenant IDs with at least one tracked (tenant, service) pair. */
+  getActiveTenants(): string[] {
+    const tenants = new Set<string>()
+    for (const key of this.warmupTracker.keys()) {
+      const tenantId = key.split(D)[0]
+      if (tenantId) tenants.add(tenantId)
+    }
+    return [...tenants]
+  }
+
+  /**
+   * Services with a live warmupTracker entry for this tenant — i.e. still
+   * being observed at all, independent of silence/cold-start status. Used
+   * by SilenceEvaluator to tell "recovered" (still tracked, no longer
+   * silent) apart from "forgotten" (pruned after 2h of total inactivity —
+   * see pruneOldCounters) so a stale service isn't misreported as resolved.
+   */
+  getTrackedServices(tenantId: string): Set<string> {
+    const prefix = `${tenantId}${D}`
+    const services = new Set<string>()
+    for (const key of this.warmupTracker.keys()) {
+      if (!key.startsWith(prefix)) continue
+      const service = key.slice(prefix.length)
+      if (service) services.add(service)
+    }
+    return services
+  }
+
+  /**
+   * Service-level silence/drop detection. For each service with an
+   * established baseline at the hour-of-day of the last *fully elapsed*
+   * 5-minute interval, sums the expected (baseline) count and the actual
+   * count across all its templates, purely from the maps already
+   * maintained for spike scoring — no new ClickHouse query. Returns only
+   * services whose actual count has dropped below 1/dropThreshold of
+   * expected.
+   *
+   * Deliberately compares against the *previous* completed interval, not
+   * the in-progress current one: `expectedCount` is a full-interval
+   * average, so a healthy service sampled a few seconds into a fresh
+   * interval would show near-zero actual counts and false-positive as
+   * silent. The previous interval is guaranteed complete by the time
+   * "now" falls in the next one.
+   *
+   * Cold-start services (age < coldStartMs) are excluded — same gate
+   * recordAndScore uses, since there's no meaningful signal yet. Unlike
+   * spike scoring, warmup does not change the threshold here: there isn't
+   * enough real-traffic data yet to justify a second graduated threshold.
+   */
+  getServiceSilenceScores(tenantId: string): ServiceSilenceScore[] {
+    const currentTime = this.now()
+    const previousInterval = this.currentIntervalStart() - FIVE_MINUTES_MS
+    const hourOfDay = new Date(previousInterval).getUTCHours()
+    const prefix = `${tenantId}${D}`
+
+    const expectedByService = new Map<string, number>()
+    for (const [key, baseline] of this.baselineByHour) {
+      if (!key.startsWith(prefix)) continue
+      const parts = key.split(D)
+      const hour = Number(parts[parts.length - 1])
+      if (hour !== hourOfDay) continue
+      const service = parts[parts.length - 3]
+      if (!service) continue
+      expectedByService.set(service, (expectedByService.get(service) ?? 0) + baseline)
+    }
+
+    const actualByService = new Map<string, number>()
+    for (const [key, count] of this.intervalCounters) {
+      if (!key.startsWith(prefix)) continue
+      const parts = key.split(D)
+      const intervalStart = Number(parts[parts.length - 1])
+      if (intervalStart !== previousInterval) continue
+      const service = parts[parts.length - 3]
+      if (!service) continue
+      actualByService.set(service, (actualByService.get(service) ?? 0) + count)
+    }
+
+    const results: ServiceSilenceScore[] = []
+    for (const [service, expectedCount] of expectedByService) {
+      if (expectedCount < this.minExpectedForSilence) continue
+
+      const warmupEntry = this.warmupTracker.get(`${tenantId}${D}${service}`)
+      if (!warmupEntry) continue
+      const age = currentTime - warmupEntry.firstSeen
+      if (age < this.coldStartMs) continue
+
+      const actualCount = actualByService.get(service) ?? 0
+      if (actualCount / expectedCount < 1 / this.dropThreshold) {
+        results.push({ service, expectedCount, actualCount })
+      }
+    }
+    return results
+  }
+
   /**
    * Pure scoring — no side effects, no counter mutation. Resolves the
    * hour-of-day baseline, then delegates the actual scoring decision to the
@@ -264,12 +381,7 @@ export class AnomalyScorer {
     this.refreshRunning = true
 
     try {
-      // Derive active tenants from warmup tracker
-      const tenants = new Set<string>()
-      for (const key of this.warmupTracker.keys()) {
-        const tenantId = key.split(D)[0]
-        if (tenantId) tenants.add(tenantId)
-      }
+      const tenants = this.getActiveTenants()
 
       for (const tenantId of tenants) {
         const startMs = this.now()

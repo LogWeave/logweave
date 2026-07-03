@@ -295,6 +295,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
     compositeRoutes({
       db: deps.db,
       logger: deps.logger,
+      anomalyScorer: deps.anomalyScorer,
     }),
   )
   v1.use(

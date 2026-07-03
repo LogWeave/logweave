@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, it, mock } from 'node:test'
 import pino from 'pino'
-import type { AlertEvent, ThresholdAlertEvent } from '../../src/watches/alert-observer.js'
+import type {
+  AlertEvent,
+  ServiceSilenceResolvedEvent,
+  ServiceSilentEvent,
+  ThresholdAlertEvent,
+} from '../../src/watches/alert-observer.js'
 import { TenantSettingsStore } from '../../src/watches/tenant-settings.js'
 import { WebhookObserver } from '../../src/watches/webhook-observer.js'
 
@@ -205,5 +210,70 @@ describe('WebhookObserver', () => {
 
     const payload = fetchCalls[0].body
     assert.equal(payload.dedup_key, 'logweave-rule-1-tenant-a')
+  })
+
+  it('delivers service_silent via generic webhook using tenant default', async () => {
+    const alert: ServiceSilentEvent = {
+      type: 'service_silent',
+      tenantId: 'tenant-a',
+      service: 'checkout',
+      expectedCount: 20,
+      actualCount: 0,
+      triggeredAt: '2026-03-23T10:00:00.000Z',
+    }
+    const store = new TenantSettingsStore()
+    store.set('tenant-a', { slackWebhookUrl: 'https://generic-webhook.example.com/hook' })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+
+    await observer.notify(alert)
+
+    assert.equal(fetchCalls.length, 1)
+    const payload = fetchCalls[0].body
+    assert.equal(payload.source, 'logweave')
+    assert.equal(payload.severity, 'critical')
+    assert.equal(payload.service, 'checkout')
+    assert.equal(payload.expectedCount, 20)
+    assert.equal(payload.actualCount, 0)
+  })
+
+  it('delivers service_silent PagerDuty trigger with a stable dedup_key', async () => {
+    const alert: ServiceSilentEvent = {
+      type: 'service_silent',
+      tenantId: 'tenant-a',
+      service: 'checkout',
+      expectedCount: 20,
+      actualCount: 0,
+      triggeredAt: '2026-03-23T10:00:00.000Z',
+    }
+    const store = new TenantSettingsStore()
+    store.set('tenant-a', { slackWebhookUrl: 'pagerduty://my-key' })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+
+    await observer.notify(alert)
+
+    const payload = fetchCalls[0].body
+    assert.equal(payload.event_action, 'trigger')
+    assert.equal(payload.dedup_key, 'logweave-service_silent-checkout-tenant-a')
+    const pd = payload.payload as Record<string, unknown>
+    assert.equal(pd.severity, 'critical')
+    assert.ok((pd.summary as string).includes('checkout'))
+  })
+
+  it('resolves service_silence_resolved via PagerDuty with a matching dedup_key', async () => {
+    const alert: ServiceSilenceResolvedEvent = {
+      type: 'service_silence_resolved',
+      tenantId: 'tenant-a',
+      service: 'checkout',
+      resolvedAt: '2026-03-23T10:05:00.000Z',
+    }
+    const store = new TenantSettingsStore()
+    store.set('tenant-a', { slackWebhookUrl: 'pagerduty://my-key' })
+    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+
+    await observer.notify(alert)
+
+    const payload = fetchCalls[0].body
+    assert.equal(payload.event_action, 'resolve')
+    assert.equal(payload.dedup_key, 'logweave-service_silent-checkout-tenant-a')
   })
 })

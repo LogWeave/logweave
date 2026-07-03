@@ -56,6 +56,9 @@ async function serviceHealth(
   const trend = (d.volumeTrend as Array<Record<string, unknown>>) ?? []
 
   let text = `## Service Health: ${d.service}\n\n`
+  if (d.silent) {
+    text += `⚠ **SILENT** — this service has gone quiet (log count far below its expected baseline).\n\n`
+  }
   text += `- Log count: ${d.logCount}\n`
   text += `- Error count: ${d.errorCount} (${((d.errorRate as number) * 100).toFixed(1)}%)\n`
   text += `- Warn count: ${d.warnCount} (${((d.warnRate as number) * 100).toFixed(1)}%)\n`
@@ -105,10 +108,15 @@ async function listServices(client: LogWeaveClient, args: { hours?: number }): P
     return `No services found.${formatMeta(res.meta)}`
   }
 
+  const silentCount = rows.filter((r) => r.silent).length
   let text = `## Services (${rows.length})\n\n`
+  if (silentCount > 0) {
+    text += `⚠ ${silentCount} service(s) have gone silent — see markers below.\n\n`
+  }
   for (const r of rows) {
     const errorRate = ((r.errorRate as number) * 100).toFixed(1)
-    text += `- **${r.service}** — ${r.logCount} logs, ${r.errorCount} errors (${errorRate}%)`
+    text += r.silent ? '- ⚠ **SILENT** ' : '- '
+    text += `**${r.service}** — ${r.logCount} logs, ${r.errorCount} errors (${errorRate}%)`
     if ((r.newTemplateCount as number) > 0) {
       text += ` [${r.newTemplateCount} new patterns]`
     }

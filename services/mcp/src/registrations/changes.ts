@@ -124,6 +124,10 @@ async function diagnoseService(
 
   let text = `## Diagnostic: ${args.service}\n\n`
 
+  if (health.silent) {
+    text += `⚠ **SILENT** — this service has gone quiet (log count far below its expected baseline). This can mean a crash, deploy failure, or the service stopped emitting logs entirely.\n\n`
+  }
+
   // Outlier status
   const diagnoseVerdict =
     outlier.verdict === 'insufficient_data'

@@ -2,7 +2,10 @@ import type pino from 'pino'
 import {
   type AlertEvent,
   type AlertObserver,
+  hasChannels,
   isResolvedAlert,
+  isServiceSilenceResolved,
+  isServiceSilent,
   isTemplateAlert,
 } from './alert-observer.js'
 import type { TenantSettingsStore } from './tenant-settings.js'
@@ -95,7 +98,7 @@ export class WebhookObserver implements AlertObserver {
   }
 
   private getChannels(alert: AlertEvent): string[] {
-    if (!isTemplateAlert(alert) && alert.channels.length > 0) {
+    if (hasChannels(alert) && alert.channels.length > 0) {
       return alert.channels
     }
     const tenantUrl = this.settingsStore.getSlackUrl(alert.tenantId)
@@ -175,6 +178,30 @@ export class WebhookObserver implements AlertObserver {
         resolvedAt: alert.resolvedAt,
       }
     }
+    if (isServiceSilenceResolved(alert)) {
+      return {
+        source: 'logweave',
+        type: 'resolved',
+        service: alert.service,
+        tenantId: alert.tenantId,
+        resolvedAt: alert.resolvedAt,
+      }
+    }
+    if (isServiceSilent(alert)) {
+      return {
+        source: 'logweave',
+        timestamp: alert.triggeredAt,
+        severity: 'critical',
+        title: `${alert.service} has gone silent`,
+        service: alert.service,
+        expectedCount: alert.expectedCount,
+        actualCount: alert.actualCount,
+        tenantId: alert.tenantId,
+        dashboardUrl: this.dashboardBaseUrl
+          ? `${this.dashboardBaseUrl}/?service=${alert.service}`
+          : undefined,
+      }
+    }
     return {
       source: 'logweave',
       timestamp: alert.triggeredAt,
@@ -197,7 +224,11 @@ export class WebhookObserver implements AlertObserver {
   }
 
   private buildPagerDutyPayload(routingKey: string, alert: AlertEvent): object {
-    const alertId = isTemplateAlert(alert) ? alert.templateId : alert.ruleId
+    const alertId = isTemplateAlert(alert)
+      ? alert.templateId
+      : isServiceSilent(alert) || isServiceSilenceResolved(alert)
+        ? `service_silent-${alert.service}`
+        : alert.ruleId
 
     // Resolve events — minimal payload, just routing key + dedup key
     if (isResolvedAlert(alert)) {
@@ -207,10 +238,19 @@ export class WebhookObserver implements AlertObserver {
         dedup_key: `logweave-${alert.ruleId}-${alert.tenantId}`,
       }
     }
+    if (isServiceSilenceResolved(alert)) {
+      return {
+        routing_key: routingKey,
+        event_action: 'resolve',
+        dedup_key: `logweave-service_silent-${alert.service}-${alert.tenantId}`,
+      }
+    }
 
     const rawSummary = isTemplateAlert(alert)
       ? `LogWeave: "${alert.templateText}" spike in ${alert.service} (${alert.score.toFixed(1)}x baseline)`
-      : `LogWeave: ${alert.ruleName} — ${alert.metric} ${alert.operator} ${alert.thresholdValue} (actual: ${alert.metricValue})`
+      : isServiceSilent(alert)
+        ? `LogWeave: ${alert.service} has gone silent (${alert.actualCount} events, expected ~${alert.expectedCount})`
+        : `LogWeave: ${alert.ruleName} — ${alert.metric} ${alert.operator} ${alert.thresholdValue} (actual: ${alert.metricValue})`
     const summary = rawSummary.slice(0, 1024)
 
     return {
@@ -230,15 +270,20 @@ export class WebhookObserver implements AlertObserver {
               baselineCount: alert.baselineCount,
               score: alert.score,
             }
-          : {
-              ruleId: alert.ruleId,
-              metric: alert.metric,
-              metricValue: alert.metricValue,
-              thresholdValue: alert.thresholdValue,
-              operator: alert.operator,
-              windowMinutes: alert.windowMinutes,
-              environment: alert.environment,
-            },
+          : isServiceSilent(alert)
+            ? {
+                expectedCount: alert.expectedCount,
+                actualCount: alert.actualCount,
+              }
+            : {
+                ruleId: alert.ruleId,
+                metric: alert.metric,
+                metricValue: alert.metricValue,
+                thresholdValue: alert.thresholdValue,
+                operator: alert.operator,
+                windowMinutes: alert.windowMinutes,
+                environment: alert.environment,
+              },
       },
       ...(this.dashboardBaseUrl
         ? {
