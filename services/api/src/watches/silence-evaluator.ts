@@ -83,6 +83,7 @@ export class SilenceEvaluator {
     let alertCount = 0
     const currentTime = this.now()
     const tenants = this.scorer.getActiveTenants()
+    const activeTenantSet = new Set(tenants)
 
     for (const tenantId of tenants) {
       if (this.settingsStore?.isInMaintenance(tenantId)) continue
@@ -95,15 +96,21 @@ export class SilenceEvaluator {
         continue
       }
 
+      const trackedServices = this.scorer.getTrackedServices(tenantId)
       const tenantPrefix = `${tenantId}${D}`
       const silentNow = new Set(scores.map((s) => `${tenantId}${D}${s.service}`))
 
-      // Resolve: services that were firing but are no longer in the silent set
+      // Resolve: services that were firing but are no longer in the silent set —
+      // but only if the scorer still tracks them. A service the scorer has
+      // forgotten (pruned after 2h of total inactivity — see
+      // AnomalyScorer.pruneOldCounters) never recovered; it just dropped out
+      // of tracking while still silent, and must not be reported as resolved.
       for (const key of [...this.firingServices]) {
         if (!key.startsWith(tenantPrefix)) continue
         if (silentNow.has(key)) continue
         this.firingServices.delete(key)
         const service = key.slice(tenantPrefix.length)
+        if (!trackedServices.has(service)) continue
         await this.dispatcher.dispatch({
           type: 'service_silence_resolved',
           tenantId,
@@ -130,6 +137,15 @@ export class SilenceEvaluator {
 
         this.cooldowns.set(key, currentTime)
         alertCount++
+      }
+    }
+
+    // Drop firing entries for tenants the scorer no longer tracks at all
+    // (every service under them pruned) — without claiming they recovered.
+    for (const key of [...this.firingServices]) {
+      const tenantId = key.slice(0, key.indexOf(D))
+      if (!activeTenantSet.has(tenantId)) {
+        this.firingServices.delete(key)
       }
     }
 

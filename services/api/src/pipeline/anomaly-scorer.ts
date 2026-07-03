@@ -253,12 +253,38 @@ export class AnomalyScorer {
   }
 
   /**
+   * Services with a live warmupTracker entry for this tenant — i.e. still
+   * being observed at all, independent of silence/cold-start status. Used
+   * by SilenceEvaluator to tell "recovered" (still tracked, no longer
+   * silent) apart from "forgotten" (pruned after 2h of total inactivity —
+   * see pruneOldCounters) so a stale service isn't misreported as resolved.
+   */
+  getTrackedServices(tenantId: string): Set<string> {
+    const prefix = `${tenantId}${D}`
+    const services = new Set<string>()
+    for (const key of this.warmupTracker.keys()) {
+      if (!key.startsWith(prefix)) continue
+      const service = key.slice(prefix.length)
+      if (service) services.add(service)
+    }
+    return services
+  }
+
+  /**
    * Service-level silence/drop detection. For each service with an
-   * established baseline at the current hour-of-day, sums the expected
-   * (baseline) count and the actual (current-interval) count across all its
-   * templates, purely from the maps already maintained for spike scoring —
-   * no new ClickHouse query. Returns only services whose actual count has
-   * dropped below 1/dropThreshold of expected.
+   * established baseline at the hour-of-day of the last *fully elapsed*
+   * 5-minute interval, sums the expected (baseline) count and the actual
+   * count across all its templates, purely from the maps already
+   * maintained for spike scoring — no new ClickHouse query. Returns only
+   * services whose actual count has dropped below 1/dropThreshold of
+   * expected.
+   *
+   * Deliberately compares against the *previous* completed interval, not
+   * the in-progress current one: `expectedCount` is a full-interval
+   * average, so a healthy service sampled a few seconds into a fresh
+   * interval would show near-zero actual counts and false-positive as
+   * silent. The previous interval is guaranteed complete by the time
+   * "now" falls in the next one.
    *
    * Cold-start services (age < coldStartMs) are excluded — same gate
    * recordAndScore uses, since there's no meaningful signal yet. Unlike
@@ -267,8 +293,8 @@ export class AnomalyScorer {
    */
   getServiceSilenceScores(tenantId: string): ServiceSilenceScore[] {
     const currentTime = this.now()
-    const hourOfDay = new Date(currentTime).getUTCHours()
-    const currentInterval = this.currentIntervalStart()
+    const previousInterval = this.currentIntervalStart() - FIVE_MINUTES_MS
+    const hourOfDay = new Date(previousInterval).getUTCHours()
     const prefix = `${tenantId}${D}`
 
     const expectedByService = new Map<string, number>()
@@ -287,7 +313,7 @@ export class AnomalyScorer {
       if (!key.startsWith(prefix)) continue
       const parts = key.split(D)
       const intervalStart = Number(parts[parts.length - 1])
-      if (intervalStart !== currentInterval) continue
+      if (intervalStart !== previousInterval) continue
       const service = parts[parts.length - 3]
       if (!service) continue
       actualByService.set(service, (actualByService.get(service) ?? 0) + count)

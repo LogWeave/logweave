@@ -725,7 +725,7 @@ describe('AnomalyScorer', () => {
     })
 
     it('does not flag a service logging near its expected baseline', async () => {
-      const { scorer, registerWarmup } = createHarness({
+      const { scorer, registerWarmup, clock } = createHarness({
         coldStartMs: 0,
         dropThreshold: 10,
         minExpectedForSilence: 5,
@@ -739,9 +739,39 @@ describe('AnomalyScorer', () => {
       for (let i = 0; i < 18; i++) {
         scorer.recordAndScore('t1', 'api', 'tmpl-1')
       }
+      // Roll into the next interval so the 18 events above are now the
+      // completed "previous interval" getServiceSilenceScores evaluates.
+      clock.t += 300_000
 
       const scores = scorer.getServiceSilenceScores('t1')
       assert.equal(scores.length, 0)
+    })
+
+    it('does not false-positive on a healthy service sampled early in the new interval', async () => {
+      const { scorer, registerWarmup, clock } = createHarness({
+        coldStartMs: 0,
+        dropThreshold: 10,
+        minExpectedForSilence: 5,
+        db: createBaselineMockDb([
+          { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 20 },
+        ]),
+      })
+      registerWarmup('t1', 'api', 2 * 3_600_000)
+      await scorer.refreshBaselines()
+
+      // Fill the interval with a healthy count...
+      for (let i = 0; i < 18; i++) {
+        scorer.recordAndScore('t1', 'api', 'tmpl-1')
+      }
+      // ...then roll into the next interval and record just one event so
+      // far. A naive "compare against the in-progress interval" check would
+      // see 1/20 and false-positive; the fix evaluates the now-complete
+      // previous interval (18/20) instead.
+      clock.t += 300_000
+      scorer.recordAndScore('t1', 'api', 'tmpl-1')
+
+      const scores = scorer.getServiceSilenceScores('t1')
+      assert.equal(scores.length, 0, 'a healthy service must not false-positive mid-interval')
     })
 
     it('excludes services below the minExpectedForSilence floor even at zero actual', async () => {
@@ -777,7 +807,7 @@ describe('AnomalyScorer', () => {
     })
 
     it('isolates per-tenant — another tenant silence does not leak across', async () => {
-      const { scorer, registerWarmup } = createHarness({
+      const { scorer, registerWarmup, clock } = createHarness({
         coldStartMs: 0,
         db: createBaselineMockDb([
           { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 20 },
@@ -792,11 +822,28 @@ describe('AnomalyScorer', () => {
       for (let i = 0; i < 18; i++) {
         scorer.recordAndScore('t2', 'api', 'tmpl-1')
       }
+      clock.t += 300_000
 
       const t1Scores = scorer.getServiceSilenceScores('t1')
       const t2Scores = scorer.getServiceSilenceScores('t2')
       assert.equal(t1Scores.length, 1, 't1 should be flagged silent')
       assert.equal(t2Scores.length, 0, 't2 should not be affected by t1 going silent')
+    })
+  })
+
+  describe('getTrackedServices', () => {
+    it('returns services with a live warmup entry for the tenant', () => {
+      const { scorer, registerWarmup } = createHarness()
+      registerWarmup('t1', 'api', 0)
+      registerWarmup('t1', 'worker', 0)
+      registerWarmup('t2', 'api', 0)
+      const tracked = scorer.getTrackedServices('t1')
+      assert.deepEqual([...tracked].sort(), ['api', 'worker'])
+    })
+
+    it('returns an empty set for an unknown tenant', () => {
+      const { scorer } = createHarness()
+      assert.deepEqual(scorer.getTrackedServices('nobody'), new Set())
     })
   })
 
