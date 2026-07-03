@@ -146,7 +146,13 @@ export function registerCorrelations(server: McpServer, client: LogWeaveClient):
         'Requires a trace_id from log events. Do not guess trace IDs.',
       inputSchema: {
         trace_id: z.string().describe('Trace ID to look up (from log events or error context)'),
-        hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
       },
       annotations: READ_ONLY,
     },
@@ -163,8 +169,20 @@ export function registerCorrelations(server: McpServer, client: LogWeaveClient):
         'Requires a template_id from error_patterns, changes, or search_templates results.',
       inputSchema: {
         template_id: z.string().describe('Template ID to find related patterns for'),
-        hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
-        limit: z.number().optional().describe('Max results to return (default: 20, max: 100)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe('Max results to return (default: 20, max: 100)'),
       },
       annotations: READ_ONLY,
     },
@@ -183,8 +201,20 @@ export function registerCorrelations(server: McpServer, client: LogWeaveClient):
         'Use this to find systemic issues (e.g. error in service A always spikes with error in service B).',
       inputSchema: {
         template_id: z.string().describe('Template ID to correlate against'),
-        hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
-        limit: z.number().optional().describe('Max results to return (default: 10, max: 50)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe('Max results to return (default: 10, max: 50)'),
       },
       annotations: READ_ONLY,
     },
@@ -205,6 +235,9 @@ export function registerCorrelations(server: McpServer, client: LogWeaveClient):
         service: z.string().describe('Service name to check'),
         hours: z
           .number()
+          .int()
+          .min(1)
+          .max(6)
           .optional()
           .describe('Current window in hours for comparison (default: 1, max: 6)'),
       },

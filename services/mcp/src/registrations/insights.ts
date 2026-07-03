@@ -371,7 +371,13 @@ export function registerInsights(server: McpServer, client: LogWeaveClient): voi
         'Show the DEBUG/INFO/WARN/ERROR breakdown for the system or a specific service. ' +
         'A rising WARN percentage is a leading indicator of problems, even before errors appear.',
       inputSchema: {
-        hours: z.number().optional().describe('Time window in hours (default: 24)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
         service: z.string().optional().describe('Filter to a specific service'),
       },
       annotations: READ_ONLY,
@@ -398,8 +404,11 @@ export function registerInsights(server: McpServer, client: LogWeaveClient): voi
           ),
         hours: z
           .number()
+          .int()
+          .min(1)
+          .max(720)
           .optional()
-          .describe('Window length in hours (default: 2). Ignored if since is provided.'),
+          .describe('Window length in hours (default: 2, max: 720). Ignored if since is provided.'),
       },
       annotations: READ_ONLY,
     },
@@ -416,7 +425,13 @@ export function registerInsights(server: McpServer, client: LogWeaveClient): voi
         'Analyze log patterns to identify noise (high-volume DEBUG/TRACE) and review candidates (high-volume INFO/WARN). ' +
         'Returns patterns ranked by volume percentage with actionable suggestions for reducing log costs.',
       inputSchema: {
-        hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
         service: z.string().optional().describe('Filter to a specific service name'),
       },
       annotations: READ_ONLY,

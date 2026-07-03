@@ -100,6 +100,15 @@ export interface ServiceOutlier {
 // 5 / #258 — was 168 when the baseline mixed all 24 hours.)
 const MIN_DATA_POINTS = 5
 
+// The correlations query tests up to 50 candidate templates per anchor at
+// |r| >= 0.7 (see MIN_CORRELATION in correlation-queries.ts) — a multiple-
+// comparisons setup where some reported correlations are expected to be
+// spurious even after de-seasonalization. Surfaced to callers so an LLM
+// consumer doesn't treat every returned pair as independently significant.
+const MULTIPLE_COMPARISONS_NOTE =
+  'Correlations are computed against up to 50 candidate templates per query at a 0.7 minimum coefficient; ' +
+  'with that many comparisons, some reported correlations may be coincidental rather than causal.'
+
 function computeOutlier(
   service: string,
   row: {
@@ -247,7 +256,7 @@ export function correlationRoutes(deps: CorrelationDeps): Router {
           }
         })
 
-        respond(res, data, { hours, limit, count: data.length })
+        respond(res, data, { hours, limit, count: data.length, note: MULTIPLE_COMPARISONS_NOTE })
       } catch (err) {
         next(err)
       }

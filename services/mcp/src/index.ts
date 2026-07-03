@@ -69,19 +69,22 @@ if (process.env.LOGWEAVE_DEV === 'true') {
 }
 
 async function main() {
-  const transport = new StdioServerTransport()
-  await server.connect(transport)
-
-  // Health check after transport — tools return errors gracefully if the API is down.
+  // Health check before accepting connections — tools still return errors
+  // gracefully if the API is down, but the readiness signal on stderr now
+  // reflects real backend state instead of always firing on connect.
   try {
     await client.healthCheck()
-    process.stderr.write('LogWeave MCP server connected successfully\n')
+    process.stderr.write('LogWeave API reachable\n')
   } catch (err) {
     process.stderr.write(
       `Warning: LogWeave API health check failed at ${apiUrl}: ${err instanceof Error ? err.message : String(err)}\n` +
         'Tools will return errors until the API is reachable.\n',
     )
   }
+
+  const transport = new StdioServerTransport()
+  await server.connect(transport)
+  process.stderr.write('LogWeave MCP server connected successfully\n')
 }
 
 main().catch((err) => {

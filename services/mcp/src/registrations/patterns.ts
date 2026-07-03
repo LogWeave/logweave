@@ -242,7 +242,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
         'Shows template text, service, error count, and whether the pattern is new today. ' +
         'Use this to see what errors are happening across all services. For a single service, pass the service parameter.',
       inputSchema: {
-        hours: z.number().optional().describe('Time window in hours (default: 24)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
         service: z.string().optional().describe('Filter to a specific service name'),
         limit: z
           .number()
@@ -271,7 +277,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
         template_id: z
           .string()
           .describe('Template ID to look up (from error_patterns or changes results)'),
-        hours: z.number().optional().describe('Time window in hours (default: 24)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
       },
       annotations: READ_ONLY,
     },
@@ -289,7 +301,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
         'Minimum 3 characters.',
       inputSchema: {
         query: z.string().describe('Search text (minimum 3 characters)'),
-        hours: z.number().optional().describe('Time window in hours (default: 24)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
         limit: z
           .number()
           .int()
@@ -324,7 +342,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
         template_id: z
           .string()
           .describe('Template ID (from error_patterns, changes, or search_templates)'),
-        days: z.number().optional().describe('Number of days to look back (default: 90, max: 365)'),
+        days: z
+          .number()
+          .int()
+          .min(1)
+          .max(365)
+          .optional()
+          .describe('Number of days to look back (default: 90, max: 365)'),
       },
       annotations: READ_ONLY,
     },
@@ -345,7 +369,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
           .number()
           .optional()
           .describe('Filter to a specific HTTP status code (e.g. 500)'),
-        hours: z.number().optional().describe('Time window in hours (default: 24)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
         limit: z
           .number()
           .int()
@@ -375,7 +405,13 @@ export function registerPatterns(server: McpServer, client: LogWeaveClient): voi
       inputSchema: {
         key: z.string().describe('Tag key to search (e.g. "customer_id", "order_id")'),
         value: z.string().describe('Tag value to match (e.g. "ACME-123")'),
-        hours: z.number().optional().describe('Time window in hours (default: 24)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
         limit: z
           .number()
           .int()

@@ -207,6 +207,9 @@ export function registerRules(server: McpServer, client: LogWeaveClient): void {
         value: z.number().optional().describe('(threshold only) Threshold value'),
         window_minutes: z
           .number()
+          .int()
+          .min(1)
+          .max(60)
           .optional()
           .describe('(threshold only) Evaluation window in minutes (1-60)'),
         // template_watch fields
@@ -259,10 +262,22 @@ export function registerRules(server: McpServer, client: LogWeaveClient): void {
         'Query recent alert history — what rules fired, when, and what triggered them. ' +
         'Filter by service or rule_id. Use this to investigate alert activity.',
       inputSchema: {
-        hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
         rule_id: z.string().optional().describe('Filter to a specific rule ID'),
         service: z.string().optional().describe('Filter to alerts from a specific service'),
-        limit: z.number().optional().describe('Max results (default: 100, max: 500)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe('Max results (default: 100, max: 500)'),
       },
       annotations: READ_ONLY,
     },

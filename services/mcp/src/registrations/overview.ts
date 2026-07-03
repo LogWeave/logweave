@@ -9,9 +9,10 @@ import {
 } from '../shared/system-state.js'
 
 async function overview(client: LogWeaveClient, args: { hours?: number }): Promise<string> {
-  const res = (await client.getComposite('/overview', {
-    hours: args.hours,
-  })) as ApiResponse
+  const [res, anomalyState] = await Promise.all([
+    client.getComposite('/overview', { hours: args.hours }) as Promise<ApiResponse>,
+    getAnomalyState(client),
+  ])
 
   const d = res.data as Record<string, unknown>
   const patterns = (d.topErrorPatterns as Array<Record<string, unknown>>) ?? []
@@ -36,7 +37,6 @@ async function overview(client: LogWeaveClient, args: { hours?: number }): Promi
 
   // Self-aware system-state block so LLM agents know whether to trust low
   // anomaly numbers or treat them as "system warming up".
-  const anomalyState = await getAnomalyState(client)
   const notes = buildSystemNotes(anomalyState, null)
   text += formatSystemStateBlock(notes)
 
@@ -158,7 +158,13 @@ export function registerOverview(server: McpServer, client: LogWeaveClient): voi
         'Use this first to understand the current state of the system. ' +
         'Do not use for specific service or template queries — use service_health or template_detail instead.',
       inputSchema: {
-        hours: z.number().optional().describe('Time window in hours (default: 24, max: 720)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
       },
       annotations: READ_ONLY,
     },
@@ -175,7 +181,13 @@ export function registerOverview(server: McpServer, client: LogWeaveClient): voi
         'Do not use for cross-service overview — use overview instead.',
       inputSchema: {
         service: z.string().describe('Service name to check'),
-        hours: z.number().optional().describe('Time window in hours (default: 24)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
       },
       annotations: READ_ONLY,
     },
@@ -191,7 +203,13 @@ export function registerOverview(server: McpServer, client: LogWeaveClient): voi
         'Use this to discover which services exist and which need attention. ' +
         'Start here when you need to find service names for service_health or diagnose_service.',
       inputSchema: {
-        hours: z.number().optional().describe('Time window in hours (default: 24)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(720)
+          .optional()
+          .describe('Time window in hours (default: 24, max: 720)'),
       },
       annotations: READ_ONLY,
     },
