@@ -130,13 +130,14 @@ function mapTemplateRows(rows: RawRow[], newTodayIds: Set<string>): TemplateRow[
   }))
 }
 
-function mapServiceRows(rows: RawRow[]): ServiceRow[] {
+function mapServiceRows(rows: RawRow[], silentServices?: Set<string>): ServiceRow[] {
   return rows.map((r) => {
     const logCount = Number(r.log_count)
     const errorCount = Number(r.error_count)
     const warnCount = Number(r.warn_count)
+    const service = r.service as string
     return {
-      service: r.service as string,
+      service,
       logCount,
       errorCount,
       warnCount,
@@ -144,6 +145,7 @@ function mapServiceRows(rows: RawRow[]): ServiceRow[] {
       warnRate: logCount > 0 ? Math.round((warnCount / logCount) * 10000) / 10000 : 0,
       newTemplateCount: Number(r.new_template_count),
       avgAnomalyScore: Number(r.avg_anomaly_score),
+      silent: silentServices?.has(service) ?? false,
     }
   })
 }
@@ -252,7 +254,10 @@ export function dashboardRoutes(deps: DashboardDeps): Router {
         level: params.level,
       })
 
-      const data = mapServiceRows(toRawRows(rows))
+      const silentServices = deps.anomalyScorer
+        ? new Set(deps.anomalyScorer.getServiceSilenceScores(tenantId).map((s) => s.service))
+        : undefined
+      const data = mapServiceRows(toRawRows(rows), silentServices)
 
       respond(res, data, { hours: params.hours, limit: params.limit, count: data.length })
     } catch (err) {

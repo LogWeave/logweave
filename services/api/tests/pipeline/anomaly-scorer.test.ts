@@ -33,6 +33,8 @@ function createHarness(
     warmupThreshold?: number
     steadyThreshold?: number
     newTemplateThreshold?: number
+    dropThreshold?: number
+    minExpectedForSilence?: number
     db?: DbClient
   } = {},
 ): ScorerHarness {
@@ -45,6 +47,8 @@ function createHarness(
     warmupThreshold: options.warmupThreshold ?? 10,
     steadyThreshold: options.steadyThreshold ?? 3,
     newTemplateThreshold: options.newTemplateThreshold ?? 20,
+    dropThreshold: options.dropThreshold,
+    minExpectedForSilence: options.minExpectedForSilence,
     now: () => clock.t,
   })
 
@@ -696,6 +700,119 @@ describe('AnomalyScorer', () => {
       const state = scorer.getTenantWarmupState('any')
       assert.equal(state.coldStartMs, 7777)
       assert.equal(state.warmupMs, 9999)
+    })
+  })
+
+  describe('getServiceSilenceScores', () => {
+    it('flags a service whose actual count is far below its expected baseline', async () => {
+      const { scorer, registerWarmup } = createHarness({
+        coldStartMs: 0,
+        dropThreshold: 10,
+        minExpectedForSilence: 5,
+        db: createBaselineMockDb([
+          { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 20 },
+        ]),
+      })
+      registerWarmup('t1', 'api', 2 * 3_600_000) // past cold-start
+      await scorer.refreshBaselines()
+
+      // No events recorded this interval — actual=0, expected=20, ratio=0 < 1/10
+      const scores = scorer.getServiceSilenceScores('t1')
+      assert.equal(scores.length, 1)
+      assert.equal(scores[0]?.service, 'api')
+      assert.equal(scores[0]?.expectedCount, 20)
+      assert.equal(scores[0]?.actualCount, 0)
+    })
+
+    it('does not flag a service logging near its expected baseline', async () => {
+      const { scorer, registerWarmup } = createHarness({
+        coldStartMs: 0,
+        dropThreshold: 10,
+        minExpectedForSilence: 5,
+        db: createBaselineMockDb([
+          { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 20 },
+        ]),
+      })
+      registerWarmup('t1', 'api', 2 * 3_600_000)
+      await scorer.refreshBaselines()
+
+      for (let i = 0; i < 18; i++) {
+        scorer.recordAndScore('t1', 'api', 'tmpl-1')
+      }
+
+      const scores = scorer.getServiceSilenceScores('t1')
+      assert.equal(scores.length, 0)
+    })
+
+    it('excludes services below the minExpectedForSilence floor even at zero actual', async () => {
+      const { scorer, registerWarmup } = createHarness({
+        coldStartMs: 0,
+        dropThreshold: 10,
+        minExpectedForSilence: 5,
+        db: createBaselineMockDb([
+          { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 2 },
+        ]),
+      })
+      registerWarmup('t1', 'api', 2 * 3_600_000)
+      await scorer.refreshBaselines()
+
+      const scores = scorer.getServiceSilenceScores('t1')
+      assert.equal(scores.length, 0, 'expected count below the floor should never be flagged')
+    })
+
+    it('excludes cold-start services even with an established baseline', async () => {
+      const { scorer, registerWarmup } = createHarness({
+        coldStartMs: 600_000,
+        dropThreshold: 10,
+        minExpectedForSilence: 5,
+        db: createBaselineMockDb([
+          { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 20 },
+        ]),
+      })
+      registerWarmup('t1', 'api', 60_000) // 1 minute ago — still cold-start
+      await scorer.refreshBaselines()
+
+      const scores = scorer.getServiceSilenceScores('t1')
+      assert.equal(scores.length, 0, 'cold-start services should not be silence-checked yet')
+    })
+
+    it('isolates per-tenant — another tenant silence does not leak across', async () => {
+      const { scorer, registerWarmup } = createHarness({
+        coldStartMs: 0,
+        db: createBaselineMockDb([
+          { tenantId: 't1', service: 'api', templateId: 'tmpl-1', avgCount: 20 },
+          { tenantId: 't2', service: 'api', templateId: 'tmpl-1', avgCount: 20 },
+        ]),
+      })
+      registerWarmup('t1', 'api', 2 * 3_600_000)
+      registerWarmup('t2', 'api', 2 * 3_600_000)
+      await scorer.refreshBaselines()
+
+      // t2 keeps logging normally; t1 goes silent
+      for (let i = 0; i < 18; i++) {
+        scorer.recordAndScore('t2', 'api', 'tmpl-1')
+      }
+
+      const t1Scores = scorer.getServiceSilenceScores('t1')
+      const t2Scores = scorer.getServiceSilenceScores('t2')
+      assert.equal(t1Scores.length, 1, 't1 should be flagged silent')
+      assert.equal(t2Scores.length, 0, 't2 should not be affected by t1 going silent')
+    })
+  })
+
+  describe('getActiveTenants', () => {
+    it('returns distinct tenant IDs with at least one tracked service', () => {
+      const { scorer, registerWarmup } = createHarness()
+      registerWarmup('t1', 'api', 0)
+      registerWarmup('t1', 'worker', 0)
+      registerWarmup('t2', 'api', 0)
+      const tenants = scorer.getActiveTenants().sort()
+      assert.deepEqual(tenants, ['t1', 't2'])
+    })
+
+    it('returns an empty array when no tenant has been seen', () => {
+      const { scorer } = createHarness()
+      assert.deepEqual(scorer.getActiveTenants(), [])
     })
   })
 })

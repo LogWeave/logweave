@@ -187,6 +187,8 @@ export interface ServiceRow {
   warnRate: number
   newTemplateCount: number
   avgAnomalyScore: number
+  /** True if the service has gone silent — actual count far below its expected baseline. */
+  silent: boolean
 }
 
 export interface VolumePoint {
@@ -300,6 +302,8 @@ export interface ServiceHealthData {
   warnRate: number
   topErrorPatterns: CrossServiceTemplate[]
   volumeTrend: Array<{ intervalStart: string; logCount: number; errorCount: number }>
+  /** True if the service has gone silent — actual count far below its expected baseline. */
+  silent: boolean
 }
 
 export interface OverviewCompositeData {
