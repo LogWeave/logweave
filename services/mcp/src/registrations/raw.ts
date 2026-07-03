@@ -118,8 +118,20 @@ export function registerRaw(server: McpServer, client: LogWeaveClient): void {
         service: z
           .string()
           .describe('Service name — required to locate the correct log source path'),
-        hours: z.number().optional().describe('Time window in hours (default: 1, max: 24)'),
-        limit: z.number().optional().describe('Max lines to return (default: 20, max: 100)'),
+        hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(24)
+          .optional()
+          .describe('Time window in hours (default: 1, max: 24)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe('Max lines to return (default: 20, max: 100)'),
       },
       annotations: READ_ONLY,
     },
@@ -150,13 +162,23 @@ export function registerRaw(server: McpServer, client: LogWeaveClient): void {
         template_id: z.string().optional().describe('Filter to a specific template pattern'),
         min_anomaly: z
           .number()
+          .min(0)
           .optional()
           .describe('Minimum anomaly score (0 = normal, ≥1.0 = anomalous, no upper bound)'),
         seconds: z
           .number()
+          .int()
+          .min(1)
+          .max(60)
           .optional()
           .describe('How far back on first call (default: 30, max: 60)'),
-        limit: z.number().optional().describe('Max events to return (default: 50, max: 200)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(200)
+          .optional()
+          .describe('Max events to return (default: 50, max: 200)'),
         cursor: z
           .number()
           .optional()
