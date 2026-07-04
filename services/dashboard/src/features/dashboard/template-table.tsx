@@ -22,6 +22,13 @@ import { cn } from '../../lib/cn'
 import { TOOLTIPS } from '../../lib/tooltips'
 import { useDashboardStore } from '../../stores/dashboard-store'
 import { MiniSparkline } from './mini-sparkline'
+import {
+  countHidden,
+  filterVisibleTemplates,
+  matchesTemplateSearch,
+  staleHiddenIds,
+  topSparklineIds,
+} from './template-table-data'
 
 const columnHelper = createColumnHelper<TemplateRow>()
 
@@ -29,14 +36,7 @@ export function TemplateTable({ className }: { className?: string }) {
   const { data: response, isLoading } = useTemplates()
   const templates = response?.data ?? []
 
-  const sparklineIds = useMemo(
-    () =>
-      [...templates]
-        .sort((a, b) => b.maxAnomalyScore - a.maxAnomalyScore)
-        .slice(0, 20)
-        .map((t) => t.templateId),
-    [templates],
-  )
+  const sparklineIds = useMemo(() => topSparklineIds(templates), [templates])
   const { data: sparklineResponse } = useSparklines(sparklineIds)
   const sparklineData = sparklineResponse?.data ?? {}
 
@@ -79,28 +79,27 @@ export function TemplateTable({ className }: { className?: string }) {
     })),
   )
 
-  const visibleTemplates = useMemo(() => {
-    let filtered = showHidden
-      ? templates
-      : templates.filter((t) => !hiddenTemplateIds.includes(t.templateId))
-    if (watchedOnly) {
-      filtered = filtered.filter((t) => watchedIds.has(t.templateId))
-    }
-    return filtered
-  }, [templates, hiddenTemplateIds, showHidden, watchedOnly, watchedIds])
+  const visibleTemplates = useMemo(
+    () =>
+      filterVisibleTemplates(templates, {
+        hiddenIds: hiddenTemplateIds,
+        showHidden,
+        watchedOnly,
+        watchedIds,
+      }),
+    [templates, hiddenTemplateIds, showHidden, watchedOnly, watchedIds],
+  )
 
   // Prune stale hidden IDs that no longer exist in current template set
   useEffect(() => {
-    if (templates.length === 0 || hiddenTemplateIds.length === 0) return
-    const currentIds = new Set(templates.map((t) => t.templateId))
-    const stale = hiddenTemplateIds.filter((id) => !currentIds.has(id))
+    const stale = staleHiddenIds(templates, hiddenTemplateIds)
     if (stale.length > 0) {
       for (const id of stale) toggleHideTemplate(id)
     }
   }, [templates, hiddenTemplateIds, toggleHideTemplate])
 
   const hiddenCount = useMemo(
-    () => templates.filter((t) => hiddenTemplateIds.includes(t.templateId)).length,
+    () => countHidden(templates, hiddenTemplateIds),
     [templates, hiddenTemplateIds],
   )
 
@@ -215,13 +214,8 @@ export function TemplateTable({ className }: { className?: string }) {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    globalFilterFn: (row, _columnId, filterValue) => {
-      const search = String(filterValue).toLowerCase()
-      return (
-        row.original.templateText.toLowerCase().includes(search) ||
-        row.original.service.toLowerCase().includes(search)
-      )
-    },
+    globalFilterFn: (row, _columnId, filterValue) =>
+      matchesTemplateSearch(row.original, String(filterValue)),
   })
 
   const { rows } = table.getRowModel()
