@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { EChartsOption } from 'echarts'
 import { useMemo, useState } from 'react'
 import { pollUnlessError, useDeploys, useVolume } from '../../api/queries'
-import type { ApiResponse, VolumeData, VolumePoint } from '../../api/types'
+import type { ApiResponse, VolumeData } from '../../api/types'
 import { Chart } from '../../components/chart'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
@@ -13,6 +13,12 @@ import { config } from '../../config'
 import { api } from '../../lib/api-client'
 import { cn } from '../../lib/cn'
 import { timeRangeToHours, useDashboardStore } from '../../stores/dashboard-store'
+import {
+  buildServiceMap,
+  findClosestTimestampIndex,
+  formatVolumeAxisLabel,
+  sumCountsByTimestamp,
+} from './volume-chart-data'
 
 type ChartType = 'area' | 'bar' | 'line'
 
@@ -21,24 +27,6 @@ const chartTypeOptions = [
   { value: 'bar', label: 'Bar' },
   { value: 'line', label: 'Line' },
 ]
-
-function buildServiceMap(points: VolumePoint[]) {
-  const serviceMap = new Map<string, Array<{ time: string; count: number }>>()
-  const timestamps = new Set<string>()
-
-  for (const point of points) {
-    timestamps.add(point.intervalStart)
-    if (!serviceMap.has(point.service)) {
-      serviceMap.set(point.service, [])
-    }
-    serviceMap.get(point.service)?.push({
-      time: point.intervalStart,
-      count: point.logCount,
-    })
-  }
-
-  return { serviceMap, timestamps }
-}
 
 export function VolumeChart({ className }: { className?: string }) {
   const [chartType, setChartType] = useState<ChartType>('area')
@@ -156,14 +144,8 @@ export function VolumeChart({ className }: { className?: string }) {
 
     const ghostSeries: typeof currentSeries = []
     if (isLevelFiltered && unfilteredResponse?.data?.current?.length) {
-      const { serviceMap: totalServiceMap } = buildServiceMap(unfilteredResponse.data.current)
-      // Build a single "Total" ghost line by summing all services
-      const totalByTimestamp = new Map<string, number>()
-      for (const [, points] of totalServiceMap) {
-        for (const p of points) {
-          totalByTimestamp.set(p.time, (totalByTimestamp.get(p.time) ?? 0) + p.count)
-        }
-      }
+      // Build a single "Total" ghost line by summing all services.
+      const totalByTimestamp = sumCountsByTimestamp(unfilteredResponse.data.current)
       ghostSeries.push({
         name: 'Total (unfiltered)',
         type: 'line' as const,
@@ -180,19 +162,11 @@ export function VolumeChart({ className }: { className?: string }) {
     const deploys = deploysResponse?.data ?? []
     if (deploys.length > 0 && currentSeries.length > 0) {
       const deployMarks = deploys.map((d) => {
-        // Find the closest x-axis index for this deploy timestamp
-        const deployTime = new Date(d.timestamp).getTime()
-        let closestIdx = 0
-        let closestDiff = Number.POSITIVE_INFINITY
-        for (let i = 0; i < sortedTimestamps.length; i++) {
-          const ts = sortedTimestamps[i]
-          if (!ts) continue
-          const diff = Math.abs(new Date(ts).getTime() - deployTime)
-          if (diff < closestDiff) {
-            closestDiff = diff
-            closestIdx = i
-          }
-        }
+        // Anchor the deploy marker to the nearest x-axis category.
+        const closestIdx = findClosestTimestampIndex(
+          sortedTimestamps,
+          new Date(d.timestamp).getTime(),
+        )
         return {
           xAxis: closestIdx,
           label: { formatter: d.version ?? d.service, fontSize: 9, color: '#818cf8' },
@@ -239,19 +213,7 @@ export function VolumeChart({ className }: { className?: string }) {
       },
       xAxis: {
         type: 'category',
-        data: sortedTimestamps.map((t) => {
-          const d = new Date(t)
-          if (Number.isNaN(d.getTime())) return String(t)
-          const hhmm = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-          if (timeRange === '7d') {
-            const day = d.toLocaleDateString('en-US', { weekday: 'short' })
-            return `${day} ${hhmm}`
-          }
-          if (timeRange === '24h') {
-            return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${hhmm}`
-          }
-          return hhmm
-        }),
+        data: sortedTimestamps.map((t) => formatVolumeAxisLabel(t, timeRange)),
         boundaryGap: chartType === 'bar',
       },
       yAxis: {
