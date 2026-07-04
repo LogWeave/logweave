@@ -9,11 +9,18 @@ import { Tooltip } from '../../components/ui/tooltip'
 import { cn } from '../../lib/cn'
 import { TOOLTIPS } from '../../lib/tooltips'
 import { useDashboardStore } from '../../stores/dashboard-store'
+import { baselineEtaMessage, type SpikeSeverity, spikeRatioSeverity } from './changes-panel-data'
 
 const BADGE_TOOLTIPS = {
   spike: TOOLTIPS.spikeEvent,
   new: TOOLTIPS.newEvent,
   resolved: TOOLTIPS.resolvedEvent,
+}
+
+const SPIKE_SEVERITY_CLASS: Record<SpikeSeverity, string> = {
+  danger: 'text-danger',
+  warning: 'text-warning',
+  normal: 'text-text-secondary',
 }
 
 const ChangeEventRow = memo(function ChangeEventRow({
@@ -52,11 +59,7 @@ const ChangeEventRow = memo(function ChangeEventRow({
               <span
                 className={cn(
                   'text-[11px] font-mono tabular-nums font-semibold',
-                  event.ratio >= 50
-                    ? 'text-danger'
-                    : event.ratio >= 10
-                      ? 'text-warning'
-                      : 'text-text-secondary',
+                  SPIKE_SEVERITY_CLASS[spikeRatioSeverity(event.ratio)],
                 )}
               >
                 {event.ratio.toFixed(1)}x
@@ -98,23 +101,10 @@ export function ChangesPanel({ className }: { className?: string }) {
   const tenantFirstSeenAt = response?.meta?.tenantFirstSeenAt
   const setSelectedTemplateId = useDashboardStore((s) => s.setSelectedTemplateId)
 
-  // Compute time-until-baseline-window-ready for the empty-baseline copy.
-  // Change detection compares the current N-hour window vs the prior N-hour
-  // window, so we need 2N hours of ingestion before the comparison is meaningful.
-  // We have `hours` (window size) from response meta and `tenantFirstSeenAt`
-  // from the new field. If we know both, we can give the user a concrete ETA.
-  const baselineEtaMessage = (() => {
-    const windowHours = response?.meta?.hours
-    if (!windowHours || !tenantFirstSeenAt) return null
-    const requiredMs = windowHours * 2 * 60 * 60 * 1000
-    const elapsedMs = Date.now() - new Date(tenantFirstSeenAt).getTime()
-    const remainingMs = requiredMs - elapsedMs
-    if (remainingMs <= 0) return null
-    const minutes = Math.ceil(remainingMs / 60_000)
-    if (minutes < 60) return `Comparison available in ~${minutes} min.`
-    const hours = Math.ceil(minutes / 60)
-    return `Comparison available in ~${hours}h.`
-  })()
+  // Time-until-baseline-window-ready for the empty-baseline copy. See
+  // baselineEtaMessage: detection needs 2N hours of ingestion (current +
+  // prior N-hour window) before the comparison is meaningful.
+  const etaMessage = baselineEtaMessage(response?.meta?.hours, tenantFirstSeenAt)
 
   if (isLoading) {
     return (
@@ -149,8 +139,9 @@ export function ChangesPanel({ className }: { className?: string }) {
               <>
                 <p>Not enough history yet to detect changes.</p>
                 <p className="text-text-muted/70">
-                  Change detection needs ingestion to cover both the current window and the equivalent prior window.
-                  {baselineEtaMessage ? ` ${baselineEtaMessage}` : ''}
+                  Change detection needs ingestion to cover both the current window and the
+                  equivalent prior window.
+                  {etaMessage ? ` ${etaMessage}` : ''}
                 </p>
               </>
             ) : (
