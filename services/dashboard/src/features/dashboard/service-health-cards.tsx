@@ -3,35 +3,27 @@ import { useMemo } from 'react'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/shallow'
 import { useCreateRule, useRules, useServices } from '../../api/queries'
-import type { ThresholdConfig } from '../../api/types'
 import { Badge } from '../../components/ui/badge'
 import { Card } from '../../components/ui/card'
 import { QueryError } from '../../components/ui/query-error'
 import { Skeleton } from '../../components/ui/skeleton'
 import { cn } from '../../lib/cn'
 import { useDashboardStore } from '../../stores/dashboard-store'
+import {
+  isUnhealthy,
+  servicesWithThresholdRules,
+  sortServicesByErrorImpact,
+} from './service-health-data'
 
 export function ServiceHealthCards({ className }: { className?: string }) {
   const createRuleMutation = useCreateRule()
   const { data: rulesResponse } = useRules()
-  const rulesServices = useMemo(() => {
-    const rules = rulesResponse?.data ?? []
-    return new Set(
-      rules
-        .filter((r) => r.ruleType === 'threshold')
-        .map((r) => (r.config as ThresholdConfig).service),
-    )
-  }, [rulesResponse?.data])
-  const { data: response, isLoading, isError, refetch } = useServices()
-  const services = useMemo(
-    () =>
-      [...(response?.data ?? [])].sort((a, b) => {
-        const aErrors = Math.round(a.logCount * a.errorRate)
-        const bErrors = Math.round(b.logCount * b.errorRate)
-        return bErrors - aErrors || b.errorRate - a.errorRate
-      }),
-    [response?.data],
+  const rulesServices = useMemo(
+    () => servicesWithThresholdRules(rulesResponse?.data ?? []),
+    [rulesResponse?.data],
   )
+  const { data: response, isLoading, isError, refetch } = useServices()
+  const services = useMemo(() => sortServicesByErrorImpact(response?.data ?? []), [response?.data])
   const { serviceFilter, setServiceFilter } = useDashboardStore(
     useShallow((s) => ({ serviceFilter: s.serviceFilter, setServiceFilter: s.setServiceFilter })),
   )
@@ -89,7 +81,7 @@ export function ServiceHealthCards({ className }: { className?: string }) {
               <div
                 className={cn(
                   'h-8 w-8 rounded-[var(--radius-md)] flex items-center justify-center shrink-0',
-                  svc.errorRate > 0.05
+                  isUnhealthy(svc.errorRate)
                     ? 'bg-red-500/10 text-danger'
                     : 'bg-brand-500/10 text-brand-400',
                 )}
