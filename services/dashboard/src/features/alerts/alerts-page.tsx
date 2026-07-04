@@ -10,12 +10,7 @@ import {
   useServices,
   useUpdateRule,
 } from '../../api/queries'
-import type {
-  AlertHistoryEntry,
-  AlertRule,
-  TemplateWatchConfig,
-  ThresholdConfig,
-} from '../../api/types'
+import type { AlertHistoryEntry, AlertRule, TemplateWatchConfig } from '../../api/types'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
@@ -23,10 +18,14 @@ import { FilterBar, type FilterDefinition } from '../../components/ui/filter-bar
 import { QueryError } from '../../components/ui/query-error'
 import { Skeleton } from '../../components/ui/skeleton'
 import { cn } from '../../lib/cn'
-
-function isThresholdConfig(rule: AlertRule): rule is AlertRule & { config: ThresholdConfig } {
-  return rule.ruleType === 'threshold'
-}
+import {
+  alertSeverity,
+  countEnabledRules,
+  filterRules,
+  isThresholdRule as isThresholdConfig,
+  recentAlerts,
+  ruleServices,
+} from './alerts-data'
 
 function RuleRow({ rule }: { rule: AlertRule }) {
   const navigate = useNavigate()
@@ -152,9 +151,15 @@ function RuleRow({ rule }: { rule: AlertRule }) {
   )
 }
 
+const SEVERITY_TEXT_CLASS: Record<string, string> = {
+  danger: 'text-danger',
+  warning: 'text-warning',
+  normal: 'text-text-primary',
+}
+
 function AlertHistoryRow({ alert }: { alert: AlertHistoryEntry }) {
-  const ratio = alert.thresholdValue > 0 ? alert.metricValue / alert.thresholdValue : 1
-  const severity = ratio > 3 ? 'text-danger' : ratio > 1.5 ? 'text-warning' : 'text-text-primary'
+  const { ratio, level } = alertSeverity(alert.metricValue, alert.thresholdValue)
+  const severity = SEVERITY_TEXT_CLASS[level]
   const service = (alert.details?.service as string) ?? 'unknown'
 
   return (
@@ -384,14 +389,7 @@ export function AlertsPage() {
 
   // Derive filter options from live data
   const filterDefs: FilterDefinition[] = useMemo(() => {
-    const services = [
-      ...new Set(
-        rules.flatMap((r) => {
-          if (isThresholdConfig(r)) return [r.config.service]
-          return []
-        }),
-      ),
-    ]
+    const services = ruleServices(rules)
 
     return [
       {
@@ -422,19 +420,9 @@ export function AlertsPage() {
     ]
   }, [rules])
 
-  const filteredRules = rules.filter((r) => {
-    if (filters.type && r.ruleType !== filters.type) return false
-    if (filters.service && isThresholdConfig(r) && r.config.service !== filters.service)
-      return false
-    if (filters.status === 'enabled' && !r.enabled) return false
-    if (filters.status === 'disabled' && r.enabled) return false
-    return true
-  })
-
-  const enabledCount = rules.filter((r) => r.enabled).length
-  const recentAlerts = alerts.filter(
-    (a) => Date.now() - new Date(a.firedAt).getTime() < 24 * 60 * 60 * 1000,
-  )
+  const filteredRules = filterRules(rules, filters)
+  const enabledCount = countEnabledRules(rules)
+  const alertsLast24h = recentAlerts(alerts)
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -443,8 +431,8 @@ export function AlertsPage() {
         <div>
           <h2 className="text-lg font-semibold text-text-primary">Alert Rules</h2>
           <p className="text-xs text-text-muted mt-0.5">
-            {enabledCount} active rule{enabledCount !== 1 ? 's' : ''} · {recentAlerts.length} alert
-            {recentAlerts.length !== 1 ? 's' : ''} in the last 24h
+            {enabledCount} active rule{enabledCount !== 1 ? 's' : ''} · {alertsLast24h.length} alert
+            {alertsLast24h.length !== 1 ? 's' : ''} in the last 24h
           </p>
         </div>
         <Button
