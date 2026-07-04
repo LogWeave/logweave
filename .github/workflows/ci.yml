@@ -101,6 +101,10 @@ jobs:
         run: pnpm typecheck
       - name: Run tests
         run: pnpm test
+      - name: Build (ESM + CJS)
+        run: pnpm build
+      - name: CJS require() smoke test
+        run: pnpm test:cjs
 
   mcp:
     name: MCP Server (lint + test)
