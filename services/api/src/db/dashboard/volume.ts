@@ -14,8 +14,18 @@ interface DashboardVolumeOptions extends PaginationOptions {
   level?: string[]
 }
 
+// service_stats_5m retains 7 days — beyond that only the coarser hourly
+// service_stats table has data. Both count ALL rows (clustered + unclustered);
+// template_stats excludes unclustered (template_id='0') rows and would
+// silently undercount volume during a clusterer outage, which is why neither
+// it nor a mix of the two tables is used here.
+const SMOOTH_WINDOW_HOURS = 24 * 7
+
 /**
- * Returns time-series volume data from service_stats.
+ * Returns time-series volume data from service_stats_5m (5-min buckets) when
+ * the whole requested window fits in its 7-day retention, or service_stats
+ * (1-hour buckets) for longer lookbacks — chosen by the oldest edge of the
+ * window so a single response never mixes two bucket granularities.
  * Supports offset for comparison windows (e.g., "same hours, one day ago").
  */
 export async function queryDashboardVolume(
@@ -37,16 +47,16 @@ export async function queryDashboardVolume(
   AND interval_start <= now64(3) - toIntervalHour({offset:UInt32})`
       : 'AND interval_start > now64(3) - toIntervalHour({hours:UInt32})'
 
-  // Use template_stats (5-min buckets) for smoother volume charts
-  // instead of service_stats (1-hour buckets) which looks blocky
+  const table = hours + offset > SMOOTH_WINDOW_HOURS ? 'service_stats' : 'service_stats_5m'
+
   const query = `
 /* @query: dashboardVolume */
 SELECT
     interval_start,
     service,
-    countMerge(occurrence_count)  AS log_count,
-    countMerge(error_count)      AS error_count
-FROM logweave.template_stats
+    countMerge(log_count)   AS log_count,
+    countMerge(error_count) AS error_count
+FROM logweave.${table}
 WHERE tenant_id = {tenant_id:String}
   ${timeFilter}
   ${serviceFilter}
