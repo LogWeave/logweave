@@ -188,7 +188,7 @@ Service and environment are sent at the **batch level** (not per-event) to reduc
 ## Requirements
 
 - Node.js 20+
-- ESM (`"type": "module"`)
+- Works from both ESM (`import`) and CommonJS (`require`) projects
 
 ## License
 

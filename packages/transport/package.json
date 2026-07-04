@@ -4,12 +4,17 @@
   "description": "Winston transport for LogWeave — buffer, retry, never block",
   "license": "MIT",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": {
+        "import": "./dist/index.d.ts",
+        "require": "./dist/index.d.cts"
+      },
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
@@ -36,9 +41,10 @@
     "observability"
   ],
   "scripts": {
-    "build": "tsc",
-    "prepublishOnly": "tsc",
+    "build": "tsup",
+    "prepublishOnly": "tsup",
     "test": "tsx scripts/test.ts",
+    "test:cjs": "node scripts/verify-cjs.cjs",
     "lint": "biome check .",
     "lint:fix": "biome check --fix .",
     "format": "biome format --write .",
@@ -54,6 +60,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",
     "@types/node": "^25.6.0",
+    "tsup": "^8.5.0",
     "tsx": "^4.21.0",
     "typescript": "catalog:",
     "winston": "^3.19.0",
