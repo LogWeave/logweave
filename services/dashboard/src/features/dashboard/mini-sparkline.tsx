@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef } from 'react'
 import { cn } from '../../lib/cn'
 import { useDashboardStore } from '../../stores/dashboard-store'
+import { sparklineTrend } from './sparkline-data'
 
 interface MiniSparklineProps {
   points: number[]
@@ -52,9 +53,7 @@ export const MiniSparkline = memo(function MiniSparkline({
     const range = max - min || 1
     const padding = 2
 
-    const last = points[points.length - 1] ?? 0
-    const first = points[0] ?? 0
-    const trending = last > first * 1.2 ? 'up' : last < first * 0.8 ? 'down' : 'flat'
+    const trending = sparklineTrend(points)
     const colors = getThemeColors(colorMode)
     const strokeColor =
       trending === 'up' ? colors.warning : trending === 'down' ? colors.success : colors.brand

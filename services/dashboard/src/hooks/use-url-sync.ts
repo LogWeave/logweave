@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { type TimeRange, useDashboardStore } from '../stores/dashboard-store'
-
-const VALID_TIME_RANGES = new Set(['1h', '6h', '24h', '7d'])
+import { useDashboardStore } from '../stores/dashboard-store'
+import { buildUrlParams, parseUrlParams } from './url-sync'
 
 /**
  * Two-way sync between dashboard store and URL search params.
@@ -31,36 +30,23 @@ export function useUrlSync() {
     if (initialized.current) return
     initialized.current = true
 
-    const range = searchParams.get('range')
-    if (range && VALID_TIME_RANGES.has(range)) {
-      setTimeRange(range as TimeRange)
-    }
-
-    const service = searchParams.get('service')
-    if (service) {
-      setServiceFilter(service)
-    }
-
-    const level = searchParams.get('level')
-    if (level) {
-      setLevelFilters(level.split(',').filter(Boolean))
-    }
-
-    const template = searchParams.get('template')
-    if (template) {
-      setSelectedTemplateId(template)
-    }
+    const parsed = parseUrlParams(searchParams)
+    if (parsed.range !== undefined) setTimeRange(parsed.range)
+    if (parsed.service !== undefined) setServiceFilter(parsed.service)
+    if (parsed.levels !== undefined) setLevelFilters(parsed.levels)
+    if (parsed.template !== undefined) setSelectedTemplateId(parsed.template)
   }, [])
 
   // On store change: update URL params
   useEffect(() => {
     if (!initialized.current) return
 
-    const params = new URLSearchParams()
-    if (timeRange !== '24h') params.set('range', timeRange)
-    if (serviceFilter) params.set('service', serviceFilter)
-    if (levelFilters.length > 0) params.set('level', levelFilters.join(','))
-    if (selectedTemplateId) params.set('template', selectedTemplateId)
+    const params = buildUrlParams({
+      timeRange,
+      serviceFilter,
+      levelFilters,
+      selectedTemplateId,
+    })
 
     setSearchParams(params, { replace: true })
   }, [timeRange, serviceFilter, levelFilters, selectedTemplateId, setSearchParams])
