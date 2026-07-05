@@ -36,9 +36,9 @@ export function buildTailParams(filters: TailFilters, token: string): URLSearchP
 
 /**
  * Stable key over the filters that require a fresh subscription when they change
- * mid-stream. NOTE: minAnomaly is intentionally excluded here today — see the
- * caller; changing it does not currently trigger a reconnect.
+ * mid-stream. All four filters are server-side params, so all four must be in the
+ * key — otherwise the stream keeps using the old filter until a manual reconnect.
  */
 export function tailFiltersKey(filters: TailFilters): string {
-  return `${filters.service ?? ''}|${filters.level ?? ''}|${filters.templateId ?? ''}`
+  return `${filters.service ?? ''}|${filters.level ?? ''}|${filters.templateId ?? ''}|${filters.minAnomaly ?? ''}`
 }

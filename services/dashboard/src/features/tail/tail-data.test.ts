@@ -89,14 +89,16 @@ describe('tailFiltersKey', () => {
   })
 
   it('treats undefined filters as empty segments', () => {
-    expect(tailFiltersKey({})).toBe('||')
+    expect(tailFiltersKey({})).toBe('|||')
   })
 
-  // Documents current behaviour, NOT an endorsement: minAnomaly is excluded from
-  // the reconnect key, so changing it mid-stream does not re-subscribe. Flagged
-  // as a likely bug — the slider is sent as a server param but never triggers a
-  // reconnect. If fixed, update this test.
-  it('does NOT change when only minAnomaly changes (known gap)', () => {
-    expect(tailFiltersKey({ minAnomaly: 0.1 })).toBe(tailFiltersKey({ minAnomaly: 0.9 }))
+  // minAnomaly is a server-side param, so changing the anomaly slider mid-stream
+  // must re-subscribe. Regression guard for the fix that added it to the key.
+  it('changes when only minAnomaly changes', () => {
+    expect(tailFiltersKey({ minAnomaly: 0.1 })).not.toBe(tailFiltersKey({ minAnomaly: 0.9 }))
+  })
+
+  it('distinguishes an unset minAnomaly from an explicit 0', () => {
+    expect(tailFiltersKey({})).not.toBe(tailFiltersKey({ minAnomaly: 0 }))
   })
 })
