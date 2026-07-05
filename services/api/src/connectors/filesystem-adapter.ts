@@ -12,6 +12,7 @@
 import { createReadStream } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { assertBasePathAllowed } from './fs-roots.js'
 import { scanStream } from './line-scanner.js'
 import { templateToRegex } from './template-regex.js'
 import {
@@ -148,6 +149,12 @@ export class FilesystemAdapter implements LogSourceAdapter {
     const fsConfig = config as FilesystemConnectorConfig
 
     try {
+      assertBasePathAllowed(fsConfig.basePath)
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : 'Not permitted.' }
+    }
+
+    try {
       const resolvedBase = resolve(fsConfig.basePath)
       const dirStat = await stat(resolvedBase)
 
@@ -192,6 +199,9 @@ export class FilesystemAdapter implements LogSourceAdapter {
 
   async fetchRawLogs(params: FetchRawLogsParams): Promise<RawLogResult> {
     const config = params.config as FilesystemConnectorConfig
+    // Re-validate at fetch time: a connector persisted before the allowlist was
+    // set (or after it changed) must not read outside the permitted roots.
+    assertBasePathAllowed(config.basePath)
     const regex = templateToRegex(params.templateText)
     const limit = Math.min(params.limit, SCAN_DEFAULTS.maxLimit)
     const resolvedBase = resolve(config.basePath)
