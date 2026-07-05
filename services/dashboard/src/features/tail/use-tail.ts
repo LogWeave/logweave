@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { config } from '../../config'
 import { api } from '../../lib/api-client'
+import { appendCapped, buildTailParams, tailFiltersKey } from './tail-data'
 
 export interface TailEvent {
   seq: number
@@ -91,12 +92,7 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
       return
     }
 
-    const params = new URLSearchParams()
-    if (filters.service) params.set('service', filters.service)
-    if (filters.level) params.set('level', filters.level)
-    if (filters.templateId) params.set('templateId', filters.templateId)
-    if (filters.minAnomaly !== undefined) params.set('minAnomaly', String(filters.minAnomaly))
-    params.set('token', sseToken)
+    const params = buildTailParams(filters, sseToken)
 
     const base = config.apiUrl || window.location.origin
     const url = `${base}/v1/tail?${params.toString()}`
@@ -114,10 +110,7 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
     es.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data) as TailEvent
-        setEvents((prev) => {
-          const next = [...prev, event]
-          return next.length > maxEvents ? next.slice(-maxEvents) : next
-        })
+        setEvents((prev) => appendCapped(prev, event, maxEvents))
         rateCountRef.current++
         resetActivityTimer()
       } catch {
@@ -173,7 +166,7 @@ export function useTail(filters: TailFilters, options?: UseTailOptions) {
   }, [disconnect])
 
   // Reconnect when filters change while connected
-  const filtersKey = `${filters.service ?? ''}|${filters.level ?? ''}|${filters.templateId ?? ''}`
+  const filtersKey = tailFiltersKey(filters)
   const prevFiltersRef = useRef(filtersKey)
   useEffect(() => {
     if (prevFiltersRef.current !== filtersKey && status === 'connected') {
