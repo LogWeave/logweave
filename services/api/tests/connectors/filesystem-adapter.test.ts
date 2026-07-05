@@ -15,9 +15,13 @@ let testDir: string
 beforeEach(() => {
   testDir = join(tmpdir(), `logweave-fs-test-${Date.now()}`)
   mkdirSync(testDir, { recursive: true })
+  // The filesystem connector is disabled unless basePath is within a permitted
+  // root; tmpdir() covers every per-test dir created above.
+  process.env.LOGWEAVE_CONNECTOR_ALLOWED_FS_ROOTS = tmpdir()
 })
 
 afterEach(() => {
+  delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_FS_ROOTS
   try {
     rmSync(testDir, { recursive: true, force: true })
   } catch {

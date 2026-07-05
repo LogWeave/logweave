@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
+import { assertBasePathAllowed } from '../connectors/fs-roots.js'
 import { buildQuickCreateUrl, generateExternalId } from '../connectors/s3-cfn-url.js'
 import { defaultAllowedHosts, isBlockedHostname } from '../connectors/safe-fetch.js'
 import { getAdapter } from '../connectors/shared.js'
@@ -280,6 +281,18 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
       try {
         const tenantId = getTenantId(res)
         const body = req.body as z.infer<typeof createConnectorSchema>
+
+        // Filesystem connectors must resolve within an operator-permitted root
+        // (fail closed when unset) — basePath is admin-controlled and API keys
+        // are always admin, so this is the only guard against basePath:"/".
+        if (body.config.type === 'filesystem') {
+          try {
+            assertBasePathAllowed(body.config.basePath)
+          } catch (err) {
+            throw validationError(err instanceof Error ? err.message : 'Not permitted.')
+          }
+        }
+
         const connectorId = uuidv7()
 
         await insertConnector(deps.db, tenantId, {
