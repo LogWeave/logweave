@@ -467,6 +467,10 @@ ClickHouse data persists across updates. Schema migrations run automatically on 
 
 An 8 GB / 2 vCPU server is the minimum for production. Increase ClickHouse to 8 GB if you have 50+ services or high log volume. Adjust in `docker-compose.prod.yml` under `deploy.resources.limits`.
 
+### Scaling (beta)
+
+Run **one replica of each service** for the beta. The clusterer holds per-tenant Drain3 state in memory and the API keeps in-memory anomaly counters, so neither can be horizontally scaled yet — `docker compose up --scale clusterer=N` (or `--scale api=N`) would fragment clustering state and duplicate alerts. Scale **up** (a larger instance), not **out**, until multi-replica support lands post-beta.
+
 ---
 
 ## Environment Variable Reference
