@@ -39,6 +39,19 @@ export function csrfHeader(): Record<string, string> {
   return csrf ? { 'X-CSRF-Token': csrf } : {}
 }
 
+/**
+ * User-facing message for a failed response. A 401 always means the session is
+ * gone (expired cookie or revoked key), so we surface the same "sign in again"
+ * prompt regardless of verb — a raw "Unauthorized" on a POST/PUT/DELETE is
+ * useless to the user. Otherwise prefer the server's structured error message,
+ * falling back to the HTTP status text.
+ */
+export function apiErrorMessage(status: number, statusText: string, body: unknown): string {
+  if (status === 401) return 'Authentication failed — please sign in again.'
+  const message = (body as { error?: { message?: string } })?.error?.message
+  return message ?? statusText
+}
+
 class ApiClient {
   private headers(): HeadersInit {
     const h: HeadersInit = { Accept: 'application/json' }
@@ -78,11 +91,7 @@ class ApiClient {
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      const message =
-        res.status === 401
-          ? 'Authentication failed — please sign in again.'
-          : (body?.error?.message ?? res.statusText)
-      throw new ApiError(res.status, message)
+      throw new ApiError(res.status, apiErrorMessage(res.status, res.statusText, body))
     }
     return res.json() as Promise<T>
   }
@@ -98,8 +107,8 @@ class ApiClient {
       signal: AbortSignal.timeout(config.fetchTimeoutMs),
     })
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, body?.error?.message ?? res.statusText)
+      const errBody = await res.json().catch(() => ({}))
+      throw new ApiError(res.status, apiErrorMessage(res.status, res.statusText, errBody))
     }
     return res.json() as Promise<T>
   }
@@ -116,7 +125,7 @@ class ApiClient {
     })
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, errBody?.error?.message ?? res.statusText)
+      throw new ApiError(res.status, apiErrorMessage(res.status, res.statusText, errBody))
     }
     return res.json() as Promise<T>
   }
@@ -132,7 +141,7 @@ class ApiClient {
     })
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, errBody?.error?.message ?? res.statusText)
+      throw new ApiError(res.status, apiErrorMessage(res.status, res.statusText, errBody))
     }
     if (res.status === 204 || res.headers.get('content-length') === '0') {
       return undefined as T

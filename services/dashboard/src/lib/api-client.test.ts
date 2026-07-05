@@ -13,7 +13,7 @@ vi.mock('../config', () => ({
 }))
 
 import { config } from '../config'
-import { csrfHeader, parseCsrfToken } from './api-client'
+import { apiErrorMessage, csrfHeader, parseCsrfToken } from './api-client'
 
 const mutableConfig = config as { apiKey: string }
 
@@ -46,6 +46,30 @@ describe('parseCsrfToken', () => {
 
   it('returns undefined for an empty cookie value', () => {
     expect(parseCsrfToken('logweave_csrf=')).toBeUndefined()
+  })
+})
+
+describe('apiErrorMessage', () => {
+  it('maps 401 to the sign-in prompt regardless of verb or body', () => {
+    // Previously only GET did this; POST/PUT/DELETE leaked a raw "Unauthorized".
+    expect(apiErrorMessage(401, 'Unauthorized', {})).toBe(
+      'Authentication failed — please sign in again.',
+    )
+    expect(apiErrorMessage(401, 'Unauthorized', { error: { message: 'no session' } })).toBe(
+      'Authentication failed — please sign in again.',
+    )
+  })
+
+  it('prefers the structured server error message for non-401 errors', () => {
+    expect(
+      apiErrorMessage(422, 'Unprocessable Entity', { error: { message: 'bucket required' } }),
+    ).toBe('bucket required')
+  })
+
+  it('falls back to the HTTP status text when there is no structured message', () => {
+    expect(apiErrorMessage(500, 'Internal Server Error', {})).toBe('Internal Server Error')
+    expect(apiErrorMessage(500, 'Internal Server Error', null)).toBe('Internal Server Error')
+    expect(apiErrorMessage(404, 'Not Found', undefined)).toBe('Not Found')
   })
 })
 
