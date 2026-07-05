@@ -6,11 +6,7 @@ import { cn } from '../../lib/cn'
 import { TOOLTIPS } from '../../lib/tooltips'
 import { useDashboardStore } from '../../stores/dashboard-store'
 import { KpiCard } from './kpi-card'
-
-function trendPercent(current: number, previous?: number): number | undefined {
-  if (previous === undefined || previous === 0) return undefined
-  return ((current - previous) / previous) * 100
-}
+import { countSpikes, trendPercent } from './kpi-strip-data'
 
 export function KpiStrip({ className }: { className?: string }) {
   const { data: response, isLoading, isError, refetch } = useOverview()
@@ -27,7 +23,7 @@ export function KpiStrip({ className }: { className?: string }) {
   }[timeRange]
 
   const spikeCount = useMemo(
-    () => templatesResponse?.data?.filter((t) => t.maxAnomalyScore > 1.0).length ?? 0,
+    () => countSpikes(templatesResponse?.data ?? []),
     [templatesResponse?.data],
   )
 
