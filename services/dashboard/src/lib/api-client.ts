@@ -10,12 +10,22 @@ class ApiError extends Error {
   }
 }
 
-function getCsrfToken(): string | undefined {
-  const match = document.cookie.match(/logweave_csrf=([^;]+)/)
+/**
+ * Extract the CSRF token from a raw `document.cookie` string. The cookie is a
+ * signed `token.signature` pair (double-submit); we send back only the token
+ * half. Returns undefined when the cookie is absent, empty, or has no token
+ * before the signature separator. Pure so it can be tested without a document.
+ */
+export function parseCsrfToken(cookieString: string): string | undefined {
+  const match = cookieString.match(/logweave_csrf=([^;]+)/)
   if (!match?.[1]) return undefined
   const value = decodeURIComponent(match[1])
   const dotIndex = value.indexOf('.')
   return dotIndex > 0 ? value.slice(0, dotIndex) : undefined
+}
+
+function getCsrfToken(): string | undefined {
+  return parseCsrfToken(document.cookie)
 }
 
 /**
