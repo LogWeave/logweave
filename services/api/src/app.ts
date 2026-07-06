@@ -472,6 +472,15 @@ export function createApp(deps: AppDependencies): CreatedApp {
     // (API routes and health probes are already handled above)
     // Express 5 requires named wildcard params: {*path}
     app.get('{*path}', (req, res, next) => {
+      // Never serve the SPA shell for the API namespace. An unmatched /v1/*
+      // route must return the JSON 404 below, not 200 + index.html — browsers
+      // send `Accept: text/html`, so without this guard a mistyped or removed
+      // API route silently reads as "OK, here's the app" and masks the
+      // regression from any HTML client. Fall through to the 404 catch-all.
+      if (req.path === '/v1' || req.path.startsWith('/v1/')) {
+        next()
+        return
+      }
       if (req.accepts('html')) {
         res.sendFile(path.join(dashboardDir, 'index.html'))
       } else {
