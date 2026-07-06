@@ -98,6 +98,41 @@ describe('anomaly + correlation math (real ClickHouse)', () => {
   })
 
   // -------------------------------------------------------------------------
+  // Finding 1 (F3 fast-follow) — whole silent DAYS count as zeros: the
+  // denominator is active_days (distinct days the template was alive at ANY
+  // hour), not days-that-fired-at-this-hour. This is the case Finding 1 above
+  // cannot see, because there active_days happens to equal the per-hour count.
+  // -------------------------------------------------------------------------
+  it('finding 1b: denominator uses active_days across all hours, not per-hour firing-days', async () => {
+    const tenant = testTenantId('f1b')
+    const rows: LogMetadataRow[] = []
+    // Fires at hour 14 on 3 distinct days (1 bucket/day, 12 occ each) → 36
+    // occurrences total, and passes the ≥3-distinct-days guard at hour 14.
+    for (const daysAgo of [2, 3, 4]) {
+      rows.push(...occ(tenant, tsAt(daysAgo, 14, 0), 12, { template_id: 't1b' }))
+    }
+    // ...but the SAME template is alive at hour 8 on 5 distinct days, so it was
+    // demonstrably running on days 5 and 6 too — just silent at hour 14 then.
+    for (const daysAgo of [2, 3, 4, 5, 6]) {
+      rows.push(...occ(tenant, tsAt(daysAgo, 8, 0), 6, { template_id: 't1b' }))
+    }
+    await batchInsert(db, rows)
+
+    const baselines = await queryAnomalyBaselines(db, tenant)
+    const row = baselines.find((b) => b.template_id === 't1b' && b.hour_of_day === 14)
+    assert.ok(row, 'expected a baseline row for t1b at hour 14')
+
+    // active_days = distinct days active at ANY hour = {2,3,4,5,6} = 5.
+    // New (correct) rate = 36 / (5 × 12) = 0.6 — the two days it was alive but
+    // silent at hour 14 are counted as the zeros they are.
+    // The OLD per-hour-firing-days denominator would give 36 / (3 × 12) = 1.0.
+    assert.ok(
+      Math.abs(row.avg_count_per_interval - 0.6) < 0.001,
+      `expected 0.6 (active_days=5), not the old 1.0 (per-hour-days=3); got ${row.avg_count_per_interval}`,
+    )
+  })
+
+  // -------------------------------------------------------------------------
   // Finding 2 — the guard requires distinct DAYS, not distinct 5-min buckets
   // -------------------------------------------------------------------------
   it('finding 2: 3 firings in one day do NOT establish a baseline', async () => {
