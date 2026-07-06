@@ -12,12 +12,12 @@ import {
   validatePasswordPolicy,
   verifyPassword,
 } from '../auth/passwords.js'
-import type { SessionValidationCache } from '../auth/session-cache.js'
 import {
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_OPTIONS,
   type SessionProvider,
 } from '../auth/session.js'
+import type { SessionValidationCache } from '../auth/session-cache.js'
 import type { UserStore } from '../auth/user-store.js'
 import { decrypt, encrypt } from '../crypto.js'
 import { insertAuditEvent } from '../db/audit-queries.js'
