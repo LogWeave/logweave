@@ -1,4 +1,5 @@
 import type pino from 'pino'
+import { type SafeFetchFn, SsrfBlockedError, safeFetch } from '../connectors/safe-fetch.js'
 import { getInternalEvents } from '../internal-events/emitter.js'
 import {
   type AlertEvent,
@@ -36,6 +37,13 @@ export interface SlackObserverOptions {
   settingsStore: TenantSettingsStore
   dashboardBaseUrl?: string
   logger: pino.Logger
+  /**
+   * Outbound HTTP, defaulting to the SSRF-guarded {@link safeFetch}. Per-rule
+   * channels are tenant-supplied, so delivery must go through the guard (the
+   * tenant-default webhook is host-pinned to hooks.slack.com, but per-rule
+   * channels are arbitrary https URLs). Override in tests.
+   */
+  fetchFn?: SafeFetchFn
 }
 
 /**
@@ -51,6 +59,7 @@ export class SlackObserver implements AlertObserver {
   private readonly settingsStore: TenantSettingsStore
   private readonly dashboardBaseUrl: string | undefined
   private readonly logger: pino.Logger
+  private readonly fetchFn: SafeFetchFn
 
   /** Track last send time per webhook URL for rate limiting. */
   private readonly lastSendTime = new Map<string, number>()
@@ -62,6 +71,7 @@ export class SlackObserver implements AlertObserver {
     this.settingsStore = options.settingsStore
     this.dashboardBaseUrl = options.dashboardBaseUrl
     this.logger = options.logger
+    this.fetchFn = options.fetchFn ?? safeFetch
   }
 
   async notify(alert: AlertEvent): Promise<void> {
@@ -139,7 +149,7 @@ export class SlackObserver implements AlertObserver {
     try {
       this.logger.debug(ctx, 'Slack: sending webhook request')
 
-      const resp = await fetch(url, {
+      const resp = await this.fetchFn(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -180,7 +190,7 @@ export class SlackObserver implements AlertObserver {
 
       // Rate limited — retry with Retry-After
       if (resp.status === 429) {
-        const rawRetryAfter = Number(resp.headers.get('Retry-After') ?? 5)
+        const rawRetryAfter = Number(resp.headers['retry-after'] ?? 5)
         const retryAfter = Number.isFinite(rawRetryAfter)
           ? Math.min(Math.max(rawRetryAfter, 1), 60)
           : 5
@@ -211,6 +221,22 @@ export class SlackObserver implements AlertObserver {
         fields: { status_code: resp.status, tenant_id: alert?.tenantId ?? '_unknown' },
       })
     } catch (err) {
+      // A tenant-supplied channel that resolves to an internal/metadata host is
+      // blocked by safeFetch — it will never succeed, so don't retry it.
+      if (err instanceof SsrfBlockedError) {
+        this.logger.error(
+          { ...ctx, err },
+          'Slack delivery blocked: channel resolves to an internal host (SSRF prevention)',
+        )
+        getInternalEvents().emit({
+          event: 'slack.webhook_failed',
+          severity: 'warn',
+          code: 'SLACK_SSRF_BLOCKED',
+          summary: 'slack channel blocked as internal host',
+          fields: { tenant_id: alert?.tenantId ?? '_unknown' },
+        })
+        return
+      }
       if (attempt < MAX_RETRIES) {
         const backoffMs = BACKOFF_BASE_MS * 2 ** attempt
         this.logger.debug({ ...ctx, err, backoffMs }, 'Slack: network error, retrying')
@@ -414,7 +440,9 @@ export async function sendSlackTestMessage(
   webhookUrl: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const resp = await fetch(webhookUrl, {
+    // Goes through safeFetch (not raw fetch) so the configured webhook can't be
+    // used to probe internal hosts; the test endpoint is admin-reachable.
+    const resp = await safeFetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
