@@ -11,6 +11,11 @@ dependencies = [
   "pydantic-settings>=2.7",
   "uuid-utils>=0.10",
   "cachetools>=5.0",
+  # Pinned low by Drain3 (it hard-requires jsonpickle==1.5.1; there is no Drain3
+  # >=1.0), so CVE-2020-22083 (jsonpickle<=2.0.0) can't be closed by bumping to
+  # >=3 — unsatisfiable. Accepted as mitigated: we only ever decode our own
+  # HMAC-verified checkpoints (see clusterer/checkpoint.py). Revisit if Drain3
+  # relaxes the pin.
   "jsonpickle>=1.4",
   "fastembed>=0.5",
 ]
