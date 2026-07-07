@@ -226,6 +226,34 @@ describe('BufferManager', () => {
     assert.equal(remaining[remaining.length - 1]?.message, 'test message 999')
   })
 
+  it('bounds TOTAL retained memory (active + in-flight) at the cap, not ~2x (F11)', async () => {
+    // A full batch (40) is swapped into a stuck flush, then more events arrive.
+    // The in-flight batch counts toward the cap, so `active` is squeezed to keep
+    // active + in-flight <= maxRetainedEvents. Before F11, `active` could refill
+    // to the full cap ON TOP of the in-flight batch — ~2x the documented bound.
+    const dropped: LogEvent[] = []
+    buffer = new BufferManager({
+      bufferSize: 40,
+      maxRetainedEvents: 50,
+      flushIntervalMs: 60_000,
+      onFlush: () => new Promise<void>(() => {}), // never resolves — flush stuck
+      onDrop: (events) => {
+        for (const e of events) dropped.push(e)
+      },
+    })
+
+    // First 40 fill the buffer and swap into the (stuck) in-flight flush; the
+    // rest pile into active, which must now stay small enough to respect the cap.
+    for (let i = 0; i < 500; i++) buffer.push(makeEvent(i))
+
+    const IN_FLIGHT = 40
+    assert.ok(
+      buffer.size() + IN_FLIGHT <= 50,
+      `active (${buffer.size()}) + in-flight (${IN_FLIGHT}) must not exceed the cap of 50`,
+    )
+    assert.ok(dropped.length > 0, 'should drop events under sustained overload with a stuck flush')
+  })
+
   it('does not drop when within the cap', () => {
     const dropped: LogEvent[] = []
     buffer = new BufferManager({

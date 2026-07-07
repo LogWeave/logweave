@@ -24,7 +24,9 @@ export interface BufferManagerOptions {
    * Hard cap on retained (buffered-but-not-yet-sent) events. When the API is
    * slow or down a flush stays in-flight and new events pile up in the active
    * buffer; without this cap the buffer grows until the host app OOMs. Beyond
-   * the cap the oldest events are dropped. Default: 50000.
+   * the cap the oldest events are dropped. This bound counts BOTH the active
+   * buffer and the batch currently in-flight (held alive by the pending flush
+   * promise), so total retained memory never exceeds this value. Default: 50000.
    */
   readonly maxRetainedEvents?: number
   /** Callback invoked with the batch of events to send */
@@ -38,6 +40,13 @@ export class BufferManager {
   private timer: ReturnType<typeof setTimeout> | null = null
   private destroyed = false
   private inflightFlush: Promise<void> | null = null
+  /**
+   * Size of the batch currently in-flight. It's swapped out of `active` but
+   * kept alive by the flush promise, so it counts toward retained memory until
+   * the flush settles. Counting it against the cap is what keeps the true bound
+   * at maxRetainedEvents rather than ~2x (active + in-flight).
+   */
+  private inflightSize = 0
   private droppedCount = 0
 
   private readonly bufferSize: number
@@ -71,8 +80,16 @@ export class BufferManager {
     if (this.destroyed) return
     this.active.push(event)
 
-    if (this.active.length > this.maxRetainedEvents) {
-      const dropped = this.active.splice(0, this.active.length - this.lowWaterMark)
+    // Bound TOTAL retained memory (active + the in-flight batch) at the cap.
+    // Enforcing it against `active` alone let retention reach ~2x the cap while
+    // a large batch was in flight (active refilled to the cap on top of it).
+    // Evict oldest active events down to the low-water mark (minus whatever the
+    // in-flight batch already occupies); if the in-flight batch alone fills the
+    // cap, `active` is emptied entirely.
+    if (this.active.length + this.inflightSize > this.maxRetainedEvents) {
+      const targetActive = Math.max(0, this.lowWaterMark - this.inflightSize)
+      const dropCount = this.active.length - targetActive
+      const dropped = this.active.splice(0, dropCount)
       this.droppedCount += dropped.length
       if (this.onDrop) {
         try {
@@ -115,6 +132,9 @@ export class BufferManager {
     // Synchronous swap — events pushed during async flush go to the new array
     const batch = this.active
     this.active = []
+    // Count the swapped-out batch toward retained memory until the flush settles
+    // — it's still held in memory by the promise below.
+    this.inflightSize = batch.length
     this.resetTimer()
 
     this.inflightFlush = this.onFlush(batch)
@@ -123,6 +143,7 @@ export class BufferManager {
       })
       .finally(() => {
         this.inflightFlush = null
+        this.inflightSize = 0
       })
   }
 

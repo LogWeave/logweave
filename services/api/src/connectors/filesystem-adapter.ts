@@ -12,6 +12,7 @@
 import { createReadStream } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { assertWithinAllowedRoots } from './filesystem-roots.js'
 import { scanStream } from './line-scanner.js'
 import { templateToRegex } from './template-regex.js'
 import {
@@ -147,6 +148,15 @@ export class FilesystemAdapter implements LogSourceAdapter {
   async testConnection(config: ConnectorConfig): Promise<ConnectionTestResult> {
     const fsConfig = config as FilesystemConnectorConfig
 
+    // Server-operator root allowlist — the basePath must resolve within a
+    // permitted root (LOGWEAVE_FILESYSTEM_ROOTS). Fail closed with a clear
+    // message rather than leaking whether the path merely exists.
+    try {
+      await assertWithinAllowedRoots(fsConfig.basePath)
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : 'Path not allowed.' }
+    }
+
     try {
       const resolvedBase = resolve(fsConfig.basePath)
       const dirStat = await stat(resolvedBase)
@@ -192,6 +202,12 @@ export class FilesystemAdapter implements LogSourceAdapter {
 
   async fetchRawLogs(params: FetchRawLogsParams): Promise<RawLogResult> {
     const config = params.config as FilesystemConnectorConfig
+
+    // Re-enforce the root allowlist at fetch time (defense in depth: a stored
+    // config may predate the allowlist, or the allowlist may have been
+    // tightened). Throws — fail closed — if basePath is no longer permitted.
+    await assertWithinAllowedRoots(config.basePath)
+
     const regex = templateToRegex(params.templateText)
     const limit = Math.min(params.limit, SCAN_DEFAULTS.maxLimit)
     const resolvedBase = resolve(config.basePath)
@@ -224,9 +240,13 @@ export class FilesystemAdapter implements LogSourceAdapter {
         break
       }
 
-      // Path traversal guard
+      // Path guards: lexical (must stay under basePath) + realpath (a symlink's
+      // TARGET must also stay within an allowed root — guardPath only inspects
+      // the link path, not where it resolves to, so a symlink under basePath
+      // pointing at /etc/shadow would otherwise be followed by createReadStream).
       try {
         guardPath(resolvedBase, file.path)
+        await assertWithinAllowedRoots(file.path)
       } catch {
         continue
       }
