@@ -3,7 +3,6 @@ packages:
   - "services/dashboard"
   - "services/mcp"
   - "packages/transport"
-  - "benchmarks"
   - "simulator"
 
 catalog:

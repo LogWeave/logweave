@@ -209,6 +209,21 @@ export function authRoutes(deps: AuthDeps): Router {
       sessionVersion: user.sessionVersion,
     })
 
+    // A production login arriving over plain HTTP silently loops: the session
+    // cookie below is Secure, so the browser accepts the 200 but never sends the
+    // cookie back over http, bouncing the user straight to the login page with no
+    // error. Warn loudly (req.secure honors x-forwarded-proto when trust proxy is
+    // set) so the misconfiguration is diagnosable instead of a mystery loop.
+    if (deps.isProduction && !req.secure) {
+      deps.logger.warn(
+        { path: req.path },
+        'Login over a non-TLS connection in production: the session cookie is Secure and ' +
+          'will not be returned by the browser over http, so the user will appear to log in ' +
+          'then bounce back to the login page. Serve LogWeave over TLS (the bundled Caddy ' +
+          'service does this) and set LOGWEAVE_TRUST_PROXY so x-forwarded-proto is honored.',
+      )
+    }
+
     res.cookie(SESSION_COOKIE_NAME, cookie, {
       ...SESSION_COOKIE_OPTIONS,
       secure: deps.isProduction,

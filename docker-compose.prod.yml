@@ -88,8 +88,12 @@ services:
       context: .
       dockerfile: services/api/Dockerfile
     restart: unless-stopped
-    ports:
-      - "${LOGWEAVE_PORT:-3000}:3000"
+    # Not published to the host — Caddy (below) terminates TLS and reverse-proxies
+    # to this over the internal network. Publishing :3000 directly would let a
+    # plain-HTTP login silently loop (the session cookie is Secure under
+    # NODE_ENV=production, so browsers won't return it over http).
+    expose:
+      - "3000"
     volumes:
       - api_data:/data
     environment:
@@ -149,6 +153,33 @@ services:
           memory: 512M
           cpus: "1.0"
 
+  # Caddy — terminates TLS and reverse-proxies to the API. Set LOGWEAVE_DOMAIN to
+  # a public hostname for automatic Let's Encrypt certs (http→https redirect);
+  # unset, it defaults to localhost with a self-signed cert. This is the public
+  # entrypoint — the API is not published to the host directly (see its `expose`
+  # above), which is what stops the plain-HTTP login loop.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      LOGWEAVE_DOMAIN: ${LOGWEAVE_DOMAIN:-localhost}
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+
   # Vector — archive engine (epic #265, seam B). Writes gzip NDJSON batches to
   # the customer's own S3 bucket as the system of record; the landed key becomes
   # the `source_ref`. On EC2 it authenticates via the instance role (no creds in
@@ -176,3 +207,5 @@ volumes:
   clickhouse_data:
   drain3_checkpoints:
   api_data:
+  caddy_data:
+  caddy_config:

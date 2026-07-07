@@ -17,7 +17,6 @@ COPY services/api/package.json services/api/
 COPY services/dashboard/package.json services/dashboard/
 COPY services/mcp/package.json services/mcp/
 COPY packages/transport/package.json packages/transport/
-COPY benchmarks/package.json benchmarks/
 COPY simulator/package.json simulator/
 RUN pnpm --filter logweave-api --filter logweave-dashboard install --frozen-lockfile
 

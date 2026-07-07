@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import type { IncomingHttpHeaders } from 'node:http'
 import path from 'node:path'
 import cookieParser from 'cookie-parser'
 import express, { Router } from 'express'
@@ -56,6 +57,25 @@ import { TailTokenStore } from './tail/token-store.js'
 import type { RuleStore } from './watches/rule-store.js'
 import type { TenantSettingsStore } from './watches/tenant-settings.js'
 import type { WatchStore } from './watches/watch-store.js'
+
+/**
+ * Redact live-credential headers before a request is logged. `cookie` carries the
+ * `logweave_session` credential and `x-csrf-token` the CSRF token, alongside
+ * `authorization` and the internal-services secret. Absent headers stay absent
+ * (undefined ⇒ omitted by pino). Exported for regression coverage — every
+ * credential-bearing header MUST be listed here.
+ */
+export function redactRequestHeaders(
+  headers: IncomingHttpHeaders | undefined,
+): IncomingHttpHeaders {
+  return {
+    ...headers,
+    authorization: headers?.authorization ? '[REDACTED]' : undefined,
+    'x-internal-secret': headers?.['x-internal-secret'] ? '[REDACTED]' : undefined,
+    cookie: headers?.cookie ? '[REDACTED]' : undefined,
+    'x-csrf-token': headers?.['x-csrf-token'] ? '[REDACTED]' : undefined,
+  }
+}
 
 export interface AppDependencies {
   config: Config
@@ -142,12 +162,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
           id: req.id,
           method: req.method,
           url: req.url,
-          headers: {
-            ...req.raw?.headers,
-            authorization: req.raw?.headers?.authorization ? '[REDACTED]' : undefined,
-            // Internal service-to-service secret (archive notify, #276) — never log it.
-            'x-internal-secret': req.raw?.headers?.['x-internal-secret'] ? '[REDACTED]' : undefined,
-          },
+          headers: redactRequestHeaders(req.raw?.headers),
         }
       },
     },
