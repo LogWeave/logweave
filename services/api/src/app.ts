@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import type { IncomingHttpHeaders } from 'node:http'
 import path from 'node:path'
 import cookieParser from 'cookie-parser'
 import express, { Router } from 'express'
@@ -56,6 +57,25 @@ import { TailTokenStore } from './tail/token-store.js'
 import type { RuleStore } from './watches/rule-store.js'
 import type { TenantSettingsStore } from './watches/tenant-settings.js'
 import type { WatchStore } from './watches/watch-store.js'
+
+/**
+ * Redact live-credential headers before a request is logged. `cookie` carries the
+ * `logweave_session` credential and `x-csrf-token` the CSRF token, alongside
+ * `authorization` and the internal-services secret. Absent headers stay absent
+ * (undefined ⇒ omitted by pino). Exported for regression coverage — every
+ * credential-bearing header MUST be listed here.
+ */
+export function redactRequestHeaders(
+  headers: IncomingHttpHeaders | undefined,
+): IncomingHttpHeaders {
+  return {
+    ...headers,
+    authorization: headers?.authorization ? '[REDACTED]' : undefined,
+    'x-internal-secret': headers?.['x-internal-secret'] ? '[REDACTED]' : undefined,
+    cookie: headers?.cookie ? '[REDACTED]' : undefined,
+    'x-csrf-token': headers?.['x-csrf-token'] ? '[REDACTED]' : undefined,
+  }
+}
 
 export interface AppDependencies {
   config: Config
@@ -142,12 +162,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
           id: req.id,
           method: req.method,
           url: req.url,
-          headers: {
-            ...req.raw?.headers,
-            authorization: req.raw?.headers?.authorization ? '[REDACTED]' : undefined,
-            // Internal service-to-service secret (archive notify, #276) — never log it.
-            'x-internal-secret': req.raw?.headers?.['x-internal-secret'] ? '[REDACTED]' : undefined,
-          },
+          headers: redactRequestHeaders(req.raw?.headers),
         }
       },
     },
@@ -185,6 +200,10 @@ export function createApp(deps: AppDependencies): CreatedApp {
   )
 
   // Routes — auth (partially unauthenticated: login, logout, me)
+  // Shared between the auth mutation routes (which invalidate a user's entry on
+  // delete / password-change / reset) and the auth middleware (which reads it),
+  // so a revocation takes effect immediately rather than after the cache TTL.
+  const sessionCache = new SessionValidationCache()
   if (deps.userStore && deps.sessionProvider && deps.totpEncryptionKey) {
     const authRouter = Router()
     // CSRF on state-changing auth routes (password change, TOTP disable, user
@@ -203,6 +222,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
       authRoutes({
         userStore: deps.userStore,
         sessionProvider: deps.sessionProvider,
+        sessionCache,
         db: deps.db,
         logger: deps.logger,
         totpEncryptionKey: deps.totpEncryptionKey,
@@ -214,7 +234,6 @@ export function createApp(deps: AppDependencies): CreatedApp {
 
   // Routes — API (authenticated, rate-limited)
   const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys, deps.config.encryptionKey)
-  const sessionCache = new SessionValidationCache()
   const auth = createAuthMiddleware({
     envKeys: keyStore,
     apiKeyStore: deps.apiKeyStore,
@@ -468,6 +487,15 @@ export function createApp(deps: AppDependencies): CreatedApp {
     // (API routes and health probes are already handled above)
     // Express 5 requires named wildcard params: {*path}
     app.get('{*path}', (req, res, next) => {
+      // Never serve the SPA shell for the API namespace. An unmatched /v1/*
+      // route must return the JSON 404 below, not 200 + index.html — browsers
+      // send `Accept: text/html`, so without this guard a mistyped or removed
+      // API route silently reads as "OK, here's the app" and masks the
+      // regression from any HTML client. Fall through to the 404 catch-all.
+      if (req.path === '/v1' || req.path.startsWith('/v1/')) {
+        next()
+        return
+      }
       if (req.accepts('html')) {
         res.sendFile(path.join(dashboardDir, 'index.html'))
       } else {

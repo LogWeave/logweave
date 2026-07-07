@@ -40,11 +40,19 @@ describe('anomaly baseline window', () => {
     // Hour-of-day grouping (ADR-014 lookup contract)
     assert.match(captured.query, /toHour\(interval_start\)\s+AS\s+hour_of_day/)
     assert.match(captured.query, /GROUP BY template_id, service, hour_of_day/)
-    // Per-interval rate counts silent buckets: divide by distinct days × buckets/hour,
-    // NOT by buckets-that-fired (which overstates "normal"). See ADR-014.
+    // Per-interval rate counts silent buckets AND whole silent days: divide by
+    // (active_days × buckets/hour), where active_days is the distinct days the
+    // template was active at ANY hour — NOT per-hour firing-days (which drops
+    // whole silent days) and NOT buckets-that-fired (a conditional mean). ADR-014.
     assert.match(
       captured.query,
-      /countMerge\(occurrence_count\) \/ \(uniq\(toDate\(interval_start\)\) \* \{buckets_per_hour:UInt32\}\)/,
+      /hourly\.occurrences \/ \(active\.active_days \* \{buckets_per_hour:UInt32\}\)/,
+    )
+    // active_days computed per (template, service) across all hours, then joined
+    assert.match(captured.query, /uniq\(toDate\(interval_start\)\) AS active_days/)
+    assert.match(
+      captured.query,
+      /INNER JOIN[\s\S]*ON hourly\.template_id = active\.template_id AND hourly\.service = active\.service/,
     )
     // HAVING guard requires 3 distinct DAYS, not 3 distinct 5-min buckets (ADR-014)
     assert.match(

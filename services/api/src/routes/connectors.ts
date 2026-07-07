@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
+import { assertWithinAllowedRoots } from '../connectors/filesystem-roots.js'
 import { buildQuickCreateUrl, generateExternalId } from '../connectors/s3-cfn-url.js'
 import { defaultAllowedHosts, isBlockedHostname } from '../connectors/safe-fetch.js'
 import { getAdapter } from '../connectors/shared.js'
@@ -280,6 +281,20 @@ export function connectorRoutes(deps: ConnectorDeps): Router {
       try {
         const tenantId = getTenantId(res)
         const body = req.body as z.infer<typeof createConnectorSchema>
+
+        // Filesystem connectors: the basePath must resolve within a server-
+        // configured root allowlist (LOGWEAVE_FILESYSTEM_ROOTS). Empty ⇒ the
+        // connector is disabled. Enforced again at fetch-time in the adapter.
+        if (body.config.type === 'filesystem') {
+          try {
+            await assertWithinAllowedRoots(body.config.basePath)
+          } catch (err) {
+            throw validationError(
+              err instanceof Error ? err.message : 'Base path is not within an allowed root.',
+            )
+          }
+        }
+
         const connectorId = uuidv7()
 
         await insertConnector(deps.db, tenantId, {
