@@ -58,6 +58,11 @@ export async function retryFetch(
   let skipBackoff = false
 
   for (let attempt = 0; attempt < totalAttempts; attempt++) {
+    // The final attempt cannot retry, so any "wait then retry" delay on it is
+    // pure waste — it just stalls flushing (BufferManager allows one in-flight
+    // flush) for up to the Retry-After cap before the inevitable drop.
+    const isLastAttempt = attempt === totalAttempts - 1
+
     // Check if we've been told to stop
     if (signal?.aborted) {
       return null
@@ -96,6 +101,10 @@ export async function retryFetch(
 
       // 429 — rate limited, retry with Retry-After or exponential backoff
       if (response.status === 429) {
+        // No retries left — drop now rather than honoring Retry-After for a
+        // wait we can't act on.
+        if (isLastAttempt) break
+
         const retryAfterHeader = response.headers.get('retry-after')
         const retrySeconds = retryAfterHeader ? Math.min(Number(retryAfterHeader), 30) : 0
 
@@ -130,7 +139,10 @@ export async function retryFetch(
       if (response.status >= 500) {
         const retryAfterHeader = response.headers.get('retry-after')
         const retrySeconds = retryAfterHeader ? Math.min(Number(retryAfterHeader), 30) : 0
-        if (retrySeconds > 0) {
+        // Only honor Retry-After when there's another attempt to make. On the
+        // terminal attempt the batch is dropped regardless, so sleeping the full
+        // (up to 30s) delay just stalls all flushing for nothing.
+        if (retrySeconds > 0 && !isLastAttempt) {
           console.warn(
             `[LogWeave] server unavailable (${response.status}), retrying after ${retrySeconds}s`,
           )
