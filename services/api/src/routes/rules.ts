@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import type pino from 'pino'
 import { z } from 'zod'
+import { isExternalHttpUrl } from '../connectors/safe-fetch.js'
 import { queryAlertHistory } from '../db/alert-queries.js'
 import type { DbClient } from '../db/client.js'
 import { AppError, notFound } from '../errors.js'
@@ -39,6 +40,17 @@ const channelSchema = z
     },
     { message: 'Channel must be an HTTPS URL or PagerDuty routing key (pagerduty://{key})' },
   )
+  // SSRF prevention: a webhook channel is fetched server-side when the rule
+  // fires, so reject internal/metadata hosts at create time. PagerDuty channels
+  // post to a fixed events.pagerduty.com URL (the value is only a routing key),
+  // so they're exempt. The authoritative rebinding/redirect guard is safeFetch
+  // at delivery time; this is fast create-time feedback. Allowlist a host with
+  // LOGWEAVE_CONNECTOR_ALLOWED_HOSTS for self-hosted internal collectors.
+  .refine((s) => s.startsWith('pagerduty://') || isExternalHttpUrl(s), {
+    message:
+      'Channel host is not allowed: loopback, link-local, and private ranges are blocked ' +
+      '(SSRF prevention). Allowlist a host with LOGWEAVE_CONNECTOR_ALLOWED_HOSTS.',
+  })
 
 const thresholdConfigSchema = z.object({
   metric: z.enum(['error_count', 'warn_count', 'log_count']),

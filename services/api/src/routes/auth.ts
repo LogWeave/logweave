@@ -17,6 +17,7 @@ import {
   SESSION_COOKIE_OPTIONS,
   type SessionProvider,
 } from '../auth/session.js'
+import type { SessionValidationCache } from '../auth/session-cache.js'
 import type { UserStore } from '../auth/user-store.js'
 import { decrypt, encrypt } from '../crypto.js'
 import { insertAuditEvent } from '../db/audit-queries.js'
@@ -30,6 +31,15 @@ import { validateBody } from '../middleware/validate.js'
 export interface AuthDeps {
   userStore: UserStore
   sessionProvider: SessionProvider
+  /**
+   * Session-validation cache shared with the auth middleware. Deleting a user or
+   * changing/resetting a password bumps their `sessionVersion` in the DB, but a
+   * warm cache entry would keep the old session authorized until the entry's TTL
+   * elapses. Invalidating the entry here forces the next request onto the
+   * DB-checked cold path, so revocation is immediate. Optional so callers that
+   * don't run the session cache (e.g. the CLI) still type-check.
+   */
+  sessionCache?: SessionValidationCache
   db: DbClient
   logger: pino.Logger
   totpEncryptionKey: Buffer
@@ -288,6 +298,10 @@ export function authRoutes(deps: AuthDeps): Router {
 
     const newHash = await hashPassword(newPassword)
     await deps.userStore.updatePassword(user.userId, newHash)
+    // Drop any warm cache entry so the version bump revokes this user's *other*
+    // active sessions on their next request, not after the cache TTL. This
+    // request continues on the freshly issued cookie below.
+    deps.sessionCache?.invalidate(user.userId)
 
     // First password change wipes the bootstrap-credentials file (no-op if it
     // doesn't exist or wasn't created in the first place). Keeps the secret
@@ -523,6 +537,8 @@ export function authRoutes(deps: AuthDeps): Router {
     }
 
     await deps.userStore.deleteUser(targetId)
+    // Revoke the deleted user's warm session(s) immediately, not after the TTL.
+    deps.sessionCache?.invalidate(targetId)
     auditAuth(deps, session.tenantId, session.userId, 'auth.user.delete', target.username)
 
     res.status(HttpStatus.NO_CONTENT).end()
@@ -548,6 +564,8 @@ export function authRoutes(deps: AuthDeps): Router {
 
     const newHash = await hashPassword(newPassword)
     await deps.userStore.updatePassword(targetId, newHash, true)
+    // Revoke the target's warm session(s) immediately, not after the TTL.
+    deps.sessionCache?.invalidate(targetId)
     auditAuth(deps, session.tenantId, session.userId, 'auth.password.reset', target.username)
 
     res.status(HttpStatus.OK).json({ data: { reset: true } })

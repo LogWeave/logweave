@@ -743,3 +743,108 @@ describe('session validation cache-miss revocation', () => {
     assert.equal(res.status, 401)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Session revocation on mutation — the WARM cache path (F5)
+//
+// The cold-cache tests above prove a revocation is caught once the entry
+// expires. These prove the mutation endpoints invalidate the entry so the
+// revocation is immediate: they wire the real authRoutes and auth middleware
+// against ONE shared SessionValidationCache, warm the target's entry, then
+// mutate and re-request. Without the invalidate() calls the warm entry keeps
+// the old (matching) version and the final request returns 200 for up to a TTL.
+// ---------------------------------------------------------------------------
+
+describe('session revocation on mutation (warm cache)', () => {
+  async function buildApp() {
+    const logger = pino({ level: 'silent' })
+    const keys = await deriveKeys('test-encryption-key-at-least-32-chars!!')
+    const sessionProvider = new HmacSessionProvider(keys.sessionSigningKey)
+    const userStore = new InMemoryUserStore()
+    const sessionCache = new SessionValidationCache()
+
+    const admin = await userStore.createUser({
+      username: 'admin',
+      password: 'adminpassword1',
+      tenantId: 't1',
+      role: 'admin',
+    })
+    await userStore.clearMustChangePassword(admin.userId)
+    const target = await userStore.createUser({
+      username: 'target',
+      password: 'targetpassword1',
+      tenantId: 't1',
+      role: 'viewer',
+    })
+    await userStore.clearMustChangePassword(target.userId)
+
+    const adminCookie = sessionProvider.createSession({
+      userId: admin.userId,
+      tenantId: 't1',
+      role: 'admin',
+      sessionVersion: admin.sessionVersion,
+    })
+    const targetCookie = sessionProvider.createSession({
+      userId: target.userId,
+      tenantId: 't1',
+      role: 'viewer',
+      sessionVersion: target.sessionVersion,
+    })
+
+    const app = express()
+    app.use(express.json())
+    app.use(cookieParser())
+    app.use(
+      '/v1',
+      authRoutes({
+        userStore,
+        sessionProvider,
+        sessionCache,
+        db: mockDb,
+        logger,
+        totpEncryptionKey: keys.totpEncryptionKey,
+        isProduction: false,
+      }),
+    )
+    app.use(createAuthMiddleware({ sessionProvider, sessionCache, userStore, logger }))
+    app.get('/protected', (_req, res) => res.json({ ok: true }))
+    app.use(createErrorHandler(logger))
+
+    // Warm the target's cache entry with one authorized request (cold → warm).
+    const warm = await request(app)
+      .get('/protected')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${targetCookie}`)
+    assert.equal(warm.status, 200, 'warming request should be authorized')
+
+    return { app, admin, target, adminCookie, targetCookie }
+  }
+
+  it('admin password reset revokes the target warm session immediately', async () => {
+    const { app, target, adminCookie, targetCookie } = await buildApp()
+
+    const reset = await request(app)
+      .put(`/v1/auth/users/${target.userId}/password`)
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${adminCookie}`)
+      .send({ newPassword: 'brandnewpass123' })
+    assert.equal(reset.status, 200)
+
+    const after = await request(app)
+      .get('/protected')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${targetCookie}`)
+    assert.equal(after.status, 401, 'reset must invalidate the warm entry, not wait for the TTL')
+  })
+
+  it('deleting a user revokes their warm session immediately', async () => {
+    const { app, target, adminCookie, targetCookie } = await buildApp()
+
+    const del = await request(app)
+      .delete(`/v1/auth/users/${target.userId}`)
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${adminCookie}`)
+    assert.equal(del.status, 204)
+
+    const after = await request(app)
+      .get('/protected')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=${targetCookie}`)
+    assert.equal(after.status, 401, 'delete must invalidate the warm entry, not wait for the TTL')
+  })
+})

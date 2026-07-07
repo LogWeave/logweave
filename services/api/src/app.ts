@@ -185,6 +185,10 @@ export function createApp(deps: AppDependencies): CreatedApp {
   )
 
   // Routes — auth (partially unauthenticated: login, logout, me)
+  // Shared between the auth mutation routes (which invalidate a user's entry on
+  // delete / password-change / reset) and the auth middleware (which reads it),
+  // so a revocation takes effect immediately rather than after the cache TTL.
+  const sessionCache = new SessionValidationCache()
   if (deps.userStore && deps.sessionProvider && deps.totpEncryptionKey) {
     const authRouter = Router()
     // CSRF on state-changing auth routes (password change, TOTP disable, user
@@ -203,6 +207,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
       authRoutes({
         userStore: deps.userStore,
         sessionProvider: deps.sessionProvider,
+        sessionCache,
         db: deps.db,
         logger: deps.logger,
         totpEncryptionKey: deps.totpEncryptionKey,
@@ -214,7 +219,6 @@ export function createApp(deps: AppDependencies): CreatedApp {
 
   // Routes — API (authenticated, rate-limited)
   const keyStore = KeyStore.fromMapAndClear(deps.config.apiKeys, deps.config.encryptionKey)
-  const sessionCache = new SessionValidationCache()
   const auth = createAuthMiddleware({
     envKeys: keyStore,
     apiKeyStore: deps.apiKeyStore,
@@ -468,6 +472,15 @@ export function createApp(deps: AppDependencies): CreatedApp {
     // (API routes and health probes are already handled above)
     // Express 5 requires named wildcard params: {*path}
     app.get('{*path}', (req, res, next) => {
+      // Never serve the SPA shell for the API namespace. An unmatched /v1/*
+      // route must return the JSON 404 below, not 200 + index.html — browsers
+      // send `Accept: text/html`, so without this guard a mistyped or removed
+      // API route silently reads as "OK, here's the app" and masks the
+      // regression from any HTML client. Fall through to the 404 catch-all.
+      if (req.path === '/v1' || req.path.startsWith('/v1/')) {
+        next()
+        return
+      }
       if (req.accepts('html')) {
         res.sendFile(path.join(dashboardDir, 'index.html'))
       } else {

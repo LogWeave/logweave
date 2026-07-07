@@ -176,6 +176,40 @@ describe('POST /v1/rules', () => {
     assert.deepEqual(res.body.data.channels, ['https://hooks.slack.com/services/T00/B00/xxx'])
   })
 
+  it('rejects a channel pointing at the cloud-metadata IP (SSRF)', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .post('/v1/rules')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send({
+        ...VALID_THRESHOLD_BODY,
+        channels: ['https://169.254.169.254/latest/meta-data/iam/security-credentials/'],
+      })
+
+    assert.equal(res.status, 400)
+  })
+
+  it('rejects a loopback channel host (SSRF)', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .post('/v1/rules')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send({ ...VALID_THRESHOLD_BODY, channels: ['https://localhost/hook'] })
+
+    assert.equal(res.status, 400)
+  })
+
+  it('still accepts pagerduty:// channels (routing key, not a fetched host)', async () => {
+    const { app } = createTestApp()
+    const res = await request(app)
+      .post('/v1/rules')
+      .set('Authorization', `Bearer ${KEY_A}`)
+      .send({ ...VALID_THRESHOLD_BODY, channels: ['pagerduty://abc123def456ghi'] })
+
+    assert.equal(res.status, 201)
+    assert.deepEqual(res.body.data.channels, ['pagerduty://abc123def456ghi'])
+  })
+
   it('defaults enabled to true', async () => {
     const { app } = createTestApp()
     const res = await request(app)

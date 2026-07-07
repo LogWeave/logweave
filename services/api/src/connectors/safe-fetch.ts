@@ -171,6 +171,27 @@ export function defaultAllowedHosts(): Set<string> {
   )
 }
 
+/**
+ * Create-time guard for an attacker-influenced webhook / alert-channel URL.
+ * Returns true only for an http(s) URL whose host is not an internal target
+ * (loopback, link-local incl. cloud metadata at 169.254.169.254, or an
+ * RFC1918/CGNAT range) — unless the host is explicitly allowlisted via
+ * LOGWEAVE_CONNECTOR_ALLOWED_HOSTS. This mirrors the fast string/IP-literal
+ * check used for connector URLs; the authoritative guard against DNS rebinding
+ * and redirect-to-internal is {@link safeFetch} at delivery time.
+ */
+export function isExternalHttpUrl(url: string): boolean {
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    return false
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
+  if (defaultAllowedHosts().has(u.hostname.toLowerCase())) return true
+  return !isBlockedHostname(u.hostname)
+}
+
 // ---------------------------------------------------------------------------
 // Guarded DNS lookup
 // ---------------------------------------------------------------------------
@@ -248,6 +269,8 @@ export interface SafeResponse {
   ok: boolean
   status: number
   statusText: string
+  /** Response headers, lowercased keys (multi-value joined with ", "). */
+  headers: Record<string, string>
   text(): Promise<string>
   json(): Promise<unknown>
 }
@@ -260,6 +283,13 @@ export interface SafeFetchInit {
   /** Trusted internal hosts; defaults to LOGWEAVE_CONNECTOR_ALLOWED_HOSTS. */
   allowedHosts?: Set<string>
 }
+
+/**
+ * The shape of {@link safeFetch}. Injected into the alert observers (defaulting
+ * to `safeFetch`) so their outbound delivery goes through the SSRF guard and so
+ * tests can stub it.
+ */
+export type SafeFetchFn = (target: string | URL, init?: SafeFetchInit) => Promise<SafeResponse>
 
 // ---------------------------------------------------------------------------
 // safeFetch
@@ -308,11 +338,16 @@ export async function safeFetch(
       continue
     }
 
+    const headers: Record<string, string> = {}
+    for (const [k, v] of Object.entries(res.message.headers)) {
+      if (v !== undefined) headers[k] = Array.isArray(v) ? v.join(', ') : v
+    }
     const text = await readBody(res.message)
     return {
       ok: status >= 200 && status < 300,
       status,
       statusText: res.message.statusMessage ?? '',
+      headers,
       text: async () => text,
       json: async () => JSON.parse(text) as unknown,
     }

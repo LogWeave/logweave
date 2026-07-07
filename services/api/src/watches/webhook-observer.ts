@@ -1,4 +1,5 @@
 import type pino from 'pino'
+import { type SafeFetchFn, SsrfBlockedError, safeFetch } from '../connectors/safe-fetch.js'
 import {
   type AlertEvent,
   type AlertObserver,
@@ -47,6 +48,12 @@ export interface WebhookObserverOptions {
   logger: pino.Logger
   /** Override sleep for testing (default: real sleep). */
   sleepFn?: (ms: number) => Promise<void>
+  /**
+   * Outbound HTTP, defaulting to the SSRF-guarded {@link safeFetch}. Channel
+   * URLs are tenant-supplied, so delivery must go through the guard (resolves
+   * DNS, re-validates redirects, blocks internal targets). Override in tests.
+   */
+  fetchFn?: SafeFetchFn
 }
 
 /**
@@ -64,12 +71,14 @@ export class WebhookObserver implements AlertObserver {
   private readonly dashboardBaseUrl: string | undefined
   private readonly logger: pino.Logger
   private readonly sleepFn: (ms: number) => Promise<void>
+  private readonly fetchFn: SafeFetchFn
 
   constructor(options: WebhookObserverOptions) {
     this.settingsStore = options.settingsStore
     this.dashboardBaseUrl = options.dashboardBaseUrl
     this.logger = options.logger
     this.sleepFn = options.sleepFn ?? sleep
+    this.fetchFn = options.fetchFn ?? safeFetch
   }
 
   async notify(alert: AlertEvent): Promise<void> {
@@ -118,7 +127,7 @@ export class WebhookObserver implements AlertObserver {
 
   private async post(url: string, payload: object, attempt = 0): Promise<void> {
     try {
-      const resp = await fetch(url, {
+      const resp = await this.fetchFn(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -139,6 +148,9 @@ export class WebhookObserver implements AlertObserver {
         'Webhook POST failed after retries',
       )
     } catch (err) {
+      // An SSRF-blocked target (internal/metadata host) can never succeed —
+      // surface it immediately instead of burning the retry budget on it.
+      if (err instanceof SsrfBlockedError) throw err
       if (attempt < MAX_RETRIES) {
         const backoffMs = BACKOFF_BASE_MS * 2 ** attempt
         await this.sleepFn(backoffMs)
