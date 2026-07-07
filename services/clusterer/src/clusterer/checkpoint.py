@@ -7,6 +7,16 @@ verification when checkpoint_hmac_key is configured.
 Security note: checkpoint files use jsonpickle (Drain3's native format),
 which can execute arbitrary code on deserialization. Only load checkpoints
 from the trusted checkpoint volume — never from external/user sources.
+
+CVE-2020-22083 (jsonpickle <= 2.0.0, code execution on decoding untrusted
+data) is ACCEPTED as mitigated, not fixed, and here's why the fix is deferred:
+Drain3 hard-pins jsonpickle to 1.5.1 (its latest 0.9.11 still does, and there
+is no Drain3 >= 1.0), so `jsonpickle >= 3` is an unsatisfiable dependency. The
+CVE's attack vector — decoding attacker-controlled data — does not apply here:
+the only bytes ever deserialized are this service's OWN checkpoints, read from
+a trusted local volume and gated by HMAC verification (load() below refuses to
+deserialize without a verified HMAC, and fails closed with no key). Re-evaluate
+if Drain3 relaxes the pin or is replaced. Tracked in the release plan (#294).
 """
 
 import hashlib
