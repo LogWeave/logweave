@@ -1,6 +1,9 @@
 services:
   clickhouse:
-    image: clickhouse/clickhouse-server:24-alpine
+    # Pinned by digest (= clickhouse/clickhouse-server:25.8-alpine, the current
+    # LTS). 24.x is EOL and the bare `24-alpine` tag floated across minors. Bump
+    # deliberately.
+    image: clickhouse/clickhouse-server@sha256:f40cd6034fb8c54dce6a85338750fbad79f387e2705e1991a85f2e7086b5b9ea
     ports:
       - "8123:8123"   # HTTP interface
       - "9000:9000"   # Native protocol
