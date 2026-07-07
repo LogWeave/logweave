@@ -1,5 +1,25 @@
+import { createHash } from 'node:crypto'
 import type { ClickHouseClient } from '@clickhouse/client'
 import type pino from 'pino'
+
+// Ledger of applied migrations. Each MIGRATIONS entry runs at most once per
+// database (see initSchema), so the DROP VIEW + recreate steps no longer replay
+// on every boot. ReplacingMergeTree keyed on migration_id makes re-recording a
+// no-op even if two boots race.
+const SCHEMA_MIGRATIONS_DDL = `CREATE TABLE IF NOT EXISTS logweave.schema_migrations (
+  migration_id String,
+  applied_at   DateTime64(3) DEFAULT now64(3)
+) ENGINE = ReplacingMergeTree(applied_at)
+ORDER BY migration_id`
+
+/**
+ * Stable content-addressed id for a migration statement. Keyed on the SQL text
+ * so order changes don't reshuffle ids; editing a statement's text intentionally
+ * re-runs it (treated as a new migration).
+ */
+export function migrationId(sql: string): string {
+  return createHash('sha256').update(sql).digest('hex').slice(0, 16)
+}
 
 const DDL_STATEMENTS = [
   // 1. Create database (idempotent)
@@ -439,14 +459,17 @@ const INITIAL_BACKOFF_MS = 200
 import { sleep } from '../lib/sleep.js'
 
 /**
- * Engine change can't be done in place (ClickHouse has no ALTER ... MODIFY
- * ENGINE), so a `log_metadata` left on the legacy `MergeTree` engine (pre-#267)
- * is dropped here and recreated by the DDL below with `ReplacingMergeTree`. This
- * is safe pre-release — no live data, only simulator-generated rows — and is a
- * no-op once the table is already `ReplacingMergeTree`. The dependent MVs are
- * left in place; they simply resume firing against the recreated table.
+ * `log_metadata` must be `ReplacingMergeTree` (since #267), and ClickHouse has no
+ * ALTER ... MODIFY ENGINE. An earlier version silently `DROP`ped a legacy
+ * `MergeTree` table here to let the DDL recreate it — safe only while there was
+ * no live data. At launch that assumption is false, so instead of dropping we
+ * refuse to start and point the operator at a manual, data-preserving migration.
+ * No-op on a fresh install (no table yet) or when the engine is already correct.
  */
-async function dropLegacyLogMetadata(client: ClickHouseClient, logger: pino.Logger): Promise<void> {
+export async function assertLogMetadataEngine(
+  client: ClickHouseClient,
+  _logger: pino.Logger,
+): Promise<void> {
   const probe = await client.query({
     query: `SELECT engine FROM system.tables WHERE database = 'logweave' AND name = 'log_metadata'`,
     format: 'JSONEachRow',
@@ -454,11 +477,17 @@ async function dropLegacyLogMetadata(client: ClickHouseClient, logger: pino.Logg
   const rows = (await probe.json()) as Array<{ engine: string }>
   const engine = rows[0]?.engine
   if (engine && engine !== 'ReplacingMergeTree') {
-    logger.warn(
-      { engine },
-      'Dropping legacy log_metadata to migrate engine to ReplacingMergeTree (no live data pre-release; simulator rows will be regenerated)',
+    throw new Error(
+      `Refusing to start: logweave.log_metadata uses the legacy '${engine}' engine but must be ` +
+        'ReplacingMergeTree (since #267). ClickHouse cannot ALTER the engine in place, so migrate ' +
+        'manually to avoid data loss:\n' +
+        '  1. RENAME TABLE logweave.log_metadata TO logweave.log_metadata_legacy;\n' +
+        '  2. Restart LogWeave — the schema init recreates log_metadata as ReplacingMergeTree;\n' +
+        '  3. INSERT INTO logweave.log_metadata SELECT * FROM logweave.log_metadata_legacy;\n' +
+        '  4. DROP TABLE logweave.log_metadata_legacy;\n' +
+        '(A pre-release install with only simulator data can instead DROP TABLE ' +
+        'logweave.log_metadata and restart.)',
     )
-    await client.command({ query: `DROP TABLE IF EXISTS logweave.log_metadata` })
   }
 }
 
@@ -467,15 +496,34 @@ export async function initSchema(client: ClickHouseClient, logger: pino.Logger):
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      await dropLegacyLogMetadata(client, logger)
+      await assertLogMetadataEngine(client, logger)
 
       for (const ddl of DDL_STATEMENTS) {
         await client.command({ query: ddl })
       }
 
-      // Run idempotent migrations for existing tables
+      // Run each migration at most once, gated on the schema_migrations ledger.
+      // Replaying the whole array every boot re-ran the DROP VIEW + recreate
+      // steps for 3 MVs, so every row ingested during that window was lost from
+      // the *_stats aggregates. The ledger makes each statement run exactly once.
+      await client.command({ query: SCHEMA_MIGRATIONS_DDL })
+      const appliedProbe = await client.query({
+        query: `SELECT migration_id FROM logweave.schema_migrations`,
+        format: 'JSONEachRow',
+      })
+      const applied = new Set(
+        ((await appliedProbe.json()) as Array<{ migration_id: string }>).map((r) => r.migration_id),
+      )
       for (const migration of MIGRATIONS) {
+        const id = migrationId(migration)
+        if (applied.has(id)) continue
         await client.command({ query: migration })
+        await client.insert({
+          table: 'logweave.schema_migrations',
+          values: [{ migration_id: id }],
+          format: 'JSONEachRow',
+        })
+        applied.add(id)
       }
 
       // Resource guardrails — best-effort. Skip ALTER USER entirely when the
