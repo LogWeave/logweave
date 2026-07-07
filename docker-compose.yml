@@ -50,12 +50,6 @@ services:
       # Shared internal-services secret — enables the archive notify endpoint
       # (#276) in dev (Vector → API). Dev-only value; prod injects a real one.
       LOGWEAVE_INTERNAL_SECRET: dev-internal-secret
-      # Archive drill-down (#275) against the Floci-backed Vector archive bucket.
-      LOGWEAVE_ARCHIVE_BUCKET: logweave-logs
-      LOGWEAVE_S3_ENDPOINT: http://floci:4566
-      AWS_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
       LOGWEAVE_LOG_LEVEL: info
       LOGWEAVE_API_KEYS: '{"dev-key":"dev-tenant","e2e-key-tenant-a":"e2e-tenant-a","e2e-key-tenant-b":"e2e-tenant-b"}'
       # Higher than default 500ms to account for Docker networking + container startup overhead

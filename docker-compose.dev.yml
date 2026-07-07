@@ -1,9 +1,18 @@
 services:
-  # Wire api to wait for the local S3 emulator before starting.
+  # Wire api to wait for the local S3 emulator before starting, and supply the
+  # archive drill-down (#275) env here rather than in the base compose — `floci`
+  # is only defined in this overlay, so pointing the base at it would DNS-fail on
+  # a base-only `docker compose up`.
   api:
     depends_on:
       floci-init:
         condition: service_completed_successfully
+    environment:
+      LOGWEAVE_ARCHIVE_BUCKET: logweave-logs
+      LOGWEAVE_S3_ENDPOINT: http://floci:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
 
   # Floci — fast, MIT-licensed AWS emulator. Used as a local S3-compatible
   # store for dev + as the IAM/STS/S3 backend for integration tests.
