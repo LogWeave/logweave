@@ -146,7 +146,9 @@ describe('FilesystemAdapter enforces the root allowlist at fetch time', () => {
     )
   })
 
-  it('does NOT surface a symlink under basePath that points outside the allowlist', { skip: skipSymlink }, async () => {
+  it('does NOT surface a symlink under basePath that points outside the allowlist', {
+    skip: skipSymlink,
+  }, async () => {
     process.env.LOGWEAVE_FILESYSTEM_ROOTS = root
     // A log file living outside the allowlist, symlinked into the allowed root.
     const secret = path.join(outside, 'secret.log')

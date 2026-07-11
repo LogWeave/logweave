@@ -465,7 +465,7 @@ export function authRoutes(deps: AuthDeps): Router {
   // GET /auth/users — list users (admin only)
   router.get('/auth/users', async (req, res) => {
     const session = getSessionFromCookie(req, deps)
-    if (!session || session.role !== 'admin') {
+    if (session?.role !== 'admin') {
       res.status(HttpStatus.FORBIDDEN).json({
         error: { code: 'FORBIDDEN', message: 'Admin access required' },
       })
@@ -488,7 +488,7 @@ export function authRoutes(deps: AuthDeps): Router {
   // POST /auth/users — create user (admin only, own tenant)
   router.post('/auth/users', validateBody(createUserSchema), async (req, res) => {
     const session = getSessionFromCookie(req, deps)
-    if (!session || session.role !== 'admin') {
+    if (session?.role !== 'admin') {
       res.status(HttpStatus.FORBIDDEN).json({
         error: { code: 'FORBIDDEN', message: 'Admin access required' },
       })
@@ -530,7 +530,7 @@ export function authRoutes(deps: AuthDeps): Router {
   // DELETE /auth/users/:id — delete user (admin only)
   router.delete('/auth/users/:id', async (req, res) => {
     const session = getSessionFromCookie(req, deps)
-    if (!session || session.role !== 'admin') {
+    if (session?.role !== 'admin') {
       res.status(HttpStatus.FORBIDDEN).json({
         error: { code: 'FORBIDDEN', message: 'Admin access required' },
       })
@@ -562,7 +562,7 @@ export function authRoutes(deps: AuthDeps): Router {
   // PUT /auth/users/:id/password — reset user password (admin only)
   router.put('/auth/users/:id/password', validateBody(resetPasswordSchema), async (req, res) => {
     const session = getSessionFromCookie(req, deps)
-    if (!session || session.role !== 'admin') {
+    if (session?.role !== 'admin') {
       res.status(HttpStatus.FORBIDDEN).json({
         error: { code: 'FORBIDDEN', message: 'Admin access required' },
       })

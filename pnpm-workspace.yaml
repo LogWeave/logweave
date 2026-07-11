@@ -19,3 +19,5 @@ overrides:
   form-data@<4.0.6: '>=4.0.6'
   # quote() failed to escape newlines (shell-quote, via the concurrently dev tool).
   shell-quote@<=1.8.3: '>=1.8.4'
+  # Dev server request smuggling (esbuild, via tsup building @logweave/transport).
+  esbuild@<0.28.1: '>=0.28.1'
