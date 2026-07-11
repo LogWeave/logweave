@@ -51,12 +51,16 @@ describe('health routes', () => {
     _resetReadyCache()
   })
 
-  it('GET /healthz returns 200', async () => {
+  it('GET /healthz returns 200 with version info', async () => {
     const app = createTestApp(true)
     const res = await request(app).get('/healthz')
 
     assert.equal(res.status, 200)
-    assert.deepEqual(res.body, { status: 'ok' })
+    assert.equal(res.body.status, 'ok')
+    // version comes from package.json; gitSha is 'dev' unless injected at build.
+    assert.match(res.body.version, /^\d+\.\d+\.\d+/)
+    assert.equal(typeof res.body.gitSha, 'string')
+    assert.ok(res.body.gitSha.length > 0)
   })
 
   it('GET /readyz returns 200 when ClickHouse is reachable', async () => {

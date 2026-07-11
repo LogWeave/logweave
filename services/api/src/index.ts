@@ -18,6 +18,7 @@ import { ClusterClient } from './pipeline/cluster-client.js'
 import { RecoverySweep } from './recovery/reconcile.js'
 import { RetentionSweep } from './retention/sweep.js'
 import { TailBuffer } from './tail/buffer.js'
+import { versionInfo } from './version.js'
 import { AlertEvaluator } from './watches/alert-evaluator.js'
 import { AlertDispatcher, ConsoleObserver } from './watches/alert-observer.js'
 import { HistoryObserver } from './watches/history-observer.js'
@@ -285,13 +286,16 @@ const retention = new RetentionSweep(
 )
 
 const server = app.listen(config.port, () => {
-  logger.info({ port: config.port }, 'API server started')
+  logger.info(
+    { port: config.port, version: versionInfo.version, gitSha: versionInfo.gitSha },
+    'API server started',
+  )
   internalEvents.emit({
     event: 'service.started',
     severity: 'info',
     code: 'SERVICE_STARTED',
     summary: 'api server listening',
-    fields: { port: config.port },
+    fields: { port: config.port, version: versionInfo.version, gitSha: versionInfo.gitSha },
   })
 
   if (config.retentionEnabled) {

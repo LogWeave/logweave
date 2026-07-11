@@ -52,6 +52,11 @@ ENV LOGWEAVE_DASHBOARD_DIR=/app/dashboard/dist
 RUN addgroup -S app && adduser -S app -G app
 USER app
 
+# Git sha for /healthz + the startup log line. Pass at build time:
+#   docker build --build-arg LOGWEAVE_GIT_SHA=$(git rev-parse --short HEAD) ...
+ARG LOGWEAVE_GIT_SHA=dev
+ENV LOGWEAVE_GIT_SHA=$LOGWEAVE_GIT_SHA
+
 EXPOSE 3000
 
 CMD ["node", "dist/index.js"]

@@ -3,6 +3,34 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- **Durable log archive (opt-in)** — forward ingest batches to Vector → the customer's own S3 bucket for durable archival, cluster **asynchronously** off the request path, and backfill forwarded objects into ClickHouse via a reconciliation sweep (`LOGWEAVE_VECTOR_ARCHIVE_URL`, `LOGWEAVE_ARCHIVE_BUCKET`)
+- **API version reporting** — package version + git sha in the `/healthz` response and the startup log line
+- **Filesystem-connector root allowlist** (`LOGWEAVE_FILESYSTEM_ROOTS`) — server-operator allowlist of permitted roots; empty ⇒ filesystem connectors disabled (fail closed)
+- **TLS termination via Caddy** in the production Docker Compose stack, with a loud warning on non-TLS production logins
+
+### Changed
+
+- Pinned ClickHouse to the current **25.8 LTS** (by digest) — 24.x is EOL
+- Schema init now runs against a **migration ledger** and **refuses to start** on a `log_metadata` engine mismatch instead of dropping the table at boot
+- Dependency bumps across all workspaces; `pnpm audit` reports no known vulnerabilities
+
+### Fixed
+
+- Anomaly baseline denominator counts whole silent days (see ADR-014)
+- `@logweave/transport`: skip the `Retry-After` sleep on the terminal attempt; count the in-flight batch against the buffer retention cap
+- Unknown `/v1/*` routes return a JSON 404 instead of the SPA shell
+- Dashboard: Live Tail reconnects when the anomaly filter changes; the sign-in prompt shows on a 401 for all HTTP verbs
+
+### Security
+
+- Redact the session cookie and CSRF token from request logs
+- SSRF-guard alert-channel delivery in the webhook + Slack observers
+- Invalidate the session cache on user delete / password change / reset
+
 ## 0.1.0 (2026-06-13)
 
 First public Beta release.

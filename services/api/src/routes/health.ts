@@ -5,6 +5,7 @@ import type { DbClient } from '../db/client.js'
 import { HttpStatus } from '../http-status.js'
 import * as metrics from '../metrics.js'
 import type { ClusterClient } from '../pipeline/cluster-client.js'
+import { versionInfo } from '../version.js'
 
 interface HealthDeps {
   db: DbClient
@@ -23,7 +24,7 @@ export function healthRoutes(deps: HealthDeps): Router {
   const router = Router()
 
   router.get('/healthz', (_req, res) => {
-    res.json({ status: 'ok' })
+    res.json({ status: 'ok', ...versionInfo })
   })
 
   router.get('/readyz', async (_req, res) => {
