@@ -3,7 +3,6 @@ packages:
   - "services/dashboard"
   - "services/mcp"
   - "packages/transport"
-  - "benchmarks"
   - "simulator"
 
 catalog:
@@ -13,5 +12,10 @@ overrides:
   fast-uri@<=3.1.1: '>=3.1.2'
   fast-xml-builder@<=1.1.6: '>=1.1.7'
   fast-xml-builder@=1.1.5: '>=1.1.6'
-  hono@<4.12.18: '>=4.12.18'
+  # CORS middleware reflected any Origin — @modelcontextprotocol/sdk pulls it (#294).
+  hono@<4.12.25: '>=4.12.25'
   ip-address@<=10.1.0: '>=10.1.1'
+  # CRLF injection (form-data, via supertest/superagent in tests) — GHSA fix in 4.0.6.
+  form-data@<4.0.6: '>=4.0.6'
+  # quote() failed to escape newlines (shell-quote, via the concurrently dev tool).
+  shell-quote@<=1.8.3: '>=1.8.4'

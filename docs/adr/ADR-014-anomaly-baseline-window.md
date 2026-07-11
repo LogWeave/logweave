@@ -8,6 +8,15 @@
 > math below, plus the extension of hour-of-day matching to the query-time
 > analytics tools. See "Amendment" at the foot of this ADR. The SQL and prose
 > in the body have been updated in place to reflect the corrected math.
+>
+> **Amendment (2026-07-06, F3 fast-follow).** The #258 denominator was still
+> biased high. `uniq(toDate(interval_start))` inside the hour group counts only
+> the days the template fired *at that hour*, so whole days it was silent at that
+> hour were dropped from the denominator — ~2.3× overstatement for a 3-of-7-day
+> pattern, exactly the sparse templates this ADR is meant to protect. Corrected
+> to divide by `active_days × 12`, where `active_days` is the distinct days the
+> template+service was active at any hour over the window. SQL and prose below
+> updated in place; see "Amendment (2026-07-06)" at the foot.
 
 ## Context
 
@@ -29,19 +38,33 @@ A maintainability/lemon-test review flagged three statistical problems with a 1-
 
 ## Decision
 
-Move to a **7-day window grouped by hour-of-day** (UTC). Each baseline row is the true per-interval occurrence rate for a `(template_id, service, hourOfDay)` over the last 7 days — total occurrences divided by the number of 5-min buckets the hour *could* have had (distinct days × 12), so silent buckets count as the zeros they are — **provided at least 3 distinct days contributed**.
+Move to a **7-day window grouped by hour-of-day** (UTC). Each baseline row is the true per-interval occurrence rate for a `(template_id, service, hourOfDay)` over the last 7 days — total occurrences divided by the number of 5-min buckets the hour *could* have had (`active_days × 12`, where `active_days` is the distinct days the template was active at any hour), so silent buckets **and whole silent days** count as the zeros they are — **provided at least 3 distinct days contributed at that hour**.
 
 ```sql
 SELECT
-  template_id,
-  service,
-  toHour(interval_start) AS hour_of_day,
-  countMerge(occurrence_count) / (uniq(toDate(interval_start)) * 12) AS avg_count_per_interval
-FROM logweave.template_stats
-WHERE tenant_id = {tenant_id:String}
-  AND interval_start > now64(3) - toIntervalDay(7)
-GROUP BY template_id, service, hour_of_day
-HAVING uniq(toDate(interval_start)) >= 3
+  hourly.template_id AS template_id,
+  hourly.service AS service,
+  hourly.hour_of_day AS hour_of_day,
+  hourly.occurrences / (active.active_days * 12) AS avg_count_per_interval
+FROM (
+  SELECT
+    template_id,
+    service,
+    toHour(interval_start) AS hour_of_day,
+    countMerge(occurrence_count) AS occurrences
+  FROM logweave.template_stats
+  WHERE tenant_id = {tenant_id:String}
+    AND interval_start > now64(3) - toIntervalDay(7)
+  GROUP BY template_id, service, hour_of_day
+  HAVING uniq(toDate(interval_start)) >= 3
+) AS hourly
+INNER JOIN (
+  SELECT template_id, service, uniq(toDate(interval_start)) AS active_days
+  FROM logweave.template_stats
+  WHERE tenant_id = {tenant_id:String}
+    AND interval_start > now64(3) - toIntervalDay(7)
+  GROUP BY template_id, service
+) AS active ON hourly.template_id = active.template_id AND hourly.service = active.service
 ORDER BY template_id, service, hour_of_day
 ```
 
@@ -67,11 +90,16 @@ Without this guard, a single noisy day on day 0 of the window establishes the of
 
 The guard counts `uniq(toDate(interval_start))` — distinct calendar days — **not** `uniq(interval_start)`. Three firings within a single hour on one day produce three distinct 5-min timestamps, which would wrongly satisfy a buckets-based guard with only one day of data. (This was the original intent of the guard; the first implementation counted buckets — corrected in #258.)
 
-### Why divide by `distinct days × 12`, not by buckets-that-fired
+### Why divide by `active_days × 12`, not by buckets-that-fired or per-hour firing-days
 
-`template_stats` only stores a row for a 5-min bucket where the template actually fired — silent buckets are absent. Dividing total occurrences by `uniq(interval_start)` (buckets that fired) therefore computes a *conditional* mean ("how much when it fires"), which overstates "normal" for sparse/bursty templates and suppresses real spikes (a high baseline makes the current count clear the threshold less easily). Dividing by `distinct days × 12` — the number of 5-min buckets the hour-of-day could have had over the observed window — yields the true *per-interval rate* including silence. (Corrected in #258.)
+`template_stats` only stores a row for a 5-min bucket where the template actually fired — silent buckets are absent. Two wrong denominators to rule out first:
 
-Accepted tradeoff: for a genuinely bursty template (silent most of the time), the lower baseline can make a normal-sized burst read as anomalous. The `Math.max(baseline, 1.0)` floor and the new-template absolute-threshold path soften this; it is the correct default for steady traffic.
+- **`uniq(interval_start)` (buckets that fired)** computes a *conditional* mean ("how much when it fires"), which overstates "normal" for sparse/bursty templates and suppresses real spikes (a high baseline makes the current count clear the threshold less easily).
+- **`uniq(toDate(interval_start))` inside the hour group (days that fired *at this hour*)** — the #258 form — looks like it counts silence, but it only counts silent buckets *within* days the template fired at that hour. Whole days the template was silent at that hour never enter the group, so they drop out of the denominator entirely. A template firing at hour 14 on 3 of 7 days gets 3 × 12 = 36, not 84 — the baseline is overstated ~2.3× and the four fully-silent days vanish.
+
+The denominator that yields the true *per-interval rate* is **`active_days × 12`**, where `active_days = uniq(toDate(interval_start))` computed per `(template, service)` across *all* hours (a separate aggregation, joined in). This charges the template for every day it was demonstrably alive (it logged something at some hour), so a day it was alive-but-quiet at this hour is the zero it should be — while days *before the template first appeared* (no rows at all) are correctly not counted, so a template younger than the window is not penalised with phantom zeros.
+
+Accepted tradeoff: for a genuinely bursty template (silent most of the time), the lower baseline can make a normal-sized burst read as anomalous. The `Math.max(baseline, 1.0)` floor and the new-template absolute-threshold path soften this; it is the correct default for steady traffic. (Denominator corrected in #258 to distinct-days, then to `active_days` in the 2026-07-06 F3 fast-follow.)
 
 ### Why no cross-hour-mean fallback
 
@@ -140,7 +168,8 @@ None of these are needed to ship the fix this ADR records.
 Three changes, all extending or correcting the math this ADR governs:
 
 1. **Baseline denominator** — corrected to a zero-filled per-interval rate
-   (`÷ distinct days × 12`). See "Why divide by distinct days × 12" above.
+   (`÷ distinct days × 12`); later refined to `÷ active_days × 12` in the
+   2026-07-06 F3 fast-follow. See "Why divide by `active_days × 12` ..." above.
 2. **Min-samples guard** — corrected to count distinct **days**
    (`uniq(toDate(interval_start))`). See "Why HAVING ..." above.
 3. **Hour-of-day matching extended to the query-time analytics tools.** The
@@ -172,3 +201,26 @@ z-score, Poisson, ...) can be dropped in as a new strategy without touching the
 plumbing or the alert path. The graduated 3×/10× threshold multipliers were left
 unchanged — tuning them needs real customer traffic (#100) and is a strategy
 swap, not a rewrite.
+
+## Amendment (2026-07-06, F3 fast-follow)
+
+The #258 denominator correction (divide by distinct days rather than
+buckets-that-fired) was only half right. Because the baseline query groups by
+`hour_of_day`, `uniq(toDate(interval_start))` measured *days the template fired
+at that hour*, not days in the window. A template that fires at hour 14 on 3 of
+7 days produced denominator 36 instead of 84 — the four days it was silent at
+hour 14 never joined the group and so were silently excluded, overstating the
+baseline ~2.3× and suppressing real spikes for exactly the sparse/bursty
+templates this ADR exists to protect. The prior claim that "distinct days × 12
+yields the true per-interval rate including silence" was false for any template
+silent on a whole day.
+
+**Fix:** the denominator now divides by `active_days × 12`, where `active_days`
+is `uniq(toDate(interval_start))` computed per `(template, service)` across all
+hours — the distinct calendar days the template was active *anywhere* — brought
+in via an inner join to the per-hour aggregation. This counts a day the template
+was alive-but-silent-at-this-hour as a real zero, while not charging days before
+the template first appeared (a template younger than the 7-day window is divided
+by the days it actually existed, not a phantom 7). The `HAVING uniq(toDate(...))
+>= 3` guard is unchanged and still applies per hour-of-day, so the set of rows
+returned is identical — only the per-interval rate changes.

@@ -1,12 +1,19 @@
 services:
   clickhouse:
-    image: clickhouse/clickhouse-server:24-alpine
+    # Pinned by digest (= clickhouse/clickhouse-server:25.8-alpine, the current
+    # LTS). 24.x is EOL and the bare `24-alpine` tag floated across minors. Bump
+    # deliberately.
+    image: clickhouse/clickhouse-server@sha256:f40cd6034fb8c54dce6a85338750fbad79f387e2705e1991a85f2e7086b5b9ea
     ports:
       - "8123:8123"   # HTTP interface
       - "9000:9000"   # Native protocol
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
+      # Dev/test only: open the passwordless `default` user beyond loopback so the
+      # local test suite (localhost:8123 over Docker NAT) can connect. Replaces the
+      # image's default-user.xml. Prod compose does NOT mount this — see the file.
+      - ./docker/clickhouse/dev-default-user.xml:/etc/clickhouse-server/users.d/default-user.xml:ro
     environment:
       CLICKHOUSE_DB: logweave
     ulimits:
@@ -50,12 +57,6 @@ services:
       # Shared internal-services secret — enables the archive notify endpoint
       # (#276) in dev (Vector → API). Dev-only value; prod injects a real one.
       LOGWEAVE_INTERNAL_SECRET: dev-internal-secret
-      # Archive drill-down (#275) against the Floci-backed Vector archive bucket.
-      LOGWEAVE_ARCHIVE_BUCKET: logweave-logs
-      LOGWEAVE_S3_ENDPOINT: http://floci:4566
-      AWS_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
       LOGWEAVE_LOG_LEVEL: info
       LOGWEAVE_API_KEYS: '{"dev-key":"dev-tenant","e2e-key-tenant-a":"e2e-tenant-a","e2e-key-tenant-b":"e2e-tenant-b"}'
       # Higher than default 500ms to account for Docker networking + container startup overhead

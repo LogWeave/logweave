@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
-import { afterEach, beforeEach, describe, it, mock } from 'node:test'
+import { beforeEach, describe, it } from 'node:test'
 import pino from 'pino'
+import {
+  type SafeFetchFn,
+  type SafeResponse,
+  SsrfBlockedError,
+  safeFetch,
+} from '../../src/connectors/safe-fetch.js'
 import type {
   AlertEvent,
   ServiceSilenceResolvedEvent,
@@ -43,20 +49,30 @@ const TEMPLATE_ALERT: AlertEvent = {
 // Capture fetch calls
 // ---------------------------------------------------------------------------
 
+function makeResponse(ok: boolean, status: number, body = 'ok'): SafeResponse {
+  return {
+    ok,
+    status,
+    statusText: '',
+    headers: {},
+    text: async () => body,
+    json: async () => ({}),
+  }
+}
+
 let fetchCalls: Array<{ url: string; body: Record<string, unknown> }> = []
-let fetchResponse = { ok: true, status: 200, text: async () => 'ok' }
+let fetchResponse: SafeResponse = makeResponse(true, 200)
+
+// Observers default to the SSRF-guarded safeFetch; inject a stub so unit tests
+// don't hit the network and we can assert on the URLs/payloads delivered.
+const mockFetch: SafeFetchFn = async (target, init) => {
+  fetchCalls.push({ url: String(target), body: JSON.parse((init?.body as string) ?? '{}') })
+  return fetchResponse
+}
 
 beforeEach(() => {
   fetchCalls = []
-  fetchResponse = { ok: true, status: 200, text: async () => 'ok' }
-  mock.method(globalThis, 'fetch', async (url: string, opts: RequestInit) => {
-    fetchCalls.push({ url, body: JSON.parse(opts.body as string) })
-    return fetchResponse
-  })
-})
-
-afterEach(() => {
-  mock.restoreAll()
+  fetchResponse = makeResponse(true, 200)
 })
 
 // ---------------------------------------------------------------------------
@@ -70,7 +86,12 @@ describe('WebhookObserver', () => {
       channels: ['https://hooks.slack.com/services/T00/B00/xxx'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
 
@@ -83,7 +104,12 @@ describe('WebhookObserver', () => {
       channels: ['https://my-webhook.example.com/alerts'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
 
@@ -102,7 +128,12 @@ describe('WebhookObserver', () => {
       channels: ['pagerduty://abc123def456'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
 
@@ -121,7 +152,12 @@ describe('WebhookObserver', () => {
     const alert: AlertEvent = { ...TEMPLATE_ALERT }
     const store = new TenantSettingsStore()
     store.set('tenant-a', { slackWebhookUrl: 'https://hooks.slack.com/services/T00/B00/xxx' })
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
     assert.equal(fetchCalls.length, 0, 'should skip — SlackObserver handles Slack URLs')
@@ -137,7 +173,12 @@ describe('WebhookObserver', () => {
       ],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
 
@@ -150,7 +191,12 @@ describe('WebhookObserver', () => {
   it('does nothing when no channels configured', async () => {
     const alert: ThresholdAlertEvent = { ...THRESHOLD_ALERT, channels: [] }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
 
@@ -158,13 +204,18 @@ describe('WebhookObserver', () => {
   })
 
   it('handles fetch errors gracefully', async () => {
-    fetchResponse = { ok: false, status: 500, text: async () => 'Internal Server Error' }
+    fetchResponse = makeResponse(false, 500, 'Internal Server Error')
     const alert: ThresholdAlertEvent = {
       ...THRESHOLD_ALERT,
       channels: ['https://my-webhook.example.com/alerts'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     // Should not throw
     await observer.notify(alert)
@@ -179,7 +230,12 @@ describe('WebhookObserver', () => {
     // Template alerts don't have channels, so use a non-Slack tenant default
     const store = new TenantSettingsStore()
     store.set('tenant-a', { slackWebhookUrl: 'https://generic-webhook.example.com/hook' })
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     // Actually this is a generic URL, not Slack — WebhookObserver should handle it
     // But wait, the tenant default is checked via settingsStore.getSlackUrl which is
@@ -204,7 +260,12 @@ describe('WebhookObserver', () => {
       channels: ['pagerduty://my-key'],
     }
     const store = new TenantSettingsStore()
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
 
@@ -223,7 +284,12 @@ describe('WebhookObserver', () => {
     }
     const store = new TenantSettingsStore()
     store.set('tenant-a', { slackWebhookUrl: 'https://generic-webhook.example.com/hook' })
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
 
@@ -247,7 +313,12 @@ describe('WebhookObserver', () => {
     }
     const store = new TenantSettingsStore()
     store.set('tenant-a', { slackWebhookUrl: 'pagerduty://my-key' })
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
 
@@ -268,12 +339,50 @@ describe('WebhookObserver', () => {
     }
     const store = new TenantSettingsStore()
     store.set('tenant-a', { slackWebhookUrl: 'pagerduty://my-key' })
-    const observer = new WebhookObserver({ settingsStore: store, logger, sleepFn: async () => {} })
+    const observer = new WebhookObserver({
+      settingsStore: store,
+      logger,
+      sleepFn: async () => {},
+      fetchFn: mockFetch,
+    })
 
     await observer.notify(alert)
 
     const payload = fetchCalls[0].body
     assert.equal(payload.event_action, 'resolve')
     assert.equal(payload.dedup_key, 'logweave-service_silent-checkout-tenant-a')
+  })
+
+  // SSRF: a webhook channel is fetched server-side when the rule fires. The
+  // default fetch is the real safeFetch, which must refuse an internal/metadata
+  // target — and the observer must not burn its retry budget on a blocked host.
+  it('does not deliver to an internal-IP channel (safeFetch blocks it, no retries)', async () => {
+    const attempts: string[] = []
+    let blocked: unknown
+    const observer = new WebhookObserver({
+      settingsStore: new TenantSettingsStore(),
+      logger,
+      sleepFn: async () => {},
+      // Real SSRF guard, wrapped so the test can see it fire.
+      fetchFn: async (target, init) => {
+        attempts.push(String(target))
+        try {
+          return await safeFetch(target, init)
+        } catch (err) {
+          blocked = err
+          throw err
+        }
+      },
+    })
+    const alert: ThresholdAlertEvent = {
+      ...THRESHOLD_ALERT,
+      channels: ['https://169.254.169.254/latest/meta-data/iam/security-credentials/'],
+    }
+
+    // notify must swallow the SSRF error (logged), not throw.
+    await observer.notify(alert)
+
+    assert.equal(attempts.length, 1, 'should attempt exactly once — no retries on a blocked host')
+    assert.ok(blocked instanceof SsrfBlockedError, 'safeFetch must block the internal target')
   })
 })

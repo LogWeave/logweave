@@ -1,0 +1,16 @@
+# LogWeave reverse proxy — terminates TLS and forwards to the API.
+#
+# Set LOGWEAVE_DOMAIN to your public hostname (e.g. logs.example.com) and Caddy
+# automatically provisions and renews a Let's Encrypt certificate, redirecting
+# http→https. Left unset it defaults to `localhost`, for which Caddy issues a
+# local self-signed cert — fine for a quick prod-mode run on your machine
+# (browsers will warn), but set a real domain for any deployment reachable by
+# others.
+#
+# The API is reached over the internal compose network (api:3000) and is not
+# published to the host, so a plain-HTTP login — which silently loops under
+# NODE_ENV=production because the session cookie is Secure — can't happen here.
+{$LOGWEAVE_DOMAIN:localhost} {
+	encode zstd gzip
+	reverse_proxy api:3000
+}

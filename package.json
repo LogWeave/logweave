@@ -11,7 +11,6 @@
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
     "test:e2e": "pnpm -C services/mcp test:e2e",
-    "benchmark": "pnpm -C benchmarks start",
     "simulate": "pnpm -C simulator start -- --api-key dev-key"
   },
   "devDependencies": {

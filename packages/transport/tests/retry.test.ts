@@ -283,6 +283,60 @@ describe('retryFetch', () => {
     assert.ok(delays[0]! >= 0 && delays[0]! <= 1000, `expected backoff 0-1000ms, got ${delays[0]}`)
   })
 
+  it('does NOT sleep the Retry-After on the terminal 5xx attempt (F10)', async () => {
+    // Every attempt returns 503 + Retry-After:30. With maxRetries:3 there are 4
+    // attempts; only the first 3 can retry. The 4th (terminal) attempt must drop
+    // WITHOUT sleeping 30s for a retry it can never make — otherwise flushing is
+    // stalled for the full delay before the inevitable drop.
+    const mock = mockFetchSequence([
+      { status: 503, headers: { 'retry-after': '30' } },
+      { status: 503, headers: { 'retry-after': '30' } },
+      { status: 503, headers: { 'retry-after': '30' } },
+      { status: 503, headers: { 'retry-after': '30' } },
+    ])
+    const delays: number[] = []
+    const trackingSleep = async (ms: number): Promise<void> => {
+      delays.push(ms)
+    }
+
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: trackingSleep },
+    )
+
+    assert.equal(result, null, 'batch should be dropped after exhausting retries')
+    assert.equal(mock.calls.length, 4, 'all 4 attempts should be made')
+    assert.deepEqual(
+      delays,
+      [30_000, 30_000, 30_000],
+      'should sleep Retry-After only for the 3 retryable attempts, not the terminal one',
+    )
+  })
+
+  it('does NOT sleep the Retry-After on the terminal 429 attempt (F10)', async () => {
+    const mock = mockFetchSequence([
+      { status: 429, headers: { 'retry-after': '5' } },
+      { status: 429, headers: { 'retry-after': '5' } },
+      { status: 429, headers: { 'retry-after': '5' } },
+      { status: 429, headers: { 'retry-after': '5' } },
+    ])
+    const delays: number[] = []
+    const trackingSleep = async (ms: number): Promise<void> => {
+      delays.push(ms)
+    }
+
+    const result = await retryFetch(
+      'http://test/v1/ingest/batch',
+      { method: 'POST' },
+      { maxRetries: 3, timeoutMs: 2000, fetchFn: mock.fetch, sleepFn: trackingSleep },
+    )
+
+    assert.equal(result, null)
+    assert.equal(mock.calls.length, 4, 'all 4 attempts should be made')
+    assert.deepEqual(delays, [5_000, 5_000, 5_000], 'terminal 429 attempt must not sleep')
+  })
+
   it('respects abort signal and stops retrying', async () => {
     const mock = mockFetch(500)
     const controller = new AbortController()

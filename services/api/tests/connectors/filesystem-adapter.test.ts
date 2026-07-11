@@ -11,17 +11,22 @@ import type { FetchRawLogsParams, FilesystemConnectorConfig } from '../../src/co
 // ---------------------------------------------------------------------------
 
 let testDir: string
+let prevRoots: string | undefined
 
 beforeEach(() => {
-  testDir = join(tmpdir(), `logweave-fs-test-${Date.now()}`)
+  testDir = join(tmpdir(), `logweave-fs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   mkdirSync(testDir, { recursive: true })
-  // The filesystem connector is disabled unless basePath is within a permitted
-  // root; tmpdir() covers every per-test dir created above.
-  process.env.LOGWEAVE_CONNECTOR_ALLOWED_FS_ROOTS = tmpdir()
+  // The filesystem connector now requires a server-configured root allowlist
+  // (LOGWEAVE_FILESYSTEM_ROOTS); point it at this test's temp dir so the adapter
+  // is enabled for it. Root-allowlist rejection paths are covered separately in
+  // filesystem-roots.test.ts.
+  prevRoots = process.env.LOGWEAVE_FILESYSTEM_ROOTS
+  process.env.LOGWEAVE_FILESYSTEM_ROOTS = testDir
 })
 
 afterEach(() => {
-  delete process.env.LOGWEAVE_CONNECTOR_ALLOWED_FS_ROOTS
+  if (prevRoots === undefined) delete process.env.LOGWEAVE_FILESYSTEM_ROOTS
+  else process.env.LOGWEAVE_FILESYSTEM_ROOTS = prevRoots
   try {
     rmSync(testDir, { recursive: true, force: true })
   } catch {

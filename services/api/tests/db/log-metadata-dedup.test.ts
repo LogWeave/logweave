@@ -122,71 +122,8 @@ describe('log_metadata ReplacingMergeTree(event_id) dedup', () => {
     assert.equal(n, 2, 'distinct event_ids must not collapse')
   })
 
-  // Covers the dropLegacyLogMetadata path — the actual migration. A fresh boot
-  // creates ReplacingMergeTree directly and never exercises this; only an
-  // upgrade over a pre-#267 MergeTree table does.
-  it('migrates a legacy MergeTree log_metadata to ReplacingMergeTree, preserving MV wiring', async () => {
-    // Re-create the legacy (pre-#267) table: plain MergeTree, no event_id.
-    await client.command({ query: 'DROP TABLE IF EXISTS logweave.log_metadata' })
-    await client.command({
-      query: `CREATE TABLE logweave.log_metadata (
-        id UUID DEFAULT generateUUIDv7(),
-        tenant_id LowCardinality(String),
-        timestamp DateTime64(3),
-        ingest_time DateTime64(3) DEFAULT now64(3),
-        service LowCardinality(String),
-        level LowCardinality(String),
-        environment LowCardinality(String),
-        template_id String DEFAULT '0',
-        template_text String DEFAULT '',
-        is_new_template UInt8 DEFAULT 0,
-        anomaly_score Float32 DEFAULT 0,
-        status_code UInt16 DEFAULT 0,
-        duration_ms Float64 DEFAULT 0,
-        trace_id String DEFAULT '',
-        route LowCardinality(String) DEFAULT '',
-        source_type LowCardinality(String),
-        source_ref String,
-        pre_processed_message Nullable(String),
-        preprocessing_version UInt8 DEFAULT 1
-      ) ENGINE = MergeTree()
-      PARTITION BY toYYYYMMDD(timestamp)
-      ORDER BY (tenant_id, service, timestamp, level)
-      TTL toDateTime(timestamp) + toIntervalDay(30) DELETE
-      SETTINGS ttl_only_drop_parts = 1`,
-    })
-
-    const engineBefore = await tableEngine(client)
-    assert.equal(engineBefore, 'MergeTree', 'precondition: table is legacy MergeTree')
-
-    // The migration: detects the legacy engine, drops + recreates as RMT.
-    await initSchema(client, logger)
-
-    assert.equal(await tableEngine(client), 'ReplacingMergeTree', 'engine should be migrated')
-
-    const cols = await client.query({
-      query: `SELECT name FROM system.columns WHERE database = 'logweave' AND table = 'log_metadata' AND name = 'event_id'`,
-      format: 'JSONEachRow',
-    })
-    assert.equal((await jsonRows<{ name: string }>(cols)).length, 1, 'event_id column should exist')
-
-    // Dependent MVs reconnect to the recreated table by name.
-    const deps = await client.query({
-      query: `SELECT dependencies_table FROM system.tables WHERE database = 'logweave' AND name = 'log_metadata'`,
-      format: 'JSONEachRow',
-    })
-    const depRows = await jsonRows<{ dependencies_table: string[] }>(deps)
-    assert.ok(
-      depRows[0]?.dependencies_table.includes('template_stats_mv'),
-      'template_stats_mv should remain wired to the recreated table',
-    )
-  })
+  // NOTE: in-place migration of a legacy MergeTree log_metadata was removed in
+  // #294 Phase 1 — initSchema now refuses to start on an engine mismatch rather
+  // than dropping the table. That guard (assertLogMetadataEngine) is covered in
+  // schema-migrations.test.ts.
 })
-
-async function tableEngine(client: ReturnType<typeof getTestClient>): Promise<string | undefined> {
-  const res = await client.query({
-    query: `SELECT engine FROM system.tables WHERE database = 'logweave' AND name = 'log_metadata'`,
-    format: 'JSONEachRow',
-  })
-  return (await jsonRows<{ engine: string }>(res))[0]?.engine
-}
