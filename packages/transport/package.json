@@ -19,6 +19,7 @@
   },
   "files": [
     "dist",
+    "README.md",
     "LICENSE"
   ],
   "homepage": "https://github.com/logweave/logweave/tree/main/packages/transport#readme",
