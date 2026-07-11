@@ -397,19 +397,24 @@ service:
       exporters: [otlphttp]
 ```
 
-### Durability (beta limitation)
+### Durability
 
-Ingest is **synchronous with no durable queue** in the current beta. Each batch is
+By **default**, ingest is **synchronous with no durable queue**. Each batch is
 parsed, clustered, and written to ClickHouse within the request. If ClickHouse is
 unavailable, the API responds **`503 Service Unavailable` with a `Retry-After: 30`
 header** — it does **not** queue the events. The `@logweave/transport` SDK honors
 `Retry-After` and retries the batch; events are only lost if the outage outlasts
 the SDK's retry budget (and OTLP/`curl` callers must implement their own retry).
 
-If you need guaranteed durability today, **put a buffering collector in front of
-LogWeave** — e.g. [Vector](https://vector.dev) or the OpenTelemetry Collector with a
-persistent queue/disk buffer pointed at `/v1/ingest/batch` — so the buffer absorbs
-storage outages until ClickHouse recovers. Native durable ingest is planned for V1.
+For guaranteed durability there are two options:
+
+- **Opt-in durable archive (built in).** Set `LOGWEAVE_VECTOR_ARCHIVE_URL` (with
+  `LOGWEAVE_ARCHIVE_BUCKET`) to forward each batch to [Vector](https://vector.dev)
+  for durable S3 archival and cluster **asynchronously** off the request path
+  instead of inline. See the environment reference below.
+- **Buffer in front.** Put a buffering collector (Vector or the OpenTelemetry
+  Collector with a persistent queue/disk buffer) in front of `/v1/ingest/batch`
+  so it absorbs storage outages until ClickHouse recovers.
 
 ---
 
@@ -492,6 +497,16 @@ Run **one replica of each service** for the beta. The clusterer holds per-tenant
 | `LOGWEAVE_RECOVERY_INTERVAL_MS` | No | `60000` | Recovery check interval |
 | `LOGWEAVE_RETENTION_ENABLED` | No | `true` | Auto-delete data older than retention period |
 | `LOGWEAVE_SHUTDOWN_TIMEOUT_MS` | No | `10000` | Graceful shutdown timeout |
+| `LOGWEAVE_FILESYSTEM_ROOTS` | No | — | Comma-separated absolute dirs a filesystem connector's `basePath` may read from. Empty ⇒ filesystem connectors disabled (fail closed) |
+
+#### Durable archive (optional — see [Durability](#durability))
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `LOGWEAVE_ARCHIVE_BUCKET` | No | — | Customer S3 bucket for durable archive / drill-down (#275). Auth via the instance role (default credential chain) |
+| `LOGWEAVE_VECTOR_ARCHIVE_URL` | No | — | Vector endpoint for durable-archive ingest. When set (requires the archive bucket), ingest forwards batches to Vector→S3 and clusters async off the hot path. Auto-enables the reconciliation sweep |
+| `LOGWEAVE_ARCHIVE_RECONCILE_ENABLED` | No | auto | Force the archive reconciliation sweep as a standalone backstop. Auto-forced on when `LOGWEAVE_VECTOR_ARCHIVE_URL` is set |
+| `AWS_REGION` | No | `us-east-1` | AWS region for the archive bucket |
 
 ### Clusterer (`LOGWEAVE_*`)
 
