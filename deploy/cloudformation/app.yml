@@ -449,7 +449,7 @@ Resources:
                       cpus: "2.0"
 
               clusterer:
-                image: ghcr.io/robertdicker/logweave-clusterer:latest
+                image: ghcr.io/logweave/logweave-clusterer:latest
                 restart: unless-stopped
                 expose:
                   - "8000"
@@ -475,7 +475,7 @@ Resources:
                       cpus: "1.0"
 
               api:
-                image: ghcr.io/robertdicker/logweave-api:latest
+                image: ghcr.io/logweave/logweave-api:latest
                 restart: unless-stopped
                 ports:
                   - "127.0.0.1:3000:3000"

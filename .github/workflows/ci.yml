@@ -1,9 +1,7 @@
 name: CI
 
-# Disabled for now — running locally is sufficient for solo dev.
-# Re-enable by uncommenting the triggers below when:
-# - onboarding a second contributor, or
-# - local test runs become insufficient confidence
+# Runs on every push and PR to main (plus manual workflow_dispatch): per-workspace
+# lint, typecheck, unit tests, and a high-severity dependency audit.
 on:
   workflow_dispatch:
   pull_request:

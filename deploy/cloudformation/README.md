@@ -231,7 +231,7 @@ sudo docker compose -f /opt/logweave/docker-compose.prod.yml restart api
 
 ## Pre-launch caveat
 
-Until the repo transfers to the `LogWeave` GitHub org, GHCR images live
-under `ghcr.io/robertdicker/*`. The compose file in `app.yml` reflects
-this. After repo transfer, the namespace flips to `ghcr.io/logweave/*`
-and `app.yml` will be re-pointed.
+GHCR images are published under `ghcr.io/logweave/*` (the LogWeave org
+namespace), which `app.yml` references. The images must actually be pushed to
+that namespace before this CloudFormation stack can pull them — see the #294
+Phase 2 packaging step.

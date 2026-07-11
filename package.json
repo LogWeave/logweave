@@ -1,6 +1,11 @@
 {
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=10"
+  },
   "scripts": {
     "env:start": "docker compose up clickhouse clusterer -d",
     "env:stop": "docker compose down",
