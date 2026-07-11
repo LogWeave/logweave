@@ -14,6 +14,6 @@
     "simulate": "pnpm -C simulator start -- --api-key dev-key"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.3"
   }
 }

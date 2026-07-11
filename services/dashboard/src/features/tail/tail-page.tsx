@@ -16,10 +16,7 @@ const LEVEL_COLORS: Record<string, string> = {
   FATAL: 'text-purple-400',
 }
 
-function EventRow({
-  event,
-  timezoneMode,
-}: { event: TailEvent; timezoneMode: 'local' | 'utc' }) {
+function EventRow({ event, timezoneMode }: { event: TailEvent; timezoneMode: 'local' | 'utc' }) {
   const levelColor = LEVEL_COLORS[event.level] ?? 'text-text-secondary'
   const isAnomaly = event.anomalyScore > 0.5
   const { primary: ts, alternate: tsAlt } = formatTimeOfDay(event.timestamp, timezoneMode)
@@ -213,7 +210,8 @@ export function TailPage() {
             Waiting for events...
           </div>
         )}
-        {!paused && events.map((e) => <EventRow key={e.seq} event={e} timezoneMode={tailTimezone} />)}
+        {!paused &&
+          events.map((e) => <EventRow key={e.seq} event={e} timezoneMode={tailTimezone} />)}
         {paused && (
           <div className="p-3 text-center text-text-muted text-xs">
             Paused — {events.length} events buffered

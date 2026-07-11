@@ -141,9 +141,12 @@ export function StepSendLogs({ complete }: StepSendLogsProps) {
             {/* No-key warning — the snippet falls back to a YOUR_API_KEY placeholder */}
             {!hasApiKey && (
               <div className="rounded-[var(--radius-md)] border border-warning-500/30 bg-warning-500/10 px-3 py-2 text-xs text-warning-400">
-                No API key is configured. Replace{' '}
-                <code className="font-mono">YOUR_API_KEY</code> with a key from{' '}
-                <Link to="/settings#api-keys" className="font-medium underline hover:text-warning-300">
+                No API key is configured. Replace <code className="font-mono">YOUR_API_KEY</code>{' '}
+                with a key from{' '}
+                <Link
+                  to="/settings#api-keys"
+                  className="font-medium underline hover:text-warning-300"
+                >
                   API Keys settings
                 </Link>
                 .

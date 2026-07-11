@@ -59,7 +59,10 @@ export function formatTimeOfDay(
   let alternate: string
   if (mode === 'local') {
     primary = `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
-    alternate = date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC')
+    alternate = date
+      .toISOString()
+      .replace('T', ' ')
+      .replace(/\.\d{3}Z$/, ' UTC')
   } else {
     primary = `${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}:${pad2(date.getUTCSeconds())}`
     // Build a "local" representation manually so we don't depend on locale formatting.
