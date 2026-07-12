@@ -225,7 +225,9 @@ export class TailBuffer {
   private matchesFilter(event: TailEvent, options?: TailQueryOptions): boolean {
     if (!options) return true
     if (options.service && event.service !== options.service) return false
-    if (options.level && event.level !== options.level) return false
+    // Case-insensitive exact match: levels are uppercased at ingest, but the
+    // client-supplied filter value may arrive in any case (poll/SSE paths).
+    if (options.level && event.level.toUpperCase() !== options.level.toUpperCase()) return false
     if (options.minLevel && !levelMeetsSeverity(event.level, options.minLevel)) return false
     if (options.templateId && event.templateId !== options.templateId) return false
     if (options.minAnomalyScore !== undefined && event.anomalyScore < options.minAnomalyScore)
