@@ -1,0 +1,244 @@
+{
+  "service": "payments-api",
+  "environment": "production",
+  "rate_weight": 2,
+  "metadata": {
+    "team": "fintech",
+    "region": "us-east-1",
+    "pci_zone": "restricted"
+  },
+  "generators": {
+    "order_id": {
+      "type": "sequence",
+      "prefix": "ORD-",
+      "start": 10000
+    },
+    "txn_id": {
+      "type": "uuid"
+    },
+    "request_id": {
+      "type": "uuid"
+    },
+    "amount": {
+      "type": "float",
+      "min": 1.99,
+      "max": 4999.99,
+      "decimals": 2
+    },
+    "refund_amount": {
+      "type": "float",
+      "min": 0.5,
+      "max": 999.99,
+      "decimals": 2
+    },
+    "currency": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": "USD", "weight": 60 },
+        { "value": "EUR", "weight": 20 },
+        { "value": "GBP", "weight": 10 },
+        { "value": "CAD", "weight": 5 },
+        { "value": "AUD", "weight": 5 }
+      ]
+    },
+    "gateway": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": "stripe", "weight": 55 },
+        { "value": "braintree", "weight": 25 },
+        { "value": "adyen", "weight": 15 },
+        { "value": "square", "weight": 5 }
+      ]
+    },
+    "status_code": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": 200, "weight": 70 },
+        { "value": 201, "weight": 15 },
+        { "value": 400, "weight": 5 },
+        { "value": 402, "weight": 3 },
+        { "value": 500, "weight": 4 },
+        { "value": 504, "weight": 3 }
+      ]
+    },
+    "processing_ms": {
+      "type": "int",
+      "min": 45,
+      "max": 1200
+    },
+    "gateway_latency_ms": {
+      "type": "int",
+      "min": 80,
+      "max": 3500
+    },
+    "card_last_four": {
+      "type": "choice",
+      "values": ["4242", "1234", "5678", "9012", "3456", "7890", "2468", "1357"]
+    },
+    "card_brand": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": "visa", "weight": 45 },
+        { "value": "mastercard", "weight": 30 },
+        { "value": "amex", "weight": 15 },
+        { "value": "discover", "weight": 10 }
+      ]
+    },
+    "fraud_score": {
+      "type": "float",
+      "min": 0.0,
+      "max": 1.0,
+      "decimals": 3
+    },
+    "webhook_endpoint": {
+      "type": "choice",
+      "values": [
+        "https://merchant.example.com/hooks/payment",
+        "https://api.shop.io/v2/webhooks",
+        "https://orders.acme.dev/stripe-webhook",
+        "https://payments.bigco.com/notify"
+      ]
+    },
+    "webhook_status": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": 200, "weight": 85 },
+        { "value": 404, "weight": 5 },
+        { "value": 500, "weight": 7 },
+        { "value": 0, "weight": 3 }
+      ]
+    },
+    "retry_count": {
+      "type": "int",
+      "min": 0,
+      "max": 5
+    }
+  },
+  "templates": [
+    {
+      "message": "Payment processed: {{order_id}} {{amount}} {{currency}} via {{gateway}} ({{card_brand}} ****{{card_last_four}}) in {{processing_ms}}ms",
+      "level": "info",
+      "weight": 50,
+      "fields": {
+        "event": "payment.charge.success",
+        "txn_id": { "$gen": "txn_id" },
+        "request_id": { "$gen": "request_id" },
+        "status_code": 200,
+        "duration_ms": { "$gen": "processing_ms" }
+      }
+    },
+    {
+      "message": "Refund initiated: {{refund_amount}} {{currency}} for {{order_id}} via {{gateway}} — reason: customer_request",
+      "level": "info",
+      "weight": 12,
+      "fields": {
+        "event": "payment.refund.initiated",
+        "txn_id": { "$gen": "txn_id" },
+        "request_id": { "$gen": "request_id" },
+        "duration_ms": { "$gen": "processing_ms" }
+      }
+    },
+    {
+      "message": "Gateway timeout: {{gateway}} did not respond within {{gateway_latency_ms}}ms for {{order_id}}",
+      "level": "error",
+      "weight": 2,
+      "fields": {
+        "event": "payment.gateway.timeout",
+        "txn_id": { "$gen": "txn_id" },
+        "request_id": { "$gen": "request_id" },
+        "status_code": 504,
+        "duration_ms": { "$gen": "gateway_latency_ms" }
+      }
+    },
+    {
+      "message": "Card validation failed for {{order_id}}: {{card_brand}} ****{{card_last_four}} declined by {{gateway}} — insufficient_funds",
+      "level": "warn",
+      "weight": 3,
+      "fields": {
+        "event": "payment.card.declined",
+        "txn_id": { "$gen": "txn_id" },
+        "request_id": { "$gen": "request_id" },
+        "status_code": 402,
+        "decline_code": "insufficient_funds"
+      }
+    },
+    {
+      "message": "Fraud check passed: {{order_id}} score={{fraud_score}} via {{gateway}} (threshold=0.85)",
+      "level": "debug",
+      "weight": 3,
+      "fields": {
+        "event": "payment.fraud.check",
+        "txn_id": { "$gen": "txn_id" },
+        "request_id": { "$gen": "request_id" },
+        "duration_ms": { "$gen": "processing_ms" }
+      }
+    },
+    {
+      "message": "Webhook delivered to {{webhook_endpoint}} — status {{webhook_status}} in {{processing_ms}}ms (attempt {{retry_count}})",
+      "level": "info",
+      "weight": 20,
+      "fields": {
+        "event": "payment.webhook.delivery",
+        "txn_id": { "$gen": "txn_id" },
+        "request_id": { "$gen": "request_id" }
+      }
+    },
+    {
+      "message": "Insufficient funds: {{order_id}} {{amount}} {{currency}} via {{card_brand}} ****{{card_last_four}} on {{gateway}}",
+      "level": "warn",
+      "weight": 2,
+      "fields": {
+        "event": "payment.charge.insufficient_funds",
+        "txn_id": { "$gen": "txn_id" },
+        "request_id": { "$gen": "request_id" },
+        "status_code": 402
+      }
+    },
+    {
+      "message": "Idempotency key collision detected for {{order_id}} — returning cached response",
+      "level": "info",
+      "weight": 5,
+      "fields": {
+        "event": "payment.idempotency.hit",
+        "request_id": { "$gen": "request_id" },
+        "status_code": 200
+      }
+    }
+  ],
+  "spike": {
+    "error_weight_multiplier": 8,
+    "extra_templates": [
+      {
+        "message": "Rolling restart: payments-api instance draining — {{retry_count}} in-flight transactions being re-routed",
+        "level": "warn",
+        "weight": 15,
+        "fields": {
+          "event": "payment.deploy.drain",
+          "request_id": { "$gen": "request_id" },
+          "version": "3.8.1"
+        }
+      },
+      {
+        "message": "Connection pool exhausted: {{gateway}} — 0 available connections, {{retry_count}} requests queued",
+        "level": "error",
+        "weight": 20,
+        "fields": {
+          "event": "payment.gateway.pool_exhausted",
+          "request_id": { "$gen": "request_id" },
+          "duration_ms": { "$gen": "gateway_latency_ms" }
+        }
+      },
+      {
+        "message": "Circuit breaker OPEN for {{gateway}} — 15 consecutive failures in last 30s, failing fast on {{order_id}}",
+        "level": "error",
+        "weight": 10,
+        "fields": {
+          "event": "payment.gateway.circuit_open",
+          "txn_id": { "$gen": "txn_id" },
+          "request_id": { "$gen": "request_id" },
+          "status_code": 503
+        }
+      }
+    ]
+  }
+}

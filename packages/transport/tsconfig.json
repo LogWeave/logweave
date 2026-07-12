@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    // Works around tsup's dts step (rollup-plugin-dts) unconditionally
+    // setting a `baseUrl` compilerOption, which TS 6 flags as deprecated
+    // (TS5101) regardless of value even though we never set baseUrl
+    // ourselves. This also relaxes deprecation checks on this package's own
+    // `tsc --noEmit` — broader than the one warning it's here for. Revisit
+    // at the next TS major, or split dts generation into a standalone
+    // `tsc --emitDeclarationOnly` step to drop this entirely.
+    "ignoreDeprecations": "6.0"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

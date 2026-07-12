@@ -1,0 +1,13 @@
+{
+  "rate": 10,
+  "buffer_size": 100,
+  "flush_interval_ms": 2000,
+  "mode": "steady",
+  "mode_timings": {
+    "spike_duration_seconds": 90,
+    "storm_duration_seconds": 60,
+    "quiet_duration_seconds": 120,
+    "chaos_steady_min_seconds": 60,
+    "chaos_steady_max_seconds": 180
+  }
+}

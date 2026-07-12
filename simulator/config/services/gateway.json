@@ -1,0 +1,434 @@
+{
+  "service": "api-gateway",
+  "environment": "production",
+  "rate_weight": 5,
+  "metadata": {
+    "team": "platform",
+    "region": "us-east-1",
+    "tier": "edge"
+  },
+  "generators": {
+    "request_id": {
+      "type": "uuid"
+    },
+    "trace_id": {
+      "type": "uuid"
+    },
+    "client_ip": {
+      "type": "ip"
+    },
+    "upstream_timeout_ms": {
+      "type": "int",
+      "min": 800,
+      "max": 5000
+    },
+    "status_code": {
+      "type": "weighted_choice",
+      "values": [
+        { "value": 200, "weight": 55 },
+        { "value": 201, "weight": 10 },
+        { "value": 204, "weight": 5 },
+        { "value": 301, "weight": 2 },
+        { "value": 400, "weight": 6 },
+        { "value": 401, "weight": 5 },
+        { "value": 403, "weight": 3 },
+        { "value": 404, "weight": 5 },
+        { "value": 429, "weight": 3 },
+        { "value": 500, "weight": 3 },
+        { "value": 502, "weight": 1 },
+        { "value": 504, "weight": 2 }
+      ]
+    },
+    "duration_ms": {
+      "type": "int",
+      "min": 2,
+      "max": 850
+    },
+    "upstream_latency_ms": {
+      "type": "int",
+      "min": 8,
+      "max": 5000
+    },
+    "request_bytes": {
+      "type": "int",
+      "min": 64,
+      "max": 65536
+    },
+    "response_bytes": {
+      "type": "int",
+      "min": 128,
+      "max": 524288
+    },
+    "rate_limit_key": {
+      "type": "choice",
+      "values": [
+        "tenant:acme-corp",
+        "tenant:globex",
+        "tenant:initech",
+        "tenant:umbrella",
+        "ip:rate-limit",
+        "tenant:stark-ind"
+      ]
+    },
+    "rate_limit_remaining": {
+      "type": "int",
+      "min": 0,
+      "max": 1000
+    },
+    "tls_version": {
+      "type": "weighted_choice",
+      "values": [{ "value": "TLSv1.3", "weight": 80 }, { "value": "TLSv1.2", "weight": 20 }]
+    },
+    "cipher_suite": {
+      "type": "choice",
+      "values": ["TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256", "TLS_AES_128_GCM_SHA256"]
+    },
+    "waf_rule": {
+      "type": "choice",
+      "values": [
+        "sql_injection",
+        "xss_reflected",
+        "path_traversal",
+        "rce_attempt",
+        "scanner_detected",
+        "bot_signature"
+      ]
+    },
+    "user_agent": {
+      "type": "choice",
+      "values": [
+        "Mozilla/5.0 Chrome/124.0",
+        "Mozilla/5.0 Safari/17.4",
+        "curl/8.6.0",
+        "python-requests/2.31",
+        "Go-http-client/2.0",
+        "okhttp/4.12.0"
+      ]
+    }
+  },
+  "templates": [
+    {
+      "message": "GET /api/v1/users -> users-svc {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 15,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "POST /api/v1/auth/login -> auth-api {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 12,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "GET /api/v1/orders -> orders-svc {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 18,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "POST /api/v1/payments -> payments-api {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 10,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "GET /api/v1/products -> products-svc {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 20,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "PUT /api/v1/users/:id -> users-svc {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 5,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "DELETE /api/v1/sessions -> auth-api {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 3,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "GET /api/v1/notifications -> notifications-svc {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 8,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "POST /api/v1/webhooks -> notifications-svc {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 4,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "GET /api/v1/health -> health-svc {{status_code}} in {{duration_ms}}ms ({{request_bytes}}B req, {{response_bytes}}B resp)",
+      "level": "info",
+      "weight": 5,
+      "fields": {
+        "event": "gateway.request.routed",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "client_ip": { "$gen": "client_ip" },
+        "duration_ms": { "$gen": "duration_ms" },
+        "status_code": { "$gen": "status_code" },
+        "user_agent": { "$gen": "user_agent" }
+      }
+    },
+    {
+      "message": "Rate limit triggered: {{rate_limit_key}} exceeded quota — GET /api/v1/orders from {{client_ip}}, remaining={{rate_limit_remaining}}",
+      "level": "warn",
+      "weight": 2,
+      "fields": {
+        "event": "gateway.rate_limit.triggered",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "status_code": 429,
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Rate limit triggered: {{rate_limit_key}} exceeded quota — POST /api/v1/payments from {{client_ip}}, remaining={{rate_limit_remaining}}",
+      "level": "warn",
+      "weight": 2,
+      "fields": {
+        "event": "gateway.rate_limit.triggered",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "status_code": 429,
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Circuit breaker OPEN for payments-api — failure rate exceeded threshold, rejecting POST /api/v1/payments",
+      "level": "error",
+      "weight": 1,
+      "fields": {
+        "event": "gateway.circuit_breaker.open",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "status_code": 503,
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Circuit breaker OPEN for orders-svc — failure rate exceeded threshold, rejecting GET /api/v1/orders",
+      "level": "error",
+      "weight": 1,
+      "fields": {
+        "event": "gateway.circuit_breaker.open",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "status_code": 503,
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Upstream timeout: payments-api did not respond within {{upstream_timeout_ms}}ms for POST /api/v1/payments from {{client_ip}}",
+      "level": "error",
+      "weight": 2,
+      "fields": {
+        "event": "gateway.upstream.timeout",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "status_code": 504,
+        "duration_ms": { "$gen": "upstream_timeout_ms" }
+      }
+    },
+    {
+      "message": "Upstream timeout: orders-svc did not respond within {{upstream_timeout_ms}}ms for GET /api/v1/orders from {{client_ip}}",
+      "level": "error",
+      "weight": 2,
+      "fields": {
+        "event": "gateway.upstream.timeout",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "status_code": 504,
+        "duration_ms": { "$gen": "upstream_timeout_ms" }
+      }
+    },
+    {
+      "message": "TLS handshake: {{client_ip}} negotiated {{tls_version}} {{cipher_suite}} in {{duration_ms}}ms",
+      "level": "debug",
+      "weight": 3,
+      "fields": {
+        "event": "gateway.tls.handshake",
+        "request_id": { "$gen": "request_id" },
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Health check passed: orders-svc responded 200 in {{duration_ms}}ms — pool healthy",
+      "level": "debug",
+      "weight": 3,
+      "fields": {
+        "event": "gateway.health.check",
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Health check passed: payments-api responded 200 in {{duration_ms}}ms — pool healthy",
+      "level": "debug",
+      "weight": 2,
+      "fields": {
+        "event": "gateway.health.check",
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Request blocked by WAF: rule={{waf_rule}} client={{client_ip}} path=GET /api/v1/users — user_agent={{user_agent}}",
+      "level": "warn",
+      "weight": 2,
+      "fields": {
+        "event": "gateway.waf.blocked",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "status_code": 403,
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Request blocked by WAF: rule={{waf_rule}} client={{client_ip}} path=GET /api/v1/notifications — user_agent={{user_agent}}",
+      "level": "warn",
+      "weight": 1,
+      "fields": {
+        "event": "gateway.waf.blocked",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "status_code": 403,
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Retry attempt: GET /api/v1/orders -> orders-svc failed with {{status_code}}, retrying (attempt 2/3)",
+      "level": "warn",
+      "weight": 1,
+      "fields": {
+        "event": "gateway.request.retry",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    },
+    {
+      "message": "Retry attempt: POST /api/v1/payments -> payments-api failed with {{status_code}}, retrying (attempt 2/3)",
+      "level": "warn",
+      "weight": 1,
+      "fields": {
+        "event": "gateway.request.retry",
+        "request_id": { "$gen": "request_id" },
+        "trace_id": { "$gen": "trace_id" },
+        "duration_ms": { "$gen": "duration_ms" }
+      }
+    }
+  ],
+  "spike": {
+    "error_weight_multiplier": 8,
+    "extra_templates": [
+      {
+        "message": "Upstream payments-api restarting — 502 Bad Gateway for POST /api/v1/payments, request_id={{request_id}} routing to standby",
+        "level": "error",
+        "weight": 20,
+        "fields": {
+          "event": "gateway.upstream.restart",
+          "request_id": { "$gen": "request_id" },
+          "trace_id": { "$gen": "trace_id" },
+          "status_code": 502,
+          "duration_ms": { "$gen": "upstream_timeout_ms" }
+        }
+      },
+      {
+        "message": "Certificate renewal in progress: {{tls_version}} connections draining — new cert SHA fingerprint rotated",
+        "level": "warn",
+        "weight": 8,
+        "fields": {
+          "event": "gateway.tls.cert_renewal",
+          "request_id": { "$gen": "request_id" }
+        }
+      },
+      {
+        "message": "Connection pool saturation: payments-api at 100% capacity — {{upstream_timeout_ms}}ms queue time, new requests backing up",
+        "level": "error",
+        "weight": 15,
+        "fields": {
+          "event": "gateway.upstream.pool_saturated",
+          "request_id": { "$gen": "request_id" },
+          "trace_id": { "$gen": "trace_id" },
+          "duration_ms": { "$gen": "upstream_timeout_ms" }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,226 @@
+# ADR-014: Anomaly Baseline Window — 7d, Hour-of-Day Matched
+
+**Status:** Accepted
+**Date:** 2026-05-23 (amended 2026-06-21, [#258](https://github.com/LogWeave/logweave/issues/258))
+**Issue:** [#203](https://github.com/LogWeave/logweave/issues/203)
+
+> **Amendment (2026-06-21, #258 / Chunk 5).** Two corrections to the baseline
+> math below, plus the extension of hour-of-day matching to the query-time
+> analytics tools. See "Amendment" at the foot of this ADR. The SQL and prose
+> in the body have been updated in place to reflect the corrected math.
+>
+> **Amendment (2026-07-06, F3 fast-follow).** The #258 denominator was still
+> biased high. `uniq(toDate(interval_start))` inside the hour group counts only
+> the days the template fired *at that hour*, so whole days it was silent at that
+> hour were dropped from the denominator — ~2.3× overstatement for a 3-of-7-day
+> pattern, exactly the sparse templates this ADR is meant to protect. Corrected
+> to divide by `active_days × 12`, where `active_days` is the distinct days the
+> template+service was active at any hour over the window. SQL and prose below
+> updated in place; see "Amendment (2026-07-06)" at the foot.
+
+## Context
+
+The original anomaly scorer used a **rolling 1-hour baseline**:
+
+```sql
+SELECT countMerge(occurrence_count) / uniq(interval_start) AS avg_count_per_interval
+FROM logweave.template_stats
+WHERE tenant_id = {tenant_id:String}
+  AND interval_start > now64(3) - toIntervalHour(1)
+GROUP BY template_id, service
+```
+
+A maintainability/lemon-test review flagged three statistical problems with a 1-hour window:
+
+1. **Spike absorption** — a pattern that spikes once and stays elevated looks anomalous for ~1 hour, then alerts stop because the spike *becomes* the baseline.
+2. **Tiny denominator for rare patterns** — 12 five-minute buckets is not enough samples for low-rate templates; variance dominates signal.
+3. **No diurnal handling** — 3 AM and 3 PM both look like "now". A site with normal daily seasonality alerts on every quiet hour.
+
+## Decision
+
+Move to a **7-day window grouped by hour-of-day** (UTC). Each baseline row is the true per-interval occurrence rate for a `(template_id, service, hourOfDay)` over the last 7 days — total occurrences divided by the number of 5-min buckets the hour *could* have had (`active_days × 12`, where `active_days` is the distinct days the template was active at any hour), so silent buckets **and whole silent days** count as the zeros they are — **provided at least 3 distinct days contributed at that hour**.
+
+```sql
+SELECT
+  hourly.template_id AS template_id,
+  hourly.service AS service,
+  hourly.hour_of_day AS hour_of_day,
+  hourly.occurrences / (active.active_days * 12) AS avg_count_per_interval
+FROM (
+  SELECT
+    template_id,
+    service,
+    toHour(interval_start) AS hour_of_day,
+    countMerge(occurrence_count) AS occurrences
+  FROM logweave.template_stats
+  WHERE tenant_id = {tenant_id:String}
+    AND interval_start > now64(3) - toIntervalDay(7)
+  GROUP BY template_id, service, hour_of_day
+  HAVING uniq(toDate(interval_start)) >= 3
+) AS hourly
+INNER JOIN (
+  SELECT template_id, service, uniq(toDate(interval_start)) AS active_days
+  FROM logweave.template_stats
+  WHERE tenant_id = {tenant_id:String}
+    AND interval_start > now64(3) - toIntervalDay(7)
+  GROUP BY template_id, service
+) AS active ON hourly.template_id = active.template_id AND hourly.service = active.service
+ORDER BY template_id, service, hour_of_day
+```
+
+At scoring time the scorer looks up the entry whose `hour_of_day` matches the current UTC hour. **Missing entries route directly to the new-template absolute-threshold path** — we deliberately do **not** fall back to a cross-hour mean. See "Why no cross-hour-mean fallback" below.
+
+### Why 7 days
+
+- Long enough to smooth one-day deploy noise and weekly maintenance windows.
+- Short enough that a real regime change (new feature, new traffic shape) becomes the new baseline within a week — we don't want stale baselines either.
+- Fits comfortably inside `template_stats`'s 30-day TTL with no schema change.
+
+### Why hour-of-day, not day-of-week
+
+Diurnal seasonality (24h cycle) is the dominant pattern in log volume — request rate at 3 AM is reliably 1/N of 3 PM regardless of weekday. Weekday seasonality is real but second-order; adding it would inflate the cache by 7× for a small accuracy gain. If the false-positive rate on weekends becomes a complaint, revisit.
+
+### Why UTC, not tenant timezone
+
+Operational simplicity. `interval_start` is stored as UTC; computing hour-of-day in the tenant's timezone would require a per-tenant timezone setting we don't have. The downside is that "hour 3" means "3 AM UTC" — for a tenant whose traffic peaks at noon local, the baseline buckets misalign by the timezone offset. Acceptable now; the front-end can present scored alerts in tenant-local time without changing the baseline math. Revisit if a customer's traffic seasonality is dominated by local-time effects.
+
+### Why `HAVING uniq(toDate(interval_start)) >= 3`
+
+Without this guard, a single noisy day on day 0 of the window establishes the official baseline for that hour. On day 1 a modest burst against that 1-day baseline trips the threshold, producing a false positive. Requiring 3 distinct **days** means the per-hour baseline is built from at least 3 days of observations at that hour-of-day before it becomes authoritative.
+
+The guard counts `uniq(toDate(interval_start))` — distinct calendar days — **not** `uniq(interval_start)`. Three firings within a single hour on one day produce three distinct 5-min timestamps, which would wrongly satisfy a buckets-based guard with only one day of data. (This was the original intent of the guard; the first implementation counted buckets — corrected in #258.)
+
+### Why divide by `active_days × 12`, not by buckets-that-fired or per-hour firing-days
+
+`template_stats` only stores a row for a 5-min bucket where the template actually fired — silent buckets are absent. Two wrong denominators to rule out first:
+
+- **`uniq(interval_start)` (buckets that fired)** computes a *conditional* mean ("how much when it fires"), which overstates "normal" for sparse/bursty templates and suppresses real spikes (a high baseline makes the current count clear the threshold less easily).
+- **`uniq(toDate(interval_start))` inside the hour group (days that fired *at this hour*)** — the #258 form — looks like it counts silence, but it only counts silent buckets *within* days the template fired at that hour. Whole days the template was silent at that hour never enter the group, so they drop out of the denominator entirely. A template firing at hour 14 on 3 of 7 days gets 3 × 12 = 36, not 84 — the baseline is overstated ~2.3× and the four fully-silent days vanish.
+
+The denominator that yields the true *per-interval rate* is **`active_days × 12`**, where `active_days = uniq(toDate(interval_start))` computed per `(template, service)` across *all* hours (a separate aggregation, joined in). This charges the template for every day it was demonstrably alive (it logged something at some hour), so a day it was alive-but-quiet at this hour is the zero it should be — while days *before the template first appeared* (no rows at all) are correctly not counted, so a template younger than the window is not penalised with phantom zeros.
+
+Accepted tradeoff: for a genuinely bursty template (silent most of the time), the lower baseline can make a normal-sized burst read as anomalous. The `Math.max(baseline, 1.0)` floor and the new-template absolute-threshold path soften this; it is the correct default for steady traffic. (Denominator corrected in #258 to distinct-days, then to `active_days` in the 2026-07-06 F3 fast-follow.)
+
+### Why no cross-hour-mean fallback
+
+An initial design had `lookupBaseline()` fall back to the cross-hour mean for a `(tenant, service, template)` when the current hour had no entry. Adversarial review showed this re-introduces the exact diurnal-blindness this ADR exists to fix.
+
+Counter-example: a peaky template (1000/hour daytime, 0/hour 2–5 AM) has a cross-hour mean ≈ 333. At 3 AM with no hour-3 row yet, a real anomaly of 50 events evaluates as `50 / 333 / 3 ≈ 0.05` and is silently swallowed. Without the fallback, the same 50-event burst routes to the new-template absolute-threshold path (`50 / 20 = 2.5`) and fires.
+
+The new-template path is the well-tested safety net for "no baseline available". Falling back to a wrong-direction mean is strictly worse than falling back to a conservative absolute threshold. So the fallback is the existing new-template path; nothing in between.
+
+### Why no `LIMIT` clause
+
+An earlier draft kept the 1-hour query's `LIMIT 50000` row cap. With 24× cardinality from hour-of-day grouping, plausible tenants (~2k templates × 1 service × 24 hours ≈ 48k rows) sit at the cap; a second service truncates silently. The row payload is small (LowCardinality strings + a float), so a hard cap is the wrong tool. We rely on the `HAVING` guard and the natural cardinality bound of `(templates × services × 24)`. The scorer logs a warning if a single tenant's row count crosses `BASELINE_ROW_WARN_THRESHOLD` (100k) so high-cardinality tenants surface as an operational signal rather than as silently-truncated baselines.
+
+## Alternatives Considered
+
+### A. Just widen the window to 24h, keep the flat average
+
+Cheapest fix. Eliminates the "spike becomes baseline in 1h" problem but does nothing for diurnal seasonality. Quiet-hour false positives would remain.
+
+### B. Two-window scoring (1h short + 7d long, AND-gate alerts)
+
+Reduces false positives during deploys and one-off traffic shifts (a deploy elevates the short window but not the long one). But it has the same blind spot the issue complains about: once the long window absorbs a sustained spike, alerts stop. Also doubles the failure surface (two queries, two thresholds, two cache shapes). Worth revisiting if false positives during deploys become a real complaint.
+
+### C. Move scoring to the clusterer side
+
+Drain3 has more state, but scoring at ingest time would couple template extraction to anomaly detection. Keeping them separate lets each evolve independently. Rejected.
+
+### D. Cross-hour-mean fallback for unknown hours
+
+Considered and rejected during adversarial review. See "Why no cross-hour-mean fallback" above.
+
+## Consequences
+
+### Positive
+
+- Fixes all three problems the issue describes.
+- Same query path, same MV, same TTL — no schema change.
+- Hour-of-day key naturally segments traffic; sparse hours don't dilute peak-hour baselines.
+- `HAVING` guard prevents 1-sample baselines from being treated as authoritative.
+
+### Negative
+
+- Baseline cache size grows from O(templates × services) to O(templates × services × 24). For a tenant with 1,000 templates × 5 services that's up to ~120K entries instead of ~5K. Still small (a few MB per tenant).
+- Query cost: 7 days × 5-min buckets is 7× more rows scanned vs 1h. `template_stats` is materialised; scans are cheap. The scorer logs refresh duration per tenant so latency regressions surface.
+- Cold-start tenants (less than 7 days of data) have partial baselines. The `HAVING >= 3` guard means an entry only lands when enough samples accrue; sparse hours route to the new-template absolute-threshold path until the data fills in. Existing warmup behaviour also keeps the score at 0 during the first 10 minutes per tenant+service. No regression.
+
+## Verification
+
+- `services/api/src/db/anomaly-queries.ts` exports `BASELINE_WINDOW_DAYS = 7` and `BASELINE_ROW_WARN_THRESHOLD = 100_000`, both asserted by tests.
+- Tests cover same-hour matching, the "no fallback" behaviour for unknown hours, the new-template path, and that the SQL has the expected window/HAVING/ORDER BY shape.
+- README's "rolling baseline" copy updated to "7-day baseline matched by hour-of-day (UTC)".
+
+## Future Work
+
+If false positives remain after this change, consider:
+
+- Weekday seasonality (×7 multiplier on cache size).
+- Tenant timezone for hour-of-day grouping (requires per-tenant TZ config).
+- Deploy-marker-aware reset (after a deploy, ignore the prior baseline for N hours).
+- Neighbour-hour smoothing to soften the discontinuity at hour boundaries for slowly-varying templates.
+
+None of these are needed to ship the fix this ADR records.
+
+## Amendment (2026-06-21, #258 / Chunk 5)
+
+Three changes, all extending or correcting the math this ADR governs:
+
+1. **Baseline denominator** — corrected to a zero-filled per-interval rate
+   (`÷ distinct days × 12`); later refined to `÷ active_days × 12` in the
+   2026-07-06 F3 fast-follow. See "Why divide by `active_days × 12` ..." above.
+2. **Min-samples guard** — corrected to count distinct **days**
+   (`uniq(toDate(interval_start))`). See "Why HAVING ..." above.
+3. **Hour-of-day matching extended to the query-time analytics tools.** The
+   diurnal-blindness this ADR fixed for the ingest scorer also affected two
+   MCP/API tools, now aligned with the same approach:
+   - **`service_outlier`** (`correlation-queries.ts`): the z-score baseline
+     mean/stddev are now computed only from the **same hour-of-day** as the
+     current window over the last 7 days (`service_stats` is hourly, so ~7
+     samples), instead of a flat all-day average that made off-peak verdicts
+     compare against a daytime-inflated mean. The verdict gate dropped from 168
+     hourly points to 5 distinct days at the current hour-of-day.
+   - **`correlations`** (`correlation-queries.ts`): Pearson correlation now runs
+     on **hour-of-day residuals** (each bucket minus that series' mean for its
+     hour-of-day) rather than raw counts, so two templates that merely share the
+     daily traffic cycle no longer correlate spuriously. A minimum
+     co-occurring-non-zero-bucket floor was added alongside the existing
+     min-observations guard. Multiple-comparisons control (the top-50
+     simultaneous tests) is deliberately deferred to a future additive
+     honest-labeling pass — see docs/specs/chunk-5-anomaly-correlation-math-design.md.
+
+### Swappable algorithm seam
+
+The ingest scorer's math now lives behind an `AnomalyStrategy` interface
+(`pipeline/anomaly-strategy.ts`): `fetchBaselines` (the baseline model) and
+`score` (the scoring policy) are separated from the scorer plumbing (counters,
+refresh loop, warmup, pruning, alert wiring). The behaviour this ADR records is
+the default `RatioThresholdStrategy`. A future algorithm (EWMA, robust/MAD
+z-score, Poisson, ...) can be dropped in as a new strategy without touching the
+plumbing or the alert path. The graduated 3×/10× threshold multipliers were left
+unchanged — tuning them needs real customer traffic (#100) and is a strategy
+swap, not a rewrite.
+
+## Amendment (2026-07-06, F3 fast-follow)
+
+The #258 denominator correction (divide by distinct days rather than
+buckets-that-fired) was only half right. Because the baseline query groups by
+`hour_of_day`, `uniq(toDate(interval_start))` measured *days the template fired
+at that hour*, not days in the window. A template that fires at hour 14 on 3 of
+7 days produced denominator 36 instead of 84 — the four days it was silent at
+hour 14 never joined the group and so were silently excluded, overstating the
+baseline ~2.3× and suppressing real spikes for exactly the sparse/bursty
+templates this ADR exists to protect. The prior claim that "distinct days × 12
+yields the true per-interval rate including silence" was false for any template
+silent on a whole day.
+
+**Fix:** the denominator now divides by `active_days × 12`, where `active_days`
+is `uniq(toDate(interval_start))` computed per `(template, service)` across all
+hours — the distinct calendar days the template was active *anywhere* — brought
+in via an inner join to the per-hour aggregation. This counts a day the template
+was alive-but-silent-at-this-hour as a real zero, while not charging days before
+the template first appeared (a template younger than the 7-day window is divided
+by the days it actually existed, not a phantom 7). The `HAVING uniq(toDate(...))
+>= 3` guard is unchanged and still applies per hour-of-day, so the set of rows
+returned is identical — only the per-interval rate changes.

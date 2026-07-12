@@ -1,0 +1,116 @@
+import type pino from 'pino'
+import type { DbClient } from '../db/client.js'
+import type { TenantSettingsStore } from '../watches/tenant-settings.js'
+
+const DEFAULT_RETENTION_DAYS = 30
+const MAX_RETENTION_DAYS = 365
+
+/**
+ * Tables with their timestamp column for retention DELETE.
+ * Excludes service_stats_5m (7-day TTL, too short-lived to matter).
+ * Table-level TTLs are set to 365d (max tier). The sweep enforces
+ * shorter retention for Startup (30d) and Growth (90d) tenants.
+ */
+const RETENTION_TABLES: Array<{ table: string; timestampColumn: string }> = [
+  { table: 'logweave.log_metadata', timestampColumn: 'timestamp' },
+  { table: 'logweave.template_stats', timestampColumn: 'interval_start' },
+  { table: 'logweave.service_stats', timestampColumn: 'interval_start' },
+  { table: 'logweave.deploys', timestampColumn: 'timestamp' },
+  { table: 'logweave.alert_history', timestampColumn: 'fired_at' },
+]
+
+export interface SweepResult {
+  tenantsProcessed: number
+  deletesIssued: number
+  errors: number
+}
+
+export interface RetentionSweepDeps {
+  db: DbClient
+  settingsStore: TenantSettingsStore
+  logger: pino.Logger
+}
+
+export interface RetentionSweepConfig {
+  intervalMs?: number
+}
+
+/**
+ * Background job that enforces per-tenant data retention.
+ *
+ * Table-level TTLs are set to the maximum tier (365d) so Scale
+ * customers keep their data. This sweep DELETEs data for tenants
+ * with shorter retention (Startup=30d, Growth=90d) using
+ * ClickHouse lightweight DELETE.
+ */
+export class RetentionSweep {
+  private readonly db: DbClient
+  private readonly settingsStore: TenantSettingsStore
+  private readonly logger: pino.Logger
+  private readonly intervalMs: number
+  private intervalHandle: ReturnType<typeof setInterval> | null = null
+  private running = false
+
+  constructor(deps: RetentionSweepDeps, config: RetentionSweepConfig = {}) {
+    this.db = deps.db
+    this.settingsStore = deps.settingsStore
+    this.logger = deps.logger
+    this.intervalMs = config.intervalMs ?? 86_400_000 // 24h default
+  }
+
+  start(): void {
+    this.intervalHandle = setInterval(async () => {
+      if (this.running) return
+      this.running = true
+      try {
+        const result = await this.sweep()
+        if (result.tenantsProcessed > 0) {
+          this.logger.info(result, 'Retention sweep completed')
+        }
+      } catch (err) {
+        this.logger.error({ err }, 'Retention sweep failed')
+      } finally {
+        this.running = false
+      }
+    }, this.intervalMs)
+    this.intervalHandle.unref()
+    this.logger.info({ intervalMs: this.intervalMs }, 'Retention sweep started')
+  }
+
+  async stop(): Promise<void> {
+    if (this.intervalHandle) {
+      clearInterval(this.intervalHandle)
+      this.intervalHandle = null
+    }
+  }
+
+  async sweep(): Promise<SweepResult> {
+    const result: SweepResult = { tenantsProcessed: 0, deletesIssued: 0, errors: 0 }
+    const tenantIds = this.settingsStore.getAllTenantIds()
+
+    for (const tenantId of tenantIds) {
+      const settings = this.settingsStore.get(tenantId)
+      const retentionDays = settings.retentionDays ?? DEFAULT_RETENTION_DAYS
+
+      // Skip tenants at max retention — table-level TTL (365d) handles them
+      if (retentionDays >= MAX_RETENTION_DAYS) continue
+
+      result.tenantsProcessed++
+
+      for (const { table, timestampColumn } of RETENTION_TABLES) {
+        try {
+          await this.db.command({
+            query: `ALTER TABLE ${table} DELETE WHERE tenant_id = {tenant_id:String} AND ${timestampColumn} < now() - toIntervalDay({retention_days:UInt32})`,
+            query_params: { tenant_id: tenantId, retention_days: retentionDays },
+          })
+          result.deletesIssued++
+        } catch (err) {
+          result.errors++
+          this.logger.error({ err, tenantId, table }, 'Retention DELETE failed for table')
+        }
+      }
+    }
+
+    return result
+  }
+}

@@ -1,0 +1,118 @@
+import assert from 'node:assert/strict'
+import { after, before, describe, it } from 'node:test'
+import pino from 'pino'
+import { batchInsert } from '../../src/db/insert.js'
+import { initSchema } from '../../src/db/schema.js'
+import type { LogMetadataRow } from '../../src/types.js'
+import { closeTestClient, getTestClient, getTestDb, jsonRows, testTenantId } from './helpers.js'
+
+const logger = pino({ level: 'silent' })
+
+/**
+ * ClickHouse DateTime64 literal ('YYYY-MM-DD HH:MM:SS.mmm') for `minutesAgo`
+ * before now. Timestamps must be RECENT: log_metadata has a 30-day TTL that
+ * DELETEs stale rows on merge, which would non-deterministically empty the test.
+ */
+function recentTimestamp(minutesAgo = 0): string {
+  return new Date(Date.now() - minutesAgo * 60_000).toISOString().replace('T', ' ').replace('Z', '')
+}
+
+function makeRow(tenantId: string, overrides?: Partial<LogMetadataRow>): LogMetadataRow {
+  return {
+    tenant_id: tenantId,
+    timestamp: recentTimestamp(),
+    service: 'test-svc',
+    level: 'INFO',
+    environment: 'test',
+    template_id: 'abc-123',
+    template_text: 'User <*> logged in',
+    is_new_template: 0,
+    anomaly_score: 0.1,
+    status_code: 200,
+    duration_ms: 42.5,
+    trace_id: 'trace-001',
+    route: '/api/login',
+    source_type: 'winston',
+    source_ref: 's3://bucket/key',
+    ...overrides,
+  }
+}
+
+describe('batchInsert', () => {
+  const client = getTestClient()
+  const db = getTestDb()
+  const tenantId = testTenantId('insert')
+
+  before(async () => {
+    await initSchema(client, logger)
+  })
+
+  after(async () => {
+    await closeTestClient()
+  })
+
+  it('inserts 100 rows and all are readable', async () => {
+    const inputRows = Array.from({ length: 100 }, (_, i) =>
+      makeRow(tenantId, {
+        timestamp: recentTimestamp(i),
+        duration_ms: i * 10,
+      }),
+    )
+
+    await batchInsert(db, inputRows)
+
+    const result = await client.query({
+      query: `SELECT count() AS cnt FROM logweave.log_metadata
+              WHERE tenant_id = {tenant_id:String}`,
+      query_params: { tenant_id: tenantId },
+    })
+    const countRows = await jsonRows<{ cnt: number | string }>(result)
+    const first = countRows[0]
+    assert.ok(first, 'Expected count result')
+    assert.equal(Number(first.cnt), 100)
+  })
+
+  it('round-trips all fields correctly', async () => {
+    const singleTenant = testTenantId('insert-roundtrip')
+    const row = makeRow(singleTenant, {
+      status_code: 503,
+      duration_ms: 99.9,
+      pre_processed_message: 'User admin logged in',
+    })
+
+    await batchInsert(db, [row])
+
+    // wait_for_async_insert=1 makes the insert promise resolve only after the
+    // server flushes the async buffer, but under heavy concurrent load from a
+    // long test suite we occasionally see a small read-after-write delay. Poll
+    // briefly to be robust without dragging out the happy path.
+    let stored: Record<string, unknown> | undefined
+    for (let attempt = 0; attempt < 5 && !stored; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 200))
+      const result = await client.query({
+        query: `SELECT * FROM logweave.log_metadata
+                WHERE tenant_id = {tenant_id:String} LIMIT 1`,
+        query_params: { tenant_id: singleTenant },
+      })
+      const rows = await jsonRows<Record<string, unknown>>(result)
+      stored = rows[0]
+    }
+    assert.ok(stored, 'Expected at least one row')
+    assert.equal(stored.tenant_id, singleTenant)
+    assert.equal(stored.service, 'test-svc')
+    assert.equal(stored.level, 'INFO')
+    assert.equal(stored.environment, 'test')
+    assert.equal(stored.template_id, 'abc-123')
+    assert.equal(stored.template_text, 'User <*> logged in')
+    assert.equal(stored.status_code, 503)
+    assert.equal(stored.source_type, 'winston')
+    assert.equal(stored.source_ref, 's3://bucket/key')
+    assert.equal(stored.pre_processed_message, 'User admin logged in')
+  })
+
+  it('throws on empty array', async () => {
+    await assert.rejects(() => batchInsert(db, []), {
+      message: 'batchInsert requires at least one row',
+    })
+  })
+})

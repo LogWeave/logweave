@@ -1,0 +1,88 @@
+services:
+  # Wire api to wait for the local S3 emulator before starting, and supply the
+  # archive drill-down (#275) env here rather than in the base compose — `floci`
+  # is only defined in this overlay, so pointing the base at it would DNS-fail on
+  # a base-only `docker compose up`.
+  api:
+    depends_on:
+      floci-init:
+        condition: service_completed_successfully
+    environment:
+      LOGWEAVE_ARCHIVE_BUCKET: logweave-logs
+      LOGWEAVE_S3_ENDPOINT: http://floci:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+
+  # Floci — fast, MIT-licensed AWS emulator. Used as a local S3-compatible
+  # store for dev + as the IAM/STS/S3 backend for integration tests.
+  # See ADR-010 / docs/connectors/s3-iam-setup.md for the production
+  # AssumeRole flow this replaces in tests.
+  floci:
+    # Pinned by digest — Floci's :latest tag is unpinned; CI breaks silently
+    # on a Floci breaking change otherwise. Bump deliberately.
+    image: floci/floci@sha256:efa6922b024a875598347e7e4c347ca9cb61dc46a219b778a6510f20fb6f960d
+    ports:
+      - "4566:4566"   # AWS-compatible endpoint (S3, STS, IAM)
+    # Floci has no dedicated /health path; root returns S3 ListAllMyBuckets
+    # with HTTP 200 once the server is ready.
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # Create default bucket on startup using the official aws-cli image.
+  floci-init:
+    image: amazon/aws-cli:2.34.53
+    depends_on:
+      floci:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        aws --endpoint-url http://floci:4566 s3 mb s3://logweave-logs 2>/dev/null || true
+        echo 'Bucket logweave-logs ready'
+
+  # Vector — the archive engine (epic #265, seam B). Dev config points the
+  # aws_s3 sink at Floci with a small batch threshold so the batching
+  # integration test runs in seconds. http_server source on :8686.
+  vector:
+    # Pinned by digest (= timberio/vector:0.40.0-debian); matches prod.
+    image: timberio/vector@sha256:1163571c8b59ab6755c1b5488bb2f129151c3b72130ad0500b10420fcc504d9d
+    command: ["--config", "/etc/vector/vector.dev.toml"]
+    ports:
+      - "8686:8686"
+    volumes:
+      - ./deploy/vector/vector.dev.toml:/etc/vector/vector.dev.toml:ro
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      LOGWEAVE_ARCHIVE_BUCKET: logweave-logs
+      LOGWEAVE_S3_ENDPOINT: http://floci:4566
+    depends_on:
+      floci-init:
+        condition: service_completed_successfully
+
+  # Log simulator — generates realistic multi-service events.
+  # Primary mode: pnpm simulate (runs on host, targets localhost:3000).
+  simulator:
+    image: node:24-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    entrypoint: ["sh", "-c", "npm install -g tsx && tsx simulator/src/index.ts"]
+    environment:
+      LOGWEAVE_SIM_API_KEY: "dev-key"
+      LOGWEAVE_SIM_ENDPOINT: "http://api:3000/v1/ingest/batch"
+      LOGWEAVE_SIM_MODE: "chaos"
+    depends_on:
+      api:
+        condition: service_healthy

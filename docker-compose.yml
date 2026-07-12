@@ -1,0 +1,79 @@
+services:
+  clickhouse:
+    # Pinned by digest (= clickhouse/clickhouse-server:25.8-alpine, the current
+    # LTS). 24.x is EOL and the bare `24-alpine` tag floated across minors. Bump
+    # deliberately.
+    image: clickhouse/clickhouse-server@sha256:f40cd6034fb8c54dce6a85338750fbad79f387e2705e1991a85f2e7086b5b9ea
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native protocol
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
+      # Dev/test only: open the passwordless `default` user beyond loopback so the
+      # local test suite (localhost:8123 over Docker NAT) can connect. Replaces the
+      # image's default-user.xml. Prod compose does NOT mount this — see the file.
+      - ./docker/clickhouse/dev-default-user.xml:/etc/clickhouse-server/users.d/default-user.xml:ro
+    environment:
+      CLICKHOUSE_DB: logweave
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  clusterer:
+    build:
+      context: services/clusterer
+    ports:
+      - "8000:8000"
+    environment:
+      LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123/logweave
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      # python:slim ships no wget/curl — use stdlib urllib for the probe.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  api:
+    build:
+      # Root context: the API image also builds the dashboard workspace, so the
+      # build needs the repo root (matches docker-compose.prod.yml).
+      context: .
+      dockerfile: services/api/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      LOGWEAVE_CLICKHOUSE_URL: http://clickhouse:8123
+      LOGWEAVE_CLUSTERER_URL: http://clusterer:8000
+      # Shared internal-services secret — enables the archive notify endpoint
+      # (#276) in dev (Vector → API). Dev-only value; prod injects a real one.
+      LOGWEAVE_INTERNAL_SECRET: dev-internal-secret
+      LOGWEAVE_LOG_LEVEL: info
+      LOGWEAVE_API_KEYS: '{"dev-key":"dev-tenant","e2e-key-tenant-a":"e2e-tenant-a","e2e-key-tenant-b":"e2e-tenant-b"}'
+      # Higher than default 500ms to account for Docker networking + container startup overhead
+      LOGWEAVE_CLUSTERER_TIMEOUT_MS: 5000
+      LOGWEAVE_RECOVERY_INTERVAL_MS: 10000
+      # Set to 'false' on all but one instance when running multiple API containers
+      # LOGWEAVE_RECOVERY_ENABLED: 'true'
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      clusterer:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  clickhouse_data:

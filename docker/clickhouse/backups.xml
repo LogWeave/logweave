@@ -1,0 +1,20 @@
+<clickhouse>
+    <!--
+      Register a 'backups' disk so docs/install.md's BACKUP/RESTORE commands
+      work out of the box. Files written to /var/lib/clickhouse/backups inside
+      the container; users can copy them off-host with `docker cp`. See
+      https://clickhouse.com/docs/en/operations/backup
+    -->
+    <storage_configuration>
+        <disks>
+            <backups>
+                <type>local</type>
+                <path>/var/lib/clickhouse/backups/</path>
+            </backups>
+        </disks>
+    </storage_configuration>
+    <backups>
+        <allowed_disk>backups</allowed_disk>
+        <allowed_path>/var/lib/clickhouse/backups/</allowed_path>
+    </backups>
+</clickhouse>

@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+import {
+  BASELINE_ROW_WARN_THRESHOLD,
+  BASELINE_WINDOW_DAYS,
+  queryAnomalyBaselines,
+} from '../../src/db/anomaly-queries.js'
+import type { DbClient } from '../../src/db/client.js'
+
+// Window length and row-cap warning threshold are product decisions recorded
+// in ADR-014. Lock them down so they can't silently drift on a refactor.
+describe('anomaly baseline window', () => {
+  it('BASELINE_WINDOW_DAYS is 7 (ADR-014)', () => {
+    assert.equal(BASELINE_WINDOW_DAYS, 7)
+  })
+
+  it('BASELINE_ROW_WARN_THRESHOLD is set (ADR-014)', () => {
+    assert.ok(BASELINE_ROW_WARN_THRESHOLD >= 50_000)
+  })
+
+  it('queryAnomalyBaselines query has expected shape', async () => {
+    let captured: { query: string; query_params: Record<string, unknown> } | undefined
+    const db = {
+      query: async (params: { query: string; query_params: Record<string, unknown> }) => {
+        captured = params
+        return []
+      },
+      insert: async () => {},
+      command: async () => {},
+      ping: async () => true,
+      close: async () => {},
+    } as unknown as DbClient
+
+    await queryAnomalyBaselines(db, 't1')
+    assert.ok(captured, 'query should have been called')
+    assert.equal(captured.query_params.window_days, BASELINE_WINDOW_DAYS)
+    assert.equal(captured.query_params.min_samples, 3, 'min-day guard (ADR-014)')
+    assert.equal(captured.query_params.buckets_per_hour, 12, 'per-interval denominator base')
+
+    // Hour-of-day grouping (ADR-014 lookup contract)
+    assert.match(captured.query, /toHour\(interval_start\)\s+AS\s+hour_of_day/)
+    assert.match(captured.query, /GROUP BY template_id, service, hour_of_day/)
+    // Per-interval rate counts silent buckets AND whole silent days: divide by
+    // (active_days × buckets/hour), where active_days is the distinct days the
+    // template was active at ANY hour — NOT per-hour firing-days (which drops
+    // whole silent days) and NOT buckets-that-fired (a conditional mean). ADR-014.
+    assert.match(
+      captured.query,
+      /hourly\.occurrences \/ \(active\.active_days \* \{buckets_per_hour:UInt32\}\)/,
+    )
+    // active_days computed per (template, service) across all hours, then joined
+    assert.match(captured.query, /uniq\(toDate\(interval_start\)\) AS active_days/)
+    assert.match(
+      captured.query,
+      /INNER JOIN[\s\S]*ON hourly\.template_id = active\.template_id AND hourly\.service = active\.service/,
+    )
+    // HAVING guard requires 3 distinct DAYS, not 3 distinct 5-min buckets (ADR-014)
+    assert.match(
+      captured.query,
+      /HAVING uniq\(toDate\(interval_start\)\) >= \{min_samples:UInt32\}/,
+    )
+    // Deterministic ordering — no silent truncation
+    assert.match(captured.query, /ORDER BY template_id, service, hour_of_day/)
+    // No LIMIT clause (ADR-014: rely on cardinality bound + warn threshold)
+    assert.doesNotMatch(captured.query, /\bLIMIT\b/)
+  })
+})

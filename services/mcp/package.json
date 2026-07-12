@@ -1,0 +1,67 @@
+{
+  "name": "@logweave/mcp",
+  "version": "0.1.0",
+  "description": "LogWeave MCP server — log intelligence tools for AI assistants",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "logweave-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "tsc -p tsconfig.build.json",
+    "dev": "node --import tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --fix .",
+    "format": "biome format --write .",
+    "test": "node --import tsx --test tests/dev-tools.test.ts tests/patterns.test.ts tests/rules.test.ts tests/system-state.test.ts",
+    "test:unit": "node --import tsx --test tests/dev-tools.test.ts tests/patterns.test.ts tests/rules.test.ts tests/system-state.test.ts",
+    "test:e2e": "node --import tsx --test tests/e2e.test.ts"
+  },
+  "keywords": [
+    "logweave",
+    "mcp",
+    "model-context-protocol",
+    "log-intelligence",
+    "observability"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/logweave/logweave/tree/main/services/mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/logweave/logweave.git",
+    "directory": "services/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/logweave/logweave/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "~1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
+    "@types/node": "^25.9.5",
+    "tsx": "^4.23.0",
+    "typescript": "catalog:"
+  }
+}

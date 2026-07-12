@@ -1,0 +1,21 @@
+<clickhouse>
+    <!-- DEV/TEST ONLY — do NOT mount in production.
+         The stock image ships users.d/default-user.xml restricting the
+         passwordless `default` user to loopback (::1 / 127.0.0.1). Under
+         Docker port-forwarding, host connections (pnpm test →
+         LOGWEAVE_CLICKHOUSE_URL=http://localhost:8123) arrive from the bridge
+         gateway IP (IPv4 172.x), not loopback, so ClickHouse 25.8 rejects them
+         (REQUIRED_PASSWORD). This file is mounted over the shipped file's path
+         to fully replace it, opening `default`'s network for local testing.
+         Production (docker-compose.prod.yml) is standalone and does NOT mount
+         this — it keeps `default` loopback-only and uses the password'd
+         `logweave` user (users.xml). -->
+    <users>
+        <default>
+            <networks>
+                <ip>0.0.0.0/0</ip>
+                <ip>::/0</ip>
+            </networks>
+        </default>
+    </users>
+</clickhouse>

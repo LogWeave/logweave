@@ -1,0 +1,11 @@
+title = "LogWeave Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+  '''\.gitleaks\.toml$''',
+  '''\.env(\.[a-z]+)?\.example$''',
+]

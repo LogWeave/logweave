@@ -1,0 +1,101 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/).
+
+## [Unreleased]
+
+### Added
+
+- **Durable log archive (opt-in)** — forward ingest batches to Vector → the customer's own S3 bucket for durable archival, cluster **asynchronously** off the request path, and backfill forwarded objects into ClickHouse via a reconciliation sweep (`LOGWEAVE_VECTOR_ARCHIVE_URL`, `LOGWEAVE_ARCHIVE_BUCKET`)
+- **API version reporting** — package version + git sha in the `/healthz` response and the startup log line
+- **Filesystem-connector root allowlist** (`LOGWEAVE_FILESYSTEM_ROOTS`) — server-operator allowlist of permitted roots; empty ⇒ filesystem connectors disabled (fail closed)
+- **TLS termination via Caddy** in the production Docker Compose stack, with a loud warning on non-TLS production logins
+
+### Changed
+
+- Pinned ClickHouse to the current **25.8 LTS** (by digest) — 24.x is EOL
+- Schema init now runs against a **migration ledger** and **refuses to start** on a `log_metadata` engine mismatch instead of dropping the table at boot
+- Dependency bumps across all workspaces; `pnpm audit` reports no known vulnerabilities
+
+### Fixed
+
+- Anomaly baseline denominator counts whole silent days (see ADR-014)
+- `@logweave/transport`: skip the `Retry-After` sleep on the terminal attempt; count the in-flight batch against the buffer retention cap
+- Unknown `/v1/*` routes return a JSON 404 instead of the SPA shell
+- Dashboard: Live Tail reconnects when the anomaly filter changes; the sign-in prompt shows on a 401 for all HTTP verbs
+
+### Security
+
+- Redact the session cookie and CSRF token from request logs
+- SSRF-guard alert-channel delivery in the webhook + Slack observers
+- Invalidate the session cache on user delete / password change / reset
+
+## 0.1.0 (2026-06-13)
+
+First public Beta release.
+
+### Core
+
+- **Pattern clustering** — Drain3-powered log template extraction with per-tenant sensitivity tuning
+- **Real-time dashboard** — KPIs, volume chart, pattern table, service health, live tail
+- **Onboarding flow** — 3-step checklist: Send Logs, Connect AI, Tune Clustering
+- **Alerting** — Threshold rules + pattern watches with Slack, PagerDuty, and webhook channels
+- **S3 raw log drill-down** — Regex-matched log retrieval from customer S3 buckets
+- **Deploy markers** — Anchor change detection to deployments
+- **Custom metadata tags** — Configurable field extraction with tag-based search
+- **Anomaly detection** — Z-score outlier detection per service against a 7-day baseline matched by hour-of-day (see ADR-014)
+- **Cross-service correlation** — Pearson r correlation and co-occurrence analysis
+- **Log cost optimizer** — Identify noisy, high-volume patterns; classify by volume percentage and level
+- **Server-side log-level filtering** — Drop unwanted log levels at ingestion before storage
+
+### MCP server (`@logweave/mcp`)
+
+- 26 production tools (plus 3 dev-only tools behind `LOGWEAVE_DEV=true`) covering overview, error patterns, change detection, service diagnosis, template search (text + semantic), correlations, related patterns, traces, raw logs, live tail, deploys, cost optimizer, threshold rule creation, clustering health, period comparison, and more
+- stdio transport, npm-publishable as `@logweave/mcp`
+
+### Ingestion
+
+- Winston SDK transport (`@logweave/transport`) — buffer, retry, never block
+- HTTP batch API — any language
+- OpenTelemetry Protocol (JSON)
+
+### Authentication & Security
+
+- Username/password login with forced password change on first login
+- Random bootstrap admin password printed once to stderr on first start (`LOGWEAVE BOOTSTRAP` banner)
+- Optional TOTP 2FA (Google Authenticator, Authy)
+- Account lockout (5 attempts / 15 min)
+- Admin/viewer roles with team management
+- API key auth for SDK and MCP (separate from dashboard login), with runtime CRUD (no restart)
+- scrypt password hashing with timing-safe comparison
+- HMAC-signed session cookies (httpOnly, secure, sameSite)
+- 30-minute idle session timeout with rolling cookie renewal
+- Session version invalidation on password change
+- AES-256-GCM encryption for connector secrets at rest
+- HKDF domain-separated key derivation
+- CSRF protection (double-submit cookie pattern) on all state-changing endpoints
+- ClickHouse credentials enforced in production Docker Compose
+- Audit trail for all authentication and data-access events (settings, connectors, rules, deploys)
+- SECURITY.md with private vulnerability reporting policy
+
+### Infrastructure
+
+- Docker Compose dev and production configs with resource limits
+- Health probes, graceful shutdown, circuit breaker
+- Self-hosted install guide
+- CloudFormation templates for AWS deployment (network + application stacks)
+- Landing page for GitHub Pages
+- Bootstrap admin credentials persisted to file in addition to stderr (auto-deleted on first password change) so operators who miss the log line can still recover
+- Admin password recovery script (`scripts/reset-admin-password.ts`) — resets a single user without touching any tenant data
+
+### Connectors
+
+- Amazon S3 (IAM AssumeRole)
+- Elasticsearch / OpenSearch (none, API key, or basic auth)
+- Grafana Loki (optional bearer token)
+- Local Filesystem (Docker volume mount)
+
+### Tests
+
+- Comprehensive test coverage across API and clusterer (1000+ test cases across 73+ files at the time of writing)

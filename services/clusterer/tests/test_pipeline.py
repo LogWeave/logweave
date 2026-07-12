@@ -1,0 +1,237 @@
+"""Unit tests for ClusterPipeline orchestration.
+
+Tests use mocked DrainService, TemplateRegistry, and CheckpointManager
+to verify orchestration logic in isolation.
+"""
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from clusterer.models import ClusterResultItem, DrainResult
+from clusterer.pipeline import ClusterPipeline
+
+
+def _make_drain(**kwargs) -> MagicMock:
+    drain = MagicMock(**kwargs)
+    drain.max_tenants = 200
+    return drain
+
+
+def _make_pipeline(
+    *,
+    drain: MagicMock | None = None,
+    registry: AsyncMock | None = None,
+    checkpoint: MagicMock | None = None,
+) -> ClusterPipeline:
+    return ClusterPipeline(
+        drain_service=drain or _make_drain(),
+        registry=registry or AsyncMock(),
+        checkpoint_manager=checkpoint or MagicMock(),
+    )
+
+
+class TestCluster:
+    @pytest.mark.asyncio
+    async def test_returns_registry_is_new_not_drain(self) -> None:
+        """is_new in response comes from registry, not Drain3."""
+        drain = _make_drain()
+        drain.cluster_messages.return_value = [
+            DrainResult(drain_cluster_id=1, template_text="error in <*>", is_new=True),
+        ]
+        registry = AsyncMock()
+        # Registry says this template already exists (is_new=False)
+        registry.batch_get_or_create.return_value = {
+            "error in <*>": ("uuid-123", False),
+        }
+
+        pipeline = _make_pipeline(drain=drain, registry=registry)
+        results = await pipeline.cluster("tenant_a", ["error in service-1"])
+
+        assert len(results) == 1
+        assert results[0].is_new is False  # Registry's answer, not Drain3's
+        assert results[0].template_id == "uuid-123"
+        assert results[0].template_text == "error in <*>"
+
+    @pytest.mark.asyncio
+    async def test_calls_drain_then_batch_registry(self) -> None:
+        """All DrainResults get a batch registry lookup."""
+        drain = _make_drain()
+        drain.cluster_messages.return_value = [
+            DrainResult(drain_cluster_id=1, template_text="tmpl_a", is_new=True),
+            DrainResult(drain_cluster_id=2, template_text="tmpl_b", is_new=True),
+        ]
+        registry = AsyncMock()
+        registry.batch_get_or_create.return_value = {
+            "tmpl_a": ("id-a", True),
+            "tmpl_b": ("id-b", False),
+        }
+
+        pipeline = _make_pipeline(drain=drain, registry=registry)
+        results = await pipeline.cluster("t1", ["msg1", "msg2"])
+
+        assert len(results) == 2
+        assert results[0] == ClusterResultItem(
+            template_id="id-a", template_text="tmpl_a", is_new=True
+        )
+        assert results[1] == ClusterResultItem(
+            template_id="id-b", template_text="tmpl_b", is_new=False
+        )
+        registry.batch_get_or_create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_template_texts(self) -> None:
+        """Same template text from multiple messages should be a single lookup."""
+        drain = _make_drain()
+        drain.cluster_messages.return_value = [
+            DrainResult(drain_cluster_id=1, template_text="tmpl_a", is_new=False),
+            DrainResult(drain_cluster_id=1, template_text="tmpl_a", is_new=False),
+            DrainResult(drain_cluster_id=2, template_text="tmpl_b", is_new=True),
+        ]
+        registry = AsyncMock()
+        registry.batch_get_or_create.return_value = {
+            "tmpl_a": ("id-a", False),
+            "tmpl_b": ("id-b", True),
+        }
+
+        pipeline = _make_pipeline(drain=drain, registry=registry)
+        results = await pipeline.cluster("t1", ["msg1", "msg2", "msg3"])
+
+        assert len(results) == 3
+        # Both tmpl_a messages get the same id
+        assert results[0].template_id == "id-a"
+        assert results[1].template_id == "id-a"
+        # batch_get_or_create called with deduplicated list
+        call_args = registry.batch_get_or_create.call_args
+        texts = call_args[0][1]
+        assert len(texts) == 2
+
+    @pytest.mark.asyncio
+    async def test_passes_tenant_id_to_both_services(self) -> None:
+        drain = _make_drain()
+        drain.cluster_messages.return_value = [
+            DrainResult(drain_cluster_id=1, template_text="tmpl", is_new=True),
+        ]
+        registry = AsyncMock()
+        registry.batch_get_or_create.return_value = {"tmpl": ("id-1", True)}
+
+        pipeline = _make_pipeline(drain=drain, registry=registry)
+        await pipeline.cluster("my_tenant", ["msg"])
+
+        drain.cluster_messages.assert_called_once_with("my_tenant", ["msg"], sim_th=None)
+        registry.batch_get_or_create.assert_called_once_with("my_tenant", ["tmpl"])
+
+
+class TestRestoreCheckpoints:
+    @pytest.mark.asyncio
+    async def test_loads_listed_tenants_and_restores(self) -> None:
+        drain = _make_drain()
+        checkpoint = MagicMock()
+        checkpoint.list_tenants.return_value = ["tenant_a", "tenant_b"]
+        states = {"tenant_a": b"state_a", "tenant_b": b"state_b"}
+        checkpoint.load.side_effect = lambda t: states[t]
+
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.restore_checkpoints()
+
+        assert drain.load_state.call_count == 2
+        drain.load_state.assert_any_call("tenant_a", b"state_a")
+        drain.load_state.assert_any_call("tenant_b", b"state_b")
+
+    @pytest.mark.asyncio
+    async def test_empty_checkpoints(self) -> None:
+        drain = _make_drain()
+        checkpoint = MagicMock()
+        checkpoint.list_tenants.return_value = []
+
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.restore_checkpoints()
+
+        drain.load_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_tenant_when_load_returns_none(self) -> None:
+        drain = _make_drain()
+        checkpoint = MagicMock()
+        checkpoint.list_tenants.return_value = ["good", "refused"]
+        checkpoint.load.side_effect = lambda t: b"state" if t == "good" else None
+
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.restore_checkpoints()
+
+        drain.load_state.assert_called_once_with("good", b"state")
+
+    @pytest.mark.asyncio
+    async def test_enforces_max_tenants_cap(self) -> None:
+        drain = _make_drain()
+        drain.max_tenants = 2
+        checkpoint = MagicMock()
+        checkpoint.list_tenants.return_value = ["a", "b", "c", "d"]
+        checkpoint.load.side_effect = lambda t: f"state_{t}".encode()
+
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.restore_checkpoints()
+
+        # Only the first max_tenants are restored; the rest are never even read.
+        assert drain.load_state.call_count == 2
+        assert checkpoint.load.call_count == 2
+        drain.load_state.assert_any_call("a", b"state_a")
+        drain.load_state.assert_any_call("b", b"state_b")
+
+
+class TestCheckpointCycle:
+    @pytest.mark.asyncio
+    async def test_saves_dirty_and_marks_clean(self) -> None:
+        drain = _make_drain()
+        drain.get_dirty_tenants.return_value = {"t1": 3, "t2": 5}
+        drain.get_state.side_effect = [b"state_t1", b"state_t2"]
+
+        checkpoint = MagicMock()
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.run_checkpoint_cycle()
+
+        assert checkpoint.save.call_count == 2
+        checkpoint.save.assert_any_call("t1", b"state_t1")
+        checkpoint.save.assert_any_call("t2", b"state_t2")
+        drain.mark_clean.assert_any_call("t1", 3)
+        drain.mark_clean.assert_any_call("t2", 5)
+
+    @pytest.mark.asyncio
+    async def test_skips_tenant_on_error(self) -> None:
+        """If saving one tenant fails, continue with the rest."""
+        drain = _make_drain()
+        drain.get_dirty_tenants.return_value = {"t1": 1, "t2": 2}
+        drain.get_state.side_effect = [Exception("boom"), b"state_t2"]
+
+        checkpoint = MagicMock()
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.run_checkpoint_cycle()
+
+        # t1 failed, t2 should still be saved
+        checkpoint.save.assert_called_once_with("t2", b"state_t2")
+        drain.mark_clean.assert_called_once_with("t2", 2)
+
+    @pytest.mark.asyncio
+    async def test_no_dirty_tenants(self) -> None:
+        drain = _make_drain()
+        drain.get_dirty_tenants.return_value = {}
+        checkpoint = MagicMock()
+
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.run_checkpoint_cycle()
+
+        checkpoint.save.assert_not_called()
+
+
+class TestFlushCheckpoints:
+    @pytest.mark.asyncio
+    async def test_saves_all_dirty(self) -> None:
+        drain = _make_drain()
+        drain.get_dirty_tenants.return_value = {"t1": 1}
+        drain.get_state.return_value = b"state"
+        checkpoint = MagicMock()
+
+        pipeline = _make_pipeline(drain=drain, checkpoint=checkpoint)
+        await pipeline.flush_checkpoints()
+
+        checkpoint.save.assert_called_once_with("t1", b"state")

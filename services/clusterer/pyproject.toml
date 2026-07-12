@@ -1,0 +1,67 @@
+[project]
+name = "logweave-clusterer"
+version = "0.1.0"
+description = "Log template clustering service using Drain3"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.34",
+  "drain3>=0.9,<1.0",
+  "clickhouse-connect>=0.8",
+  "pydantic-settings>=2.7",
+  "uuid-utils>=0.10",
+  "cachetools>=5.0",
+  # Pinned low by Drain3 (it hard-requires jsonpickle==1.5.1; there is no Drain3
+  # >=1.0), so CVE-2020-22083 (jsonpickle<=2.0.0) can't be closed by bumping to
+  # >=3 — unsatisfiable. Accepted as mitigated: we only ever decode our own
+  # HMAC-verified checkpoints (see clusterer/checkpoint.py). Revisit if Drain3
+  # relaxes the pin.
+  "jsonpickle>=1.4",
+  "fastembed>=0.5",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "httpx>=0.28",
+  "ruff>=0.9",
+  "poethepoet>=0.32",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clusterer"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH", "S"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S108", "SIM300"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["clusterer"]
+
+[tool.poe.tasks]
+test = "pytest --tb=short"
+lint = "ruff check src/ tests/"
+format = "ruff format src/ tests/"
+check = { sequence = ["lint", { cmd = "ruff format --check src/ tests/" }] }
+serve = "uvicorn clusterer.main:app --reload --host 0.0.0.0 --port 8000"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Strict markers: typos in markers become errors, not warnings
+strict_markers = true
+# Make collection errors fatal (don't silently skip broken test files)
+filterwarnings = ["error::pytest.PytestCollectionWarning"]

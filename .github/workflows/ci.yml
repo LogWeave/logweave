@@ -1,0 +1,195 @@
+name: CI
+
+# Runs on every push and PR to main (plus manual workflow_dispatch): per-workspace
+# lint, typecheck, unit tests, and a high-severity dependency audit.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  clusterer:
+    name: Clusterer (lint + test)
+    runs-on: ubuntu-latest
+    # Only run when clusterer code or shared config changes
+    if: >
+      github.event_name == 'push' ||
+      contains(github.event.pull_request.labels.*.name, 'clusterer') ||
+      true
+    defaults:
+      run:
+        working-directory: services/clusterer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: uv sync --dev
+      - name: Lint and format check
+        run: uv run poe check
+      - name: Run tests (strict — collection errors are failures)
+        run: uv run poe test
+      - name: Verify no test collection errors
+        run: |
+          output=$(uv run pytest --co -q 2>&1)
+          if echo "$output" | grep -q "error"; then
+            echo "::error::Test collection errors detected"
+            echo "$output"
+            exit 1
+          fi
+          count=$(echo "$output" | tail -1 | grep -oP '\d+(?= test)')
+          echo "Collected $count tests"
+
+  api:
+    name: API (lint + unit tests)
+    runs-on: ubuntu-latest
+    # Skip until API server code exists
+    if: hashFiles('services/api/package.json') != ''
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Biome check
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Run unit tests
+        run: pnpm test:unit
+      - name: Security audit
+        run: pnpm audit --audit-level=high
+
+  transport:
+    name: Transport SDK (lint + test)
+    runs-on: ubuntu-latest
+    # @logweave/transport is published to npm — gate it on every change.
+    if: hashFiles('packages/transport/package.json') != ''
+    defaults:
+      run:
+        working-directory: packages/transport
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Biome check
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Run tests
+        run: pnpm test
+      - name: Build (ESM + CJS)
+        run: pnpm build
+      - name: CJS require() smoke test
+        run: pnpm test:cjs
+
+  mcp:
+    name: MCP Server (lint + test)
+    runs-on: ubuntu-latest
+    # @logweave/mcp is published to npm — gate it on every change.
+    if: hashFiles('services/mcp/package.json') != ''
+    defaults:
+      run:
+        working-directory: services/mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Biome check
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Run tests
+        run: pnpm test
+
+  api-integration-s3:
+    name: API integration — S3 adapter (Floci)
+    runs-on: ubuntu-latest
+    # Skip until API server code exists
+    if: hashFiles('services/api/tests/integration/s3-adapter.integration.test.ts') != ''
+    defaults:
+      run:
+        working-directory: services/api
+    services:
+      floci:
+        # Pinned by digest — Floci's :latest is unpinned; bump deliberately.
+        image: floci/floci@sha256:efa6922b024a875598347e7e4c347ca9cb61dc46a219b778a6510f20fb6f960d
+        ports:
+          - 4566:4566
+        # Actions-native healthcheck — the job blocks until the service
+        # reports healthy, so no in-step wait loop is needed.
+        options: >-
+          --health-cmd "curl -sf http://localhost:4566/ || exit 1"
+          --health-interval 2s
+          --health-retries 15
+          --health-start-period 2s
+    env:
+      FLOCI_ENDPOINT: http://localhost:4566
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run S3 adapter integration test
+        # The repo's `pnpm test:integration` script also runs ClickHouse-
+        # dependent tests under tests/db/, which this job intentionally does
+        # NOT provision (separate concern, separate job). Invoke the file
+        # directly so this job stays scoped to S3-against-Floci.
+        run: pnpm exec node --import tsx --test tests/integration/s3-adapter.integration.test.ts
+
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cloudformation:
+    name: CloudFormation (cfn-lint)
+    runs-on: ubuntu-latest
+    # Skip when no CFN templates exist
+    if: hashFiles('services/*/cloudformation/*.yaml', 'services/*/cloudformation/*.yml') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install cfn-lint
+        run: pip install cfn-lint
+      - name: Lint CloudFormation templates
+        # --non-zero-exit-code error: warnings/informational are logged but
+        # don't fail the build. Tighten to `warning` once any noise is
+        # cleaned up. Glob expansion is shell-side; CI uses bash by default.
+        run: cfn-lint --non-zero-exit-code error services/*/cloudformation/*.yaml services/*/cloudformation/*.yml

@@ -1,0 +1,302 @@
+import { Router } from 'express'
+import type pino from 'pino'
+import { z } from 'zod'
+import type { DbClient } from '../db/client.js'
+import {
+  queryCorrelations,
+  queryRelatedPatterns,
+  queryServiceOutlier,
+  queryTraceDetails,
+} from '../db/correlation-queries.js'
+import { notFound, validationError } from '../errors.js'
+import { isoTimestamp, respond } from '../lib/respond.js'
+import { getTenantId } from '../middleware/auth.js'
+import { getQuery, validateQuery } from '../middleware/validate-query.js'
+
+// ---------------------------------------------------------------------------
+// Dependencies
+// ---------------------------------------------------------------------------
+
+export interface CorrelationDeps {
+  db: DbClient
+  logger: pino.Logger
+}
+
+// ---------------------------------------------------------------------------
+// Query schemas
+// ---------------------------------------------------------------------------
+
+const traceQuerySchema = z.object({
+  hours: z.coerce.number().int().min(1).max(720).default(24),
+})
+
+const relatedQuerySchema = z.object({
+  hours: z.coerce.number().int().min(1).max(720).default(24),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+})
+
+const correlationQuerySchema = z.object({
+  hours: z.coerce.number().int().min(1).max(720).default(24),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+})
+
+const outlierQuerySchema = z.object({
+  // Capped at 6h: the z-score baseline is matched to the current hour-of-day,
+  // so a wide current window re-mixes the diurnal cycle. See MAX_OUTLIER_HOURS.
+  hours: z.coerce.number().int().min(1).max(6).default(1),
+})
+
+// ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+
+export interface TraceEvent {
+  service: string
+  templateId: string
+  templateText: string
+  level: string
+  timestamp: string
+  statusCode: number
+  durationMs: number
+  route: string
+}
+
+export interface RelatedPattern {
+  templateId: string
+  templateText: string
+  service: string
+  coOccurrenceCount: number
+}
+
+export interface Correlation {
+  templateId: string
+  templateText: string
+  service: string
+  coefficient: number
+  direction: 'positive' | 'negative'
+  occurrenceCount: number
+}
+
+export interface ServiceOutlier {
+  service: string
+  currentRate: number
+  currentErrors: number
+  currentLogs: number
+  baselineMean: number
+  baselineStddev: number
+  zScore: number
+  verdict: 'normal' | 'elevated' | 'outlier' | 'insufficient_data'
+  dataPoints: number
+  warning?: string
+}
+
+// ---------------------------------------------------------------------------
+// Z-score computation
+// ---------------------------------------------------------------------------
+
+// Baseline samples are per-day values at the current hour-of-day over a 7-day
+// window (service_stats is hourly), so a full baseline is ~7 points. Require at
+// least 5 distinct days at this hour before the z-score is trustworthy. (Chunk
+// 5 / #258 — was 168 when the baseline mixed all 24 hours.)
+const MIN_DATA_POINTS = 5
+
+// The correlations query tests up to 50 candidate templates per anchor at
+// |r| >= 0.7 (see MIN_CORRELATION in correlation-queries.ts) — a multiple-
+// comparisons setup where some reported correlations are expected to be
+// spurious even after de-seasonalization. Surfaced to callers so an LLM
+// consumer doesn't treat every returned pair as independently significant.
+const MULTIPLE_COMPARISONS_NOTE =
+  'Correlations are computed against up to 50 candidate templates per query at a 0.7 minimum coefficient; ' +
+  'with that many comparisons, some reported correlations may be coincidental rather than causal.'
+
+function computeOutlier(
+  service: string,
+  row: {
+    data_points: string
+    baseline_mean: string
+    baseline_stddev: string
+    current_rate: string
+    current_errors: string
+    current_logs: string
+  },
+): ServiceOutlier {
+  const dataPoints = Number(row.data_points) || 0
+  const baselineMean = Number(row.baseline_mean) || 0
+  const baselineStddev = Number(row.baseline_stddev) || 0
+  const currentRate = Number(row.current_rate) || 0
+  const currentErrors = Number(row.current_errors) || 0
+  const currentLogs = Number(row.current_logs) || 0
+
+  let zScore = 0
+  if (baselineStddev > 0) {
+    zScore = (currentRate - baselineMean) / baselineStddev
+  }
+
+  const base = {
+    service,
+    currentRate: Math.round(currentRate * 100) / 100,
+    currentErrors,
+    currentLogs,
+    baselineMean: Math.round(baselineMean * 100) / 100,
+    baselineStddev: Math.round(baselineStddev * 100) / 100,
+    zScore: Math.round(zScore * 100) / 100,
+    dataPoints,
+  }
+
+  if (dataPoints < MIN_DATA_POINTS) {
+    return {
+      ...base,
+      verdict: 'insufficient_data',
+      warning: `Only ${dataPoints} prior days at this hour-of-day (${MIN_DATA_POINTS} recommended for a reliable z-score)`,
+    }
+  }
+
+  let verdict: 'normal' | 'elevated' | 'outlier' = 'normal'
+  if (zScore > 2.0) verdict = 'outlier'
+  else if (zScore > 1.5) verdict = 'elevated'
+
+  return { ...base, verdict }
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+export function correlationRoutes(deps: CorrelationDeps): Router {
+  const router = Router()
+
+  // GET /traces/:traceId — events sharing a trace_id
+  router.get('/traces/:traceId', validateQuery(traceQuerySchema), async (req, res, next) => {
+    try {
+      const tenantId = getTenantId(res)
+      const traceId = (req.params.traceId as string)?.trim()
+      if (!traceId) {
+        throw validationError('traceId parameter is required')
+      }
+
+      const { hours } = getQuery<z.infer<typeof traceQuerySchema>>(req)
+      const rows = await queryTraceDetails(deps.db, tenantId, { traceId, hours })
+
+      if (rows.length === 0) {
+        throw notFound(`Trace ${traceId} not found in the last ${hours} hours`)
+      }
+
+      const data: TraceEvent[] = rows.map((r) => ({
+        service: r.service,
+        templateId: r.template_id,
+        templateText: r.template_text,
+        level: r.level,
+        timestamp: isoTimestamp(r.timestamp) ?? r.timestamp,
+        statusCode: Number(r.status_code) || 0,
+        durationMs: Number(r.duration_ms) || 0,
+        route: r.route,
+      }))
+
+      respond(res, data, { hours, count: data.length })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // GET /templates/:id/related — co-occurring templates in same traces
+  router.get(
+    '/templates/:id/related',
+    validateQuery(relatedQuerySchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const templateId = req.params.id as string
+        const { hours, limit } = getQuery<z.infer<typeof relatedQuerySchema>>(req)
+
+        const rows = await queryRelatedPatterns(deps.db, tenantId, {
+          templateId,
+          hours,
+          limit,
+        })
+
+        const data: RelatedPattern[] = rows.map((r) => ({
+          templateId: r.template_id,
+          templateText: r.template_text,
+          service: r.service,
+          coOccurrenceCount: Number(r.co_occurrence_count) || 0,
+        }))
+
+        respond(res, data, { hours, limit, count: data.length })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
+
+  // GET /templates/:id/correlations — Pearson correlation with top templates
+  router.get(
+    '/templates/:id/correlations',
+    validateQuery(correlationQuerySchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const templateId = req.params.id as string
+        const { hours, limit } = getQuery<z.infer<typeof correlationQuerySchema>>(req)
+
+        const rows = await queryCorrelations(deps.db, tenantId, {
+          templateId,
+          hours,
+          limit,
+        })
+
+        const data: Correlation[] = rows.map((r) => {
+          const coefficient = Number(r.coefficient) || 0
+          return {
+            templateId: r.template_id,
+            templateText: r.template_text,
+            service: r.service,
+            coefficient: Math.round(coefficient * 1000) / 1000,
+            direction: coefficient >= 0 ? 'positive' : 'negative',
+            occurrenceCount: Number(r.occurrence_count) || 0,
+          }
+        })
+
+        respond(res, data, { hours, limit, count: data.length, note: MULTIPLE_COMPARISONS_NOTE })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
+
+  // GET /services/:name/outlier — z-score of current error rate vs baseline
+  router.get(
+    '/services/:name/outlier',
+    validateQuery(outlierQuerySchema),
+    async (req, res, next) => {
+      try {
+        const tenantId = getTenantId(res)
+        const service = req.params.name as string
+        const { hours } = getQuery<z.infer<typeof outlierQuerySchema>>(req)
+
+        const rows = await queryServiceOutlier(deps.db, tenantId, { service, hours })
+
+        const row = rows[0]
+        const data: ServiceOutlier = row
+          ? computeOutlier(service, row)
+          : {
+              service,
+              currentRate: 0,
+              currentErrors: 0,
+              currentLogs: 0,
+              baselineMean: 0,
+              baselineStddev: 0,
+              zScore: 0,
+              verdict: 'insufficient_data',
+              dataPoints: 0,
+              warning: `Only 0 prior days at this hour-of-day (${MIN_DATA_POINTS} recommended for a reliable z-score)`,
+            }
+
+        respond(res, data, { hours, count: 1 })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
+
+  return router
+}

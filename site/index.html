@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LogWeave — Log Intelligence for AI Agents</title>
+  <meta name="description" content="LogWeave extracts patterns from your logs and makes them queryable by your AI coding assistant. Self-hosted, free, 26 MCP tools. Ask your AI about production.">
+  <meta name="keywords" content="log intelligence, MCP, AI agents, log analysis, pattern detection, anomaly detection, self-hosted, observability, Claude, Cursor, Drain3, ClickHouse">
+  <meta name="author" content="LogWeave">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="canonical" href="https://logweave.dev">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="LogWeave — Log Intelligence for AI Agents">
+  <meta property="og:description" content="Extract patterns from your logs. Query them with your AI. 26 MCP tools for production debugging. Self-hosted and free.">
+  <meta property="og:url" content="https://logweave.dev">
+  <meta property="og:image" content="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/populated-dash.png">
+  <meta property="og:site_name" content="LogWeave">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="LogWeave — Log Intelligence for AI Agents">
+  <meta name="twitter:description" content="Extract patterns from your logs. Query them with your AI. 26 MCP tools for production debugging.">
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/populated-dash.png">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "LogWeave",
+    "description": "Log intelligence platform that extracts patterns from logs and makes them queryable by AI coding assistants via MCP tools.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, Docker",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "url": "https://logweave.dev",
+    "softwareVersion": "0.1.0"
+  }
+  </script>
+  <style>
+    :root {
+      --bg: #07090f;
+      --bg-card: #0d1117;
+      --bg-elevated: #151b27;
+      --brand: #6366f1;
+      --brand-light: #818cf8;
+      --text: #e8eaef;
+      --text-secondary: #8b92a0;
+      --text-muted: #5a6270;
+      --border: #1e2736;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius: 12px;
+      --max-w: 1100px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Nav */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+      background: rgba(7, 9, 15, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: var(--max-w); margin: 0 auto;
+      padding: 0 24px; height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      text-decoration: none; color: var(--text);
+    }
+    .nav-logo-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--brand); display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13px; color: white;
+    }
+    .nav-logo span { font-weight: 600; font-size: 16px; }
+    .nav-links { display: flex; gap: 24px; align-items: center; }
+    .nav-links a {
+      color: var(--text-secondary); text-decoration: none; font-size: 14px;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      background: var(--brand) !important; color: white !important;
+      padding: 8px 16px; border-radius: 8px; font-weight: 500;
+      transition: background 0.2s !important;
+    }
+    .nav-cta:hover { background: #5558e6 !important; }
+
+    /* Hero */
+    .hero {
+      padding: 140px 24px 80px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 800px; height: 600px;
+      background: radial-gradient(ellipse, rgba(99, 102, 241, 0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 100px;
+      background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2);
+      font-size: 13px; color: var(--brand-light); margin-bottom: 24px;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--success);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+    h1 {
+      font-size: clamp(36px, 5vw, 56px); font-weight: 700;
+      line-height: 1.15; margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--text) 0%, var(--text-secondary) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-light) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .hero-sub {
+      font-size: 18px; color: var(--text-secondary);
+      max-width: 600px; margin: 0 auto 40px;
+    }
+    .hero-buttons {
+      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 24px; border-radius: 10px;
+      font-size: 15px; font-weight: 500; text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--brand); color: white;
+    }
+    .btn-primary:hover { background: #5558e6; transform: translateY(-1px); }
+    .btn-secondary {
+      background: var(--bg-elevated); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--bg-card); border-color: var(--text-muted); }
+
+    /* Screenshot */
+    .screenshot {
+      max-width: var(--max-w); margin: 0 auto; padding: 0 24px;
+    }
+    .screenshot img {
+      width: 100%; border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+
+    /* Demo embed placeholder */
+    .demo-section {
+      max-width: var(--max-w); margin: 80px auto; padding: 0 24px;
+    }
+    .demo-container {
+      border-radius: var(--radius); border: 1px solid var(--border);
+      background: var(--bg-card); padding: 60px 40px; text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .demo-container::before {
+      content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 300px;
+      background: radial-gradient(ellipse, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+    }
+    .demo-container h3 {
+      font-size: 20px; margin-bottom: 8px; position: relative;
+    }
+    .demo-container p {
+      color: var(--text-muted); font-size: 14px; position: relative;
+    }
+
+    /* Features */
+    .features {
+      max-width: var(--max-w); margin: 100px auto; padding: 0 24px;
+    }
+    .features-header {
+      text-align: center; margin-bottom: 60px;
+    }
+    .features-header h2 {
+      font-size: 32px; margin-bottom: 12px;
+    }
+    .features-header p {
+      color: var(--text-secondary); font-size: 16px; max-width: 500px; margin: 0 auto;
+    }
+    .features-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px;
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover { border-color: var(--brand); }
+    .feature-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: rgba(99, 102, 241, 0.1);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px; font-size: 20px;
+    }
+    .feature-card h3 { font-size: 16px; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+
+    /* MCP Showcase */
+    .mcp-section {
+      max-width: var(--max-w); margin: 100px auto; padding: 0 24px;
+    }
+    .mcp-showcase {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center;
+    }
+    .mcp-text h2 { font-size: 28px; margin-bottom: 16px; }
+    .mcp-text p { color: var(--text-secondary); font-size: 15px; margin-bottom: 16px; }
+    .mcp-prompts {
+      list-style: none; display: flex; flex-direction: column; gap: 10px;
+    }
+    .mcp-prompts li {
+      padding: 10px 16px; border-radius: 8px;
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      font-size: 14px; color: var(--brand-light);
+      font-style: italic;
+    }
+    .mcp-image img {
+      width: 100%; border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    }
+    .showcase-section {
+      max-width: var(--max-w); margin: 100px auto; padding: 0 24px;
+    }
+    .showcase {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center;
+    }
+    .showcase.reverse { direction: rtl; }
+    .showcase.reverse > * { direction: ltr; }
+    .showcase-text h2 { font-size: 28px; margin-bottom: 16px; }
+    .showcase-text p { color: var(--text-secondary); font-size: 15px; margin-bottom: 12px; line-height: 1.7; }
+    .showcase-image img {
+      width: 100%; border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    }
+    @media (max-width: 768px) {
+      .showcase, .showcase.reverse { grid-template-columns: 1fr; direction: ltr; }
+    }
+
+    /* Pricing teaser */
+    .pricing {
+      max-width: var(--max-w); margin: 100px auto; padding: 0 24px;
+      text-align: center;
+    }
+    .pricing h2 { font-size: 32px; margin-bottom: 12px; }
+    .pricing > p { color: var(--text-secondary); font-size: 16px; margin-bottom: 40px; }
+    .pricing-cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px; max-width: 900px; margin: 0 auto;
+    }
+    .pricing-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 32px; text-align: left;
+    }
+    .pricing-card.featured { border-color: var(--brand); }
+    .pricing-card h3 { font-size: 18px; margin-bottom: 4px; }
+    .pricing-card .price {
+      font-size: 32px; font-weight: 700; margin: 12px 0;
+    }
+    .pricing-card .price span { font-size: 14px; color: var(--text-muted); font-weight: 400; }
+    .pricing-card ul {
+      list-style: none; margin-top: 16px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .pricing-card li {
+      font-size: 14px; color: var(--text-secondary);
+      padding-left: 20px; position: relative;
+    }
+    .pricing-card li::before {
+      content: '\2713'; position: absolute; left: 0; color: var(--success);
+    }
+
+    /* CTA */
+    .cta-section {
+      max-width: var(--max-w); margin: 100px auto; padding: 60px 24px;
+      text-align: center;
+    }
+    .cta-section h2 { font-size: 32px; margin-bottom: 12px; }
+    .cta-section p { color: var(--text-secondary); margin-bottom: 32px; font-size: 16px; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 24px; text-align: center;
+      color: var(--text-muted); font-size: 13px;
+    }
+    footer a { color: var(--text-secondary); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .mcp-showcase { grid-template-columns: 1fr; }
+      .nav-links a:not(.nav-cta) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <div class="nav-logo-icon">LW</div>
+        <span>LogWeave</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#mcp">MCP Tools</a>
+        <a href="https://github.com/logweave/logweave" target="_blank">GitHub</a>
+        <a href="https://github.com/logweave/logweave/blob/main/docs/install.md" target="_blank" class="nav-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Beta &middot; Self-hosted &middot; Free &middot; 26 MCP Tools
+    </div>
+    <h1>Log intelligence for<br><em>AI agents</em></h1>
+    <p class="hero-sub">
+      LogWeave extracts patterns from your logs and makes them queryable by your AI coding assistant. Your AI knows your code &mdash; LogWeave tells it what's happening at runtime.
+    </p>
+    <div class="hero-buttons">
+      <a href="https://github.com/logweave/logweave/blob/main/docs/install.md" target="_blank" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Install in minutes
+      </a>
+      <a href="https://github.com/logweave/logweave" target="_blank" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+  </section>
+
+  <!-- Dashboard Screenshot -->
+  <div class="screenshot">
+    <img src="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/populated-dash.png" alt="LogWeave Dashboard showing real-time KPIs, volume chart, and log patterns">
+  </div>
+
+  <!-- Interactive demo: hidden until we have the Arcade/embed ready. -->
+  <!-- TODO: replace this section with an embedded interactive demo before
+       general-availability. Hidden for now so the page does not have a
+       placeholder block with no content. -->
+  <!--
+  <section class="demo-section" id="demo">
+    <div class="demo-container">
+      <h3>Interactive Demo</h3>
+      <p>Try LogWeave with sample data &mdash; no installation required.</p>
+      <div style="height: 40px"></div>
+      <a href="https://github.com/logweave/logweave/blob/main/docs/install.md" class="btn btn-primary" target="_blank">Or install it yourself in minutes</a>
+    </div>
+  </section>
+  -->
+
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <div class="features-header">
+      <h2>Everything your AI needs to debug production</h2>
+      <p>Pattern detection, anomaly scoring, cross-service correlation &mdash; all queryable by your AI assistant.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">&#x1F50D;</div>
+        <h3>Pattern Clustering</h3>
+        <p>Millions of log lines become hundreds of meaningful patterns. Drain3-powered template extraction with tunable sensitivity.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#x1F916;</div>
+        <h3>26 MCP Tools</h3>
+        <p>Your AI assistant queries production through structured tools &mdash; diagnose services, find correlations, search patterns, create alerts.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#x1F680;</div>
+        <h3>Deploy-Anchored Changes</h3>
+        <p>"What broke after my deploy?" &mdash; one question. LogWeave shows new patterns, spikes, and resolved issues anchored to your deployments.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#x26A0;</div>
+        <h3>Anomaly Detection</h3>
+        <p>Z-score analysis against a 7-day baseline. No manual thresholds &mdash; LogWeave tells you whether an error rate is normal or an outlier.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#x1F517;</div>
+        <h3>Cross-Service Correlation</h3>
+        <p>Pearson r correlation finds linked patterns across services. When auth times out and payments fail together, you'll see it.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#x1F514;</div>
+        <h3>Alerting</h3>
+        <p>Threshold rules and pattern watches with Slack, PagerDuty, and webhook channels. Your AI can create rules programmatically.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#x1F4B8;</div>
+        <h3>Log Cost Optimizer</h3>
+        <p>Identify noisy, high-volume patterns driving up your logging bill. DEBUG patterns consuming 60% of volume are flagged automatically — queryable via dashboard, API, and MCP.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#x1F4E1;</div>
+        <h3>Live Tail</h3>
+        <p>Stream log events in real-time across all services with filtering by service, level, and pattern. No log storage required.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#x1F512;</div>
+        <h3>No Raw Log Storage</h3>
+        <p>LogWeave stores patterns and metadata only. Raw logs stay in your S3 &mdash; read on demand for drill-down. Your data never leaves your infrastructure.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#x1F3E0;</div>
+        <h3>Self-Hosted</h3>
+        <p>Three Docker containers, minutes to set up. Runs comfortably on an 8 GB VM. No cloud dependency, no vendor lock-in, no data leaving your network.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- What Changed Showcase -->
+  <section class="showcase-section">
+    <div class="showcase">
+      <div class="showcase-text">
+        <h2>See exactly what changed after a deploy</h2>
+        <p>Anchor any query to a deployment marker and instantly see new patterns, spikes, and resolved issues. No manual log trawling — LogWeave shows you the signal.</p>
+        <p>New patterns are tagged <strong>NEW</strong>. Existing patterns with sudden volume increases are tagged <strong>SPIKE</strong>. Patterns that went quiet are marked resolved.</p>
+      </div>
+      <div class="showcase-image">
+        <img src="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/what-changed.png" alt="What Changed panel showing new log patterns after a deployment">
+      </div>
+    </div>
+  </section>
+
+  <!-- Cost Optimizer Showcase -->
+  <section class="showcase-section">
+    <div class="showcase reverse">
+      <div class="showcase-text">
+        <h2>Cut your logging bill without guessing</h2>
+        <p>LogWeave automatically identifies high-volume patterns inflating the cost of your existing logging stack — wherever you ship logs. Every pattern is scored by volume percentage; the noisy ones surface to the top.</p>
+        <p><em>"Email sent: 46.5% of notifications-svc volume"</em> — one pattern, nearly half your bill. Your AI can query this directly and recommend exactly where to add sampling.</p>
+      </div>
+      <div class="showcase-image">
+        <img src="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/log-cost-optimizer.png" alt="Log Cost Optimizer showing high-volume patterns with volume reduction estimates">
+      </div>
+    </div>
+  </section>
+
+  <!-- MCP Showcase -->
+  <section class="mcp-section" id="mcp">
+    <div class="mcp-showcase">
+      <div class="mcp-text">
+        <h2>Ask your AI about production</h2>
+        <p>Connect LogWeave to Claude Code, Cursor, Windsurf, or any MCP-compatible AI. Ask plain English questions and get structured answers from real production data.</p>
+        <ul class="mcp-prompts">
+          <li>"Diagnose the payments-api &mdash; is anything unusual?"</li>
+          <li>"What error patterns appeared since the last deploy?"</li>
+          <li>"Is the auth-service error rate abnormal right now?"</li>
+          <li>"What other services are affected when gateway times out?"</li>
+        </ul>
+      </div>
+      <div class="mcp-image">
+        <img src="https://raw.githubusercontent.com/logweave/logweave/main/screenshots/mcp-diagnose.png" alt="AI diagnosing a service using LogWeave MCP tools">
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing placeholder — will add when ready -->
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <h2>Ready to try it?</h2>
+    <p>Self-host LogWeave in 5 minutes. Free during beta.</p>
+    <div class="hero-buttons">
+      <a href="https://github.com/logweave/logweave/blob/main/docs/install.md" target="_blank" class="btn btn-primary">Get Started</a>
+      <a href="https://github.com/logweave/logweave" target="_blank" class="btn btn-secondary">View Source</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>
+      &copy; 2026 LogWeave &middot;
+      <a href="https://github.com/logweave/logweave/blob/main/LICENSE">BSL 1.1 License</a> &middot;
+      <a href="https://github.com/logweave/logweave">GitHub</a>
+    </p>
+  </footer>
+
+</body>
+</html>

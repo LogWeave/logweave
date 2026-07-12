@@ -1,0 +1,466 @@
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
+  type SortingState,
+  useReactTable,
+} from '@tanstack/react-table'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { BellRing, Eye, EyeOff, Search } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/shallow'
+import { useSparklines, useTemplates, useWatches } from '../../api/queries'
+import type { TemplateRow } from '../../api/types'
+import { Badge } from '../../components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
+import { Input } from '../../components/ui/input'
+import { Skeleton } from '../../components/ui/skeleton'
+import { InfoTooltip } from '../../components/ui/tooltip'
+import { cn } from '../../lib/cn'
+import { TOOLTIPS } from '../../lib/tooltips'
+import { useDashboardStore } from '../../stores/dashboard-store'
+import { MiniSparkline } from './mini-sparkline'
+import {
+  countHidden,
+  filterVisibleTemplates,
+  matchesTemplateSearch,
+  staleHiddenIds,
+  topSparklineIds,
+} from './template-table-data'
+
+const columnHelper = createColumnHelper<TemplateRow>()
+
+export function TemplateTable({ className }: { className?: string }) {
+  const { data: response, isLoading } = useTemplates()
+  const templates = response?.data ?? []
+
+  const sparklineIds = useMemo(() => topSparklineIds(templates), [templates])
+  const { data: sparklineResponse } = useSparklines(sparklineIds)
+  const sparklineData = sparklineResponse?.data ?? {}
+
+  // Stable ref for sparkline data — columns read from this at render time
+  // without needing to be in the columns useMemo dependency array
+  const sparklineRef = useRef(sparklineData)
+  sparklineRef.current = sparklineData
+
+  const { data: watchesResponse } = useWatches()
+  const watchedIds = useMemo(
+    () => new Set((watchesResponse?.data ?? []).map((w) => w.templateId)),
+    [watchesResponse?.data],
+  )
+  const watchedIdsRef = useRef(watchedIds)
+  watchedIdsRef.current = watchedIds
+
+  const {
+    selectedTemplateId,
+    setSelectedTemplateId,
+    hiddenTemplateIds,
+    toggleHideTemplate,
+    hideAllTemplates,
+    unhideAllTemplates,
+    showHidden,
+    toggleShowHidden,
+    watchedOnly,
+    toggleWatchedOnly,
+  } = useDashboardStore(
+    useShallow((s) => ({
+      selectedTemplateId: s.selectedTemplateId,
+      setSelectedTemplateId: s.setSelectedTemplateId,
+      hiddenTemplateIds: s.hiddenTemplateIds,
+      toggleHideTemplate: s.toggleHideTemplate,
+      hideAllTemplates: s.hideAllTemplates,
+      unhideAllTemplates: s.unhideAllTemplates,
+      showHidden: s.showHidden,
+      toggleShowHidden: s.toggleShowHidden,
+      watchedOnly: s.watchedOnly,
+      toggleWatchedOnly: s.toggleWatchedOnly,
+    })),
+  )
+
+  const visibleTemplates = useMemo(
+    () =>
+      filterVisibleTemplates(templates, {
+        hiddenIds: hiddenTemplateIds,
+        showHidden,
+        watchedOnly,
+        watchedIds,
+      }),
+    [templates, hiddenTemplateIds, showHidden, watchedOnly, watchedIds],
+  )
+
+  // Prune stale hidden IDs that no longer exist in current template set
+  useEffect(() => {
+    const stale = staleHiddenIds(templates, hiddenTemplateIds)
+    if (stale.length > 0) {
+      for (const id of stale) toggleHideTemplate(id)
+    }
+  }, [templates, hiddenTemplateIds, toggleHideTemplate])
+
+  const hiddenCount = useMemo(
+    () => countHidden(templates, hiddenTemplateIds),
+    [templates, hiddenTemplateIds],
+  )
+
+  const getSparklinePoints = useCallback(
+    (templateId: string): number[] => sparklineRef.current[templateId]?.map((p) => p.count) ?? [],
+    [],
+  )
+
+  const columns = useMemo(
+    () => [
+      columnHelper.accessor('templateText', {
+        header: 'Pattern',
+        size: 300,
+        cell: (info) => (
+          <div className="flex items-center gap-2 min-w-0">
+            {watchedIdsRef.current.has(info.row.original.templateId) && (
+              <BellRing size={12} className="text-brand-400 shrink-0" />
+            )}
+            <span className="font-mono text-xs text-text-primary truncate">{info.getValue()}</span>
+            {info.row.original.isNewToday && (
+              <Badge variant="new" className="shrink-0">
+                new
+              </Badge>
+            )}
+          </div>
+        ),
+      }),
+      columnHelper.accessor('service', {
+        header: 'Service',
+        size: 110,
+        cell: (info) => <span className="text-xs text-text-secondary">{info.getValue()}</span>,
+      }),
+      columnHelper.accessor('occurrenceCount', {
+        header: 'Count',
+        size: 70,
+        cell: (info) => (
+          <span className="font-mono text-xs tabular-nums text-text-primary">
+            {info.getValue().toLocaleString()}
+          </span>
+        ),
+      }),
+      columnHelper.accessor('errorCount', {
+        header: 'Errors',
+        size: 60,
+        cell: (info) => {
+          const val = info.getValue()
+          return (
+            <span
+              className={cn(
+                'font-mono text-xs tabular-nums',
+                val > 0 ? 'text-danger' : 'text-text-muted',
+              )}
+            >
+              {val.toLocaleString()}
+            </span>
+          )
+        },
+      }),
+      columnHelper.display({
+        id: 'trend',
+        header: () => (
+          <span className="flex items-center gap-1">
+            Trend <InfoTooltip content={TOOLTIPS.trendColumn} />
+          </span>
+        ),
+        size: 80,
+        cell: (info) => {
+          const points = getSparklinePoints(info.row.original.templateId)
+          return <MiniSparkline points={points} />
+        },
+      }),
+      columnHelper.display({
+        id: 'actions',
+        header: '',
+        size: 36,
+        cell: (info) => {
+          const id = info.row.original.templateId
+          const isHidden = hiddenTemplateIds.includes(id)
+          return (
+            <button
+              type="button"
+              title={isHidden ? 'Unhide pattern' : 'Hide pattern'}
+              className={cn(
+                'p-1 rounded transition-colors',
+                isHidden
+                  ? 'text-warning hover:text-text-primary'
+                  : 'text-transparent group-hover/row:text-text-muted hover:text-text-primary',
+              )}
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleHideTemplate(id)
+              }}
+            >
+              {isHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+          )
+        },
+      }),
+    ],
+    [getSparklinePoints, hiddenTemplateIds, toggleHideTemplate],
+  )
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'occurrenceCount', desc: true }])
+  const [globalFilter, setGlobalFilter] = useState('')
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const table = useReactTable({
+    data: visibleTemplates,
+    columns,
+    state: { sorting, globalFilter },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    globalFilterFn: (row, _columnId, filterValue) =>
+      matchesTemplateSearch(row.original, String(filterValue)),
+  })
+
+  const { rows } = table.getRowModel()
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 44,
+    overscan: 3,
+  })
+
+  if (isLoading) {
+    return (
+      <Card className={cn(className)}>
+        <CardHeader>
+          <CardTitle>Patterns</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'].map((id) => (
+              <Skeleton key={id} className="h-10 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className={cn(className)}>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <CardTitle>Patterns ({visibleTemplates.length})</CardTitle>
+            {hiddenCount > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleShowHidden}
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full border transition-colors',
+                    showHidden
+                      ? 'bg-brand-500/10 text-brand-400 border-brand-500/20'
+                      : 'bg-surface-elevated text-text-muted border-border-subtle hover:text-text-secondary',
+                  )}
+                >
+                  {showHidden ? <Eye size={11} /> : <EyeOff size={11} />}
+                  {hiddenCount} hidden
+                </button>
+                <button
+                  type="button"
+                  onClick={unhideAllTemplates}
+                  className="px-2 py-0.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  Show all
+                </button>
+              </>
+            )}
+            {templates.length > 0 && hiddenCount < templates.length && (
+              <button
+                type="button"
+                onClick={() => hideAllTemplates(templates.map((t) => t.templateId))}
+                className="px-2 py-0.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+              >
+                Hide all
+              </button>
+            )}
+            {watchedIds.size > 0 && (
+              <button
+                type="button"
+                onClick={toggleWatchedOnly}
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full border transition-colors',
+                  watchedOnly
+                    ? 'bg-brand-500/10 text-brand-400 border-brand-500/20'
+                    : 'bg-surface-elevated text-text-muted border-border-subtle hover:text-text-secondary',
+                )}
+              >
+                <BellRing size={11} />
+                {watchedIds.size} watched
+              </button>
+            )}
+          </div>
+          <div className="relative w-64">
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
+            />
+            <Input
+              placeholder="Search patterns..."
+              value={globalFilter}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              className="pl-8"
+              aria-label="Search patterns"
+            />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {/* Card view for small screens */}
+        <div className="xl:hidden space-y-2">
+          {rows.length === 0 && (
+            <p className="py-8 text-center text-text-muted text-sm">
+              {globalFilter ? 'No patterns match your search.' : 'No pattern data yet.'}
+            </p>
+          )}
+          {rows.slice(0, 50).map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              className={cn(
+                'w-full text-left p-3 rounded-lg bg-surface-base hover:bg-surface-elevated transition-colors cursor-pointer',
+                selectedTemplateId === row.original.templateId &&
+                  'bg-brand-500/10 border-l-2 border-l-brand-500',
+              )}
+              onClick={() => setSelectedTemplateId(row.original.templateId)}
+            >
+              <div className="flex items-start gap-2">
+                <code className="text-xs font-mono text-text-primary flex-1 leading-relaxed line-clamp-2">
+                  {row.original.templateText}
+                </code>
+                {row.original.isNewToday && (
+                  <Badge variant="new" className="shrink-0">
+                    NEW
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-[10px] text-text-muted">
+                <span className="text-brand-400">{row.original.service}</span>
+                <span>{row.original.occurrenceCount.toLocaleString()} events</span>
+                {row.original.errorCount > 0 && (
+                  <span className="text-danger">{row.original.errorCount} errors</span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Table view for large screens */}
+        <div className="hidden xl:block overflow-x-auto">
+          {/* Table header */}
+          <div className="flex items-center border-b border-border-subtle pb-2 mb-1">
+            {table.getHeaderGroups().map((headerGroup) =>
+              headerGroup.headers.map((header) => {
+                const sorted = header.column.getIsSorted()
+                const ariaSortValue =
+                  sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'
+                return (
+                  <div
+                    key={header.id}
+                    style={{ width: header.getSize() }}
+                    className={cn(
+                      'shrink-0 text-[11px] font-medium text-text-muted uppercase tracking-wider',
+                      header.column.getCanSort() &&
+                        'cursor-pointer select-none hover:text-text-secondary',
+                    )}
+                  >
+                    {header.column.getCanSort() ? (
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 uppercase tracking-wider"
+                        aria-label={`Sort by ${typeof header.column.columnDef.header === 'string' ? header.column.columnDef.header : header.id}, currently ${ariaSortValue}`}
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {sorted === 'asc' && '\u2191'}
+                        {sorted === 'desc' && '\u2193'}
+                      </button>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </span>
+                    )}
+                  </div>
+                )
+              }),
+            )}
+          </div>
+
+          {/* Virtual scrolling body */}
+          <div ref={parentRef} className="overflow-auto" style={{ maxHeight: '500px' }}>
+            <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const row = rows[virtualRow.index]
+                if (!row) return null
+                const isSelected = row.original.templateId === selectedTemplateId
+                return (
+                  <div
+                    key={row.id}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    {/* biome-ignore lint/a11y/useSemanticElements: can't use <button> — contains nested interactive hide button */}
+                    <div
+                      role="button"
+                      className={cn(
+                        'group/row flex items-center w-full py-2 border-b border-border-subtle/50 cursor-pointer transition-colors text-left',
+                        isSelected
+                          ? 'bg-brand-500/10 border-l-2 border-l-brand-500'
+                          : 'hover:bg-surface-elevated/50',
+                        showHidden &&
+                          hiddenTemplateIds.includes(row.original.templateId) &&
+                          'opacity-50',
+                      )}
+                      tabIndex={0}
+                      onClick={() => setSelectedTemplateId(row.original.templateId)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedTemplateId(row.original.templateId)
+                        }
+                      }}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <div
+                          key={cell.id}
+                          style={{ width: cell.column.getSize() }}
+                          className="shrink-0 px-1"
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {rows.length === 0 && (
+            <div className="py-12 text-center text-text-muted text-sm">
+              {globalFilter
+                ? 'No patterns match your search.'
+                : hiddenCount > 0 && hiddenCount >= templates.length
+                  ? `All ${hiddenCount} patterns are hidden. Click "hidden" above to reveal them.`
+                  : 'No pattern data yet. Install the @logweave/transport SDK and send some logs to get started.'}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}

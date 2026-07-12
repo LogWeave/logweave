@@ -1,0 +1,484 @@
+import type pino from 'pino'
+import { type SafeFetchFn, SsrfBlockedError, safeFetch } from '../connectors/safe-fetch.js'
+import { getInternalEvents } from '../internal-events/emitter.js'
+import {
+  type AlertEvent,
+  type AlertObserver,
+  hasChannels,
+  isResolvedAlert,
+  isServiceSilenceResolved,
+  isServiceSilent,
+  isTemplateAlert,
+  isThresholdBreach,
+  type ServiceSilentEvent,
+  type TemplateAlertEvent,
+  type ThresholdAlertEvent,
+} from './alert-observer.js'
+import type { TenantSettingsStore } from './tenant-settings.js'
+
+const SLACK_HOST = 'hooks.slack.com'
+const MAX_RETRIES = 3
+const BACKOFF_BASE_MS = 2000
+const MIN_SEND_INTERVAL_MS = 1000
+
+/**
+ * True only for genuine Slack incoming-webhook URLs (host `hooks.slack.com`,
+ * matching the settings-route validation). The WebhookObserver imports this to
+ * *exclude* Slack channels, so the two observers partition each rule's channels
+ * with no overlap (double-delivery) and no gaps.
+ */
+export function isSlackUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === SLACK_HOST
+  } catch {
+    return false
+  }
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}\u2026` : s
+}
+
+/** Log-friendly identifier for an alert \u2014 used only for correlation in logs. */
+function alertIdOf(alert: AlertEvent): string {
+  if (isTemplateAlert(alert)) return alert.templateId
+  if (isServiceSilent(alert) || isServiceSilenceResolved(alert)) return alert.service
+  return alert.ruleId
+}
+
+import { sleep } from '../lib/sleep.js'
+
+export interface SlackObserverOptions {
+  settingsStore: TenantSettingsStore
+  dashboardBaseUrl?: string
+  logger: pino.Logger
+  /**
+   * Outbound HTTP, defaulting to the SSRF-guarded {@link safeFetch}. Per-rule
+   * channels are tenant-supplied, so delivery must go through the guard (the
+   * tenant-default webhook is host-pinned to hooks.slack.com, but per-rule
+   * channels are arbitrary https URLs). Override in tests.
+   */
+  fetchFn?: SafeFetchFn
+}
+
+/**
+ * Delivers alert notifications to Slack via incoming webhooks.
+ *
+ * Per-tenant webhook URLs are read from the TenantSettingsStore at delivery time.
+ * If no webhook is configured for a tenant, the notification is silently skipped.
+ *
+ * Rate limiting: max 1 message per webhook URL per second.
+ * Retry: up to 3 attempts with exponential backoff. Permanent Slack errors are not retried.
+ */
+export class SlackObserver implements AlertObserver {
+  private readonly settingsStore: TenantSettingsStore
+  private readonly dashboardBaseUrl: string | undefined
+  private readonly logger: pino.Logger
+  private readonly fetchFn: SafeFetchFn
+
+  /** Track last send time per webhook URL for rate limiting. */
+  private readonly lastSendTime = new Map<string, number>()
+
+  /** Serialize deliveries per webhook URL to enforce rate limit ordering. */
+  private readonly deliveryQueues = new Map<string, Promise<void>>()
+
+  constructor(options: SlackObserverOptions) {
+    this.settingsStore = options.settingsStore
+    this.dashboardBaseUrl = options.dashboardBaseUrl
+    this.logger = options.logger
+    this.fetchFn = options.fetchFn ?? safeFetch
+  }
+
+  async notify(alert: AlertEvent): Promise<void> {
+    // Resolve events are handled by WebhookObserver (PagerDuty only)
+    if (isResolvedAlert(alert) || isServiceSilenceResolved(alert)) return
+    // Threshold alerts may specify per-rule channels; fall back to tenant default
+    const candidateUrls: string[] = []
+    if (hasChannels(alert) && alert.channels.length > 0) {
+      candidateUrls.push(...alert.channels)
+    } else {
+      const tenantUrl = this.settingsStore.getSlackUrl(alert.tenantId)
+      if (tenantUrl) candidateUrls.push(tenantUrl)
+    }
+
+    // Deliver ONLY to genuine Slack webhooks. Per-rule channels (and even the
+    // tenant "Slack" default) may be arbitrary https:// URLs; a non-Slack
+    // webhook is delivered to by the WebhookObserver (generic JSON). Posting
+    // Slack-shaped JSON here too would double-notify with a body it can't parse.
+    const webhookUrls = candidateUrls.filter(isSlackUrl)
+
+    if (webhookUrls.length === 0) {
+      this.logger.debug(
+        { tenantId: alert.tenantId },
+        'Slack: no Slack webhook configured, skipping',
+      )
+      return
+    }
+
+    const alertId = alertIdOf(alert)
+    this.logger.debug(
+      { tenantId: alert.tenantId, alertId, alertType: alert.type },
+      'Slack: queuing alert delivery',
+    )
+
+    const payload = this.buildPayload(alert)
+
+    for (const webhookUrl of webhookUrls) {
+      // Chain onto the per-URL queue — non-blocking, fire-and-forget
+      const previous = this.deliveryQueues.get(webhookUrl) ?? Promise.resolve()
+      const next = previous
+        .then(async () => {
+          await this.enforceRateLimit(webhookUrl)
+          await this.deliver(webhookUrl, payload, 0, alert)
+        })
+        .catch((err) => {
+          this.logger.error({ err, tenantId: alert.tenantId }, 'Slack delivery queue error')
+        })
+      this.deliveryQueues.set(webhookUrl, next)
+    }
+
+    // Prune stale entries from lastSendTime (unused for > 1 hour)
+    const pruneThreshold = Date.now() - 3_600_000
+    for (const [url, ts] of this.lastSendTime) {
+      if (ts < pruneThreshold) this.lastSendTime.delete(url)
+    }
+  }
+
+  private async enforceRateLimit(url: string): Promise<void> {
+    const last = this.lastSendTime.get(url)
+    if (last !== undefined) {
+      const elapsed = Date.now() - last
+      if (elapsed < MIN_SEND_INTERVAL_MS) {
+        await sleep(MIN_SEND_INTERVAL_MS - elapsed)
+      }
+    }
+  }
+
+  private async deliver(
+    url: string,
+    payload: object,
+    attempt = 0,
+    alert?: AlertEvent,
+  ): Promise<void> {
+    const permanentErrors = [
+      'channel_is_archived',
+      'channel_not_found',
+      'invalid_payload',
+      'no_service',
+      'action_prohibited',
+    ]
+    const alertId = alert ? alertIdOf(alert) : undefined
+    const ctx = { attempt, alertId, tenantId: alert?.tenantId }
+
+    try {
+      this.logger.debug(ctx, 'Slack: sending webhook request')
+
+      const resp = await this.fetchFn(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10_000),
+      })
+
+      this.lastSendTime.set(url, Date.now())
+
+      if (resp.ok) {
+        this.logger.debug(ctx, 'Slack: delivered successfully')
+        return
+      }
+
+      const body = await resp.text()
+
+      // Permanent errors — don't retry
+      if (permanentErrors.includes(body)) {
+        this.logger.error(
+          { ...ctx, status: resp.status, slackError: body },
+          'Slack delivery failed (permanent — will not retry)',
+        )
+        getInternalEvents().emit({
+          event: 'slack.webhook_failed',
+          severity: 'warn',
+          code: 'SLACK_PERMANENT_ERROR',
+          summary: 'slack webhook returned permanent error',
+          fields: {
+            status_code: resp.status,
+            tenant_id: alert?.tenantId ?? '_unknown',
+            // body is from the permanentErrors allowlist at this point, so it's
+            // already a short error code. Truncate defensively in case Slack
+            // ever expands the response.
+            slack_error: body.slice(0, 120),
+          },
+        })
+        return
+      }
+
+      // Rate limited — retry with Retry-After
+      if (resp.status === 429) {
+        const rawRetryAfter = Number(resp.headers['retry-after'] ?? 5)
+        const retryAfter = Number.isFinite(rawRetryAfter)
+          ? Math.min(Math.max(rawRetryAfter, 1), 60)
+          : 5
+        if (attempt < MAX_RETRIES) {
+          this.logger.debug({ ...ctx, retryAfterSec: retryAfter }, 'Slack: rate limited, retrying')
+          await sleep(retryAfter * 1000)
+          return this.deliver(url, payload, attempt + 1, alert)
+        }
+      }
+
+      // Other errors — retry with backoff
+      if (attempt < MAX_RETRIES) {
+        const backoffMs = BACKOFF_BASE_MS * 2 ** attempt
+        this.logger.debug({ ...ctx, status: resp.status, backoffMs }, 'Slack: error, retrying')
+        await sleep(backoffMs)
+        return this.deliver(url, payload, attempt + 1, alert)
+      }
+
+      this.logger.error(
+        { ...ctx, status: resp.status, slackError: body },
+        'Slack delivery failed after all retries',
+      )
+      getInternalEvents().emit({
+        event: 'slack.webhook_failed',
+        severity: 'warn',
+        code: 'SLACK_RETRIES_EXHAUSTED',
+        summary: 'slack webhook failed after retries',
+        fields: { status_code: resp.status, tenant_id: alert?.tenantId ?? '_unknown' },
+      })
+    } catch (err) {
+      // A tenant-supplied channel that resolves to an internal/metadata host is
+      // blocked by safeFetch — it will never succeed, so don't retry it.
+      if (err instanceof SsrfBlockedError) {
+        this.logger.error(
+          { ...ctx, err },
+          'Slack delivery blocked: channel resolves to an internal host (SSRF prevention)',
+        )
+        getInternalEvents().emit({
+          event: 'slack.webhook_failed',
+          severity: 'warn',
+          code: 'SLACK_SSRF_BLOCKED',
+          summary: 'slack channel blocked as internal host',
+          fields: { tenant_id: alert?.tenantId ?? '_unknown' },
+        })
+        return
+      }
+      if (attempt < MAX_RETRIES) {
+        const backoffMs = BACKOFF_BASE_MS * 2 ** attempt
+        this.logger.debug({ ...ctx, err, backoffMs }, 'Slack: network error, retrying')
+        await sleep(backoffMs)
+        return this.deliver(url, payload, attempt + 1, alert)
+      }
+      this.logger.error({ ...ctx, err }, 'Slack delivery failed (network) after all retries')
+      getInternalEvents().emit({
+        event: 'slack.webhook_failed',
+        severity: 'warn',
+        code: 'SLACK_NETWORK_ERROR',
+        summary: 'slack webhook network error after retries',
+        fields: {
+          tenant_id: alert?.tenantId ?? '_unknown',
+          error_name: (err as { name?: string } | undefined)?.name ?? 'unknown',
+        },
+      })
+    }
+  }
+
+  private buildPayload(alert: AlertEvent): object {
+    if (isTemplateAlert(alert)) {
+      return this.buildTemplatePayload(alert)
+    }
+    if (isThresholdBreach(alert)) {
+      return this.buildThresholdPayload(alert)
+    }
+    if (isServiceSilent(alert)) {
+      return this.buildSilencePayload(alert)
+    }
+    return {} // Resolved events are filtered in notify()
+  }
+
+  private buildTemplatePayload(alert: TemplateAlertEvent): object {
+    const emoji = alert.type === 'spike' ? '\uD83D\uDD34' : '\uD83D\uDFE1'
+    const title = alert.type === 'spike' ? 'Spike Alert' : 'New Burst Alert'
+    const dashboardUrl = this.dashboardBaseUrl
+      ? `${this.dashboardBaseUrl}/?template=${alert.templateId}`
+      : undefined
+
+    return {
+      unfurl_links: false,
+      unfurl_media: false,
+      text: `${emoji} ${title}: "${alert.templateText}" in ${alert.service} (${alert.score.toFixed(1)}x baseline)`,
+      blocks: [
+        { type: 'header', text: { type: 'plain_text', text: `${emoji} ${title}` } },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: `*Pattern*\n\`${truncate(alert.templateText, 150)}\`` },
+            { type: 'mrkdwn', text: `*Service*\n${alert.service}` },
+            { type: 'mrkdwn', text: `*Score*\n${alert.score.toFixed(1)}x baseline` },
+            {
+              type: 'mrkdwn',
+              text: `*Events*\n${alert.currentCount.toLocaleString()} (baseline: ${alert.baselineCount.toLocaleString()})`,
+            },
+            { type: 'mrkdwn', text: `*Triggered*\n${new Date(alert.triggeredAt).toUTCString()}` },
+          ],
+        },
+        ...(dashboardUrl
+          ? [
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: { type: 'plain_text', text: 'View in Dashboard' },
+                    url: dashboardUrl,
+                  },
+                ],
+              },
+            ]
+          : []),
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `LogWeave Alert \u2022 ${alert.tenantId} \u2022 ${alert.triggeredAt}`,
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  private buildSilencePayload(alert: ServiceSilentEvent): object {
+    const emoji = '🔇'
+    const title = 'Service Silent'
+    const dashboardUrl = this.dashboardBaseUrl
+      ? `${this.dashboardBaseUrl}/?service=${alert.service}`
+      : undefined
+
+    return {
+      unfurl_links: false,
+      unfurl_media: false,
+      text: `${emoji} ${title}: ${alert.service} has gone quiet (${alert.actualCount} events, expected ~${alert.expectedCount})`,
+      blocks: [
+        { type: 'header', text: { type: 'plain_text', text: `${emoji} ${title}` } },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: `*Service*\n${alert.service}` },
+            {
+              type: 'mrkdwn',
+              text: `*Events*\n${alert.actualCount.toLocaleString()} (expected: ~${alert.expectedCount.toLocaleString()})`,
+            },
+            { type: 'mrkdwn', text: `*Triggered*\n${new Date(alert.triggeredAt).toUTCString()}` },
+          ],
+        },
+        ...(dashboardUrl
+          ? [
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: { type: 'plain_text', text: 'View in Dashboard' },
+                    url: dashboardUrl,
+                  },
+                ],
+              },
+            ]
+          : []),
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `LogWeave Alert • ${alert.tenantId} • ${alert.triggeredAt}`,
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  private buildThresholdPayload(alert: ThresholdAlertEvent): object {
+    const emoji = '\uD83D\uDD14'
+    const title = 'Threshold Alert'
+    const dashboardUrl = this.dashboardBaseUrl
+      ? `${this.dashboardBaseUrl}/?service=${alert.service}`
+      : undefined
+
+    return {
+      unfurl_links: false,
+      unfurl_media: false,
+      text: `${emoji} ${title}: "${alert.ruleName}" — ${alert.metric} ${alert.operator} ${alert.thresholdValue} (actual: ${alert.metricValue})`,
+      blocks: [
+        { type: 'header', text: { type: 'plain_text', text: `${emoji} ${title}` } },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: `*Rule*\n${truncate(alert.ruleName, 150)}` },
+            { type: 'mrkdwn', text: `*Service*\n${alert.service}` },
+            ...(alert.environment
+              ? [{ type: 'mrkdwn', text: `*Environment*\n${alert.environment}` }]
+              : []),
+            {
+              type: 'mrkdwn',
+              text: `*Metric*\n${alert.metric} ${alert.operator} ${alert.thresholdValue}`,
+            },
+            { type: 'mrkdwn', text: `*Actual Value*\n${alert.metricValue.toLocaleString()}` },
+            { type: 'mrkdwn', text: `*Window*\n${alert.windowMinutes}min` },
+            { type: 'mrkdwn', text: `*Triggered*\n${new Date(alert.triggeredAt).toUTCString()}` },
+          ],
+        },
+        ...(dashboardUrl
+          ? [
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: { type: 'plain_text', text: 'View in Dashboard' },
+                    url: dashboardUrl,
+                  },
+                ],
+              },
+            ]
+          : []),
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `LogWeave Alert \u2022 ${alert.tenantId} \u2022 ${alert.triggeredAt}`,
+            },
+          ],
+        },
+      ],
+    }
+  }
+}
+
+/**
+ * Send a test message to verify a Slack webhook URL is working.
+ * Used by the settings test endpoint.
+ */
+export async function sendSlackTestMessage(
+  webhookUrl: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Goes through safeFetch (not raw fetch) so the configured webhook can't be
+    // used to probe internal hosts; the test endpoint is admin-reachable.
+    const resp = await safeFetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: '\u2705 LogWeave test message \u2014 Slack integration is working!',
+        unfurl_links: false,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (resp.ok) return { success: true }
+    const body = await resp.text()
+    return { success: false, error: body }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
+  }
+}

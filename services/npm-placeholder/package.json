@@ -1,0 +1,16 @@
+{
+  "name": "@logweave/placeholder",
+  "version": "0.0.1",
+  "description": "Namespace placeholder for the @logweave npm scope. Not a usable package.",
+  "license": "MIT",
+  "files": [
+    "README.md"
+  ],
+  "keywords": [
+    "logweave",
+    "placeholder"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

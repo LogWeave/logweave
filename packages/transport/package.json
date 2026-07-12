@@ -1,0 +1,70 @@
+{
+  "name": "@logweave/transport",
+  "version": "0.1.0",
+  "description": "Winston transport for LogWeave — buffer, retry, never block",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.ts",
+        "require": "./dist/index.d.cts"
+      },
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "homepage": "https://github.com/logweave/logweave/tree/main/packages/transport#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/logweave/logweave.git",
+    "directory": "packages/transport"
+  },
+  "bugs": {
+    "url": "https://github.com/logweave/logweave/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "logweave",
+    "winston",
+    "winston-transport",
+    "log-intelligence",
+    "observability"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "tsup",
+    "test": "tsx scripts/test.ts",
+    "test:cjs": "node scripts/verify-cjs.cjs",
+    "lint": "biome check .",
+    "lint:fix": "biome check --fix .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "winston": "^3.0.0",
+    "winston-transport": "^4.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
+    "@types/node": "^25.9.5",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.0",
+    "typescript": "catalog:",
+    "winston": "^3.19.0",
+    "winston-transport": "^4.9.0"
+  }
+}

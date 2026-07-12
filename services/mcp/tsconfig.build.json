@@ -1,0 +1,7 @@
+// Build/publish config. Excludes the dev-only diagnostic tools (which bypass
+// tenant scoping) so they never ship in the published dist. Local dev runs via
+// tsx, and `pnpm typecheck` uses tsconfig.json, so dev code is still type-checked.
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "tests", "src/dev-tools.ts", "src/registrations/dev.ts"]
+}

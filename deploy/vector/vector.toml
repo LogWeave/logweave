@@ -1,0 +1,155 @@
+# LogWeave archive engine (Vector) — production config.
+#
+# Seam B of epic #265: the aws_s3 sink writes the customer's raw logs to their
+# OWN bucket as the system of record. The landed object key becomes the
+# `source_ref` LogWeave stores in ClickHouse (wired in #275).
+#
+# No-loss guarantee (proven by #274): a MEMORY buffer + `acknowledgements.enabled
+# = true` + `when_full = "block"` withholds the http_server source's HTTP 200
+# until the aws_s3 sink has durably PUT the object. Vector's buffer is NOT the
+# durability backstop — the SDK's durable spool (#269/#282) is: an un-acked event
+# was never 2xx'd, so it stays spooled and replays. A DISK buffer would BREAK
+# this (it acks on local-disk write, before S3 — POST returns in ~2ms), so do
+# NOT change the buffer back to disk. See the buffer block below for detail.
+#
+# NOTE on the DLQ the issue sketched: a second aws_s3 sink fanned out from the
+# same source (`inputs = ["in"]`) would DOUBLE-WRITE every event, not just
+# failures — Vector's aws_s3 sink has no per-event dead-letter route. So we do
+# NOT add a fan-out DLQ; the SDK spool + blocking backpressure is the no-loss
+# mechanism. (See #273 / #274 discussion.)
+
+# Internal Vector GraphQL/playground API — off in prod.
+[api]
+enabled = false
+
+# ---------------------------------------------------------------------------
+# Source — the SDK pump POSTs newline-delimited JSON batches here.
+# ---------------------------------------------------------------------------
+[sources.in]
+type = "http_server"
+address = "0.0.0.0:8686"
+path = "/v1/archive"
+method = "POST"
+
+[sources.in.framing]
+method = "newline_delimited"
+
+[sources.in.decoding]
+codec = "json"
+
+# Make the source wait for the sink's end-to-end ack before responding 200.
+# Belt-and-suspenders with the sink-level setting so the no-loss gate (#274)
+# does not depend on which level Vector honours.
+[sources.in.acknowledgements]
+enabled = true
+
+# ---------------------------------------------------------------------------
+# Default the partition keys so a missing field never fails key_prefix
+# templating (an unrenderable key_prefix drops the event). `string()` asserts
+# the value is a string and errors otherwise; `??` coalesces that error — and
+# a missing/null field — to "unknown".
+# ---------------------------------------------------------------------------
+[transforms.partition]
+type = "remap"
+inputs = ["in"]
+source = '''
+.tenant_id = string(.tenant_id) ?? "unknown"
+.service = string(.service) ?? "unknown"
+'''
+
+# ---------------------------------------------------------------------------
+# Archive sink — the system of record.
+# ---------------------------------------------------------------------------
+[sinks.archive]
+type = "aws_s3"
+inputs = ["partition"]
+bucket = "${LOGWEAVE_ARCHIVE_BUCKET}"
+region = "${AWS_REGION:-us-east-1}"
+compression = "gzip"
+content_type = "application/x-ndjson"
+# Deterministic, query-friendly partitioning. %F = YYYY-MM-DD, %H = hour (UTC).
+key_prefix = "tenant={{ tenant_id }}/service={{ service }}/date=%F/hour=%H/"
+
+[sinks.archive.encoding]
+codec = "json"
+
+# Newline-delimited JSON objects. WITHOUT this the aws_s3 sink writes each
+# batch as a single JSON array, which breaks line-oriented drill-down (#275).
+[sinks.archive.framing]
+method = "newline_delimited"
+
+# Batch to large objects — the ~40-60x cost win over CloudWatch is CONDITIONAL
+# on not emitting tiny objects. `max_bytes` is measured on the UNCOMPRESSED
+# batch (Vector semantics, verified against vector.dev docs); 16 MiB
+# uncompressed gzips to roughly 1-2 MiB objects.
+#
+# timeout_secs is the UPPER BOUND on how long a gated POST blocks (see the
+# buffer note): the 200 is withheld until the batch flushes to S3, so this
+# cannot be the old 300s or the SDK pump POST would hang for minutes. 30s
+# bounds latency while still batching large objects under load (size wins);
+# only low-volume partitions flush on the timer, where object count is
+# naturally tiny so the cost impact is negligible.
+[sinks.archive.batch]
+max_bytes = 16777216
+timeout_secs = 30
+
+# MEMORY buffer, NOT disk — this is what makes the 200 an S3-delivery gate
+# (#274). A disk buffer acks the event as soon as it is durably on local disk
+# (verified: POST returns in ~2ms, before S3), which would let the SDK delete
+# its spool row while the bytes are only on this instance — at-most-once if the
+# instance dies. With a memory buffer + acknowledgements + when_full="block",
+# the source withholds the 200 until the aws_s3 sink has durably PUT the
+# object. Vector's buffer does NOT need to be durable: an un-acked event was
+# never 2xx'd, so it stays in the SDK's durable spool (#269/#282) and replays.
+#
+# max_events is set explicitly (Vector's default is only ~500). When S3 is slow
+# the buffer fills, then when_full="block" backpressures the caller — which the
+# SDK absorbs into its durable spool, so a larger buffer just smooths bursts
+# before backpressure kicks in. Events are raw log lines (~hundreds of bytes),
+# so 10k fits comfortably under the 512M container limit.
+[sinks.archive.buffer]
+type = "memory"
+max_events = 10000
+when_full = "block"
+
+# Gate the source's 200 on durable S3 delivery — the no-loss claim (#274).
+[sinks.archive.acknowledgements]
+enabled = true
+
+# ---------------------------------------------------------------------------
+# Delivery-lag observability (#283). Vector's own internal metrics, filtered to
+# just the archive sink's delivery health, shipped to CloudWatch so a backed-up
+# or failing archive (S3 slow/down, buffer filling, errors) is visible and can
+# be alarmed (AWS::CloudWatch::Alarm in app.yml). Custom CloudWatch metrics cost
+# ~30 cents/metric/mo, so the filter keeps a small allowlist scoped to
+# component_id=archive rather than all of Vector's internal series.
+# ---------------------------------------------------------------------------
+[sources.metrics]
+type = "internal_metrics"
+
+[transforms.archive_health]
+type = "filter"
+inputs = ["metrics"]
+condition.type = "vrl"
+condition.source = '''
+.tags.component_id == "archive" &&
+  includes(["component_errors_total", "component_sent_events_total", "buffer_byte_size"], .name)
+'''
+
+# Collapse each metric to a single CloudWatch series keyed ONLY by component_id.
+# Vector's aws_cloudwatch_metrics sink maps EVERY tag to a CloudWatch dimension,
+# so without this the published series also carry error_type/stage/host/
+# component_kind/component_type — and (a) the alarm, which keys on
+# component_id=archive alone, would watch a series that never receives data and
+# so never fires; (b) cost fans out to one custom metric per tag combination.
+# Stripping to component_id makes the alarm match and bounds cost to ~3 series.
+[transforms.archive_dims]
+type = "remap"
+inputs = ["archive_health"]
+source = '.tags = { "component_id": "archive" }'
+
+[sinks.cloudwatch]
+type = "aws_cloudwatch_metrics"
+inputs = ["archive_dims"]
+namespace = "LogWeave/Archive"
+region = "${AWS_REGION:-us-east-1}"
