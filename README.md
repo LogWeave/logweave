@@ -32,12 +32,12 @@ cp .env.production.example .env
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-On first start, LogWeave creates a default `admin` user and prints a one-time random password to **stderr** (look for the `LOGWEAVE BOOTSTRAP` banner). Capture it from your container logs (`docker compose logs api`) and log in at `http://localhost:3000` — you'll be required to change it on first login.
+On first start, LogWeave creates a default `admin` user and prints a one-time random password to **stderr** (look for the `LOGWEAVE BOOTSTRAP` banner). Capture it from your container logs (`docker compose -f docker-compose.prod.yml logs api`) and log in at **`https://localhost`** — the bundled Caddy proxy terminates TLS, so on a `localhost` run your browser will prompt you to accept the self-signed certificate the first time. You'll be required to change the password on first login.
 
 **Send your first log:**
 
 ```bash
-curl -X POST http://localhost:3000/v1/ingest/batch \
+curl -k -X POST https://localhost/v1/ingest/batch \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"events": [{"message": "Payment failed: gateway timeout for order 4821", "level": "ERROR", "service": "payments-api"}]}'
@@ -54,13 +54,15 @@ Add to your editor's MCP config (Claude Code, Cursor, Windsurf, VS Code):
       "command": "npx",
       "args": ["@logweave/mcp"],
       "env": {
-        "LOGWEAVE_API_URL": "http://localhost:3000",
+        "LOGWEAVE_API_URL": "https://localhost",
         "LOGWEAVE_API_KEY": "YOUR_API_KEY"
       }
     }
   }
 }
 ```
+
+> **Note — local `https://localhost` uses a self-signed certificate.** Your browser will prompt you to accept it on first visit, and `curl` needs `-k` (shown above). The MCP server on a pure-localhost run also has to trust it — add `"NODE_TLS_REJECT_UNAUTHORIZED": "0"` to the `env` block above (local eval only). For any real deployment, set `LOGWEAVE_DOMAIN` to a public hostname: Caddy then provisions a trusted Let's Encrypt certificate and you use `https://your-domain` everywhere with no cert workarounds.
 
 Then ask your AI: *"What error patterns are happening in my services?"*
 

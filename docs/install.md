@@ -74,7 +74,7 @@ You should see `logweave-clickhouse-1`, `logweave-clusterer-1`, and `logweave-ap
 
 ### 3. Open the dashboard
 
-Navigate to `http://localhost:3000`.
+Navigate to `https://localhost`. The bundled Caddy proxy terminates TLS and reverse-proxies to the API (the API port is not published to the host). On a `localhost` run Caddy serves a **self-signed certificate**, so your browser will warn once — accept it to continue. (For a real deployment, set `LOGWEAVE_DOMAIN` to a public hostname and Caddy provisions a trusted Let's Encrypt certificate automatically.)
 
 **First login:** the API generates a random one-time admin password on first start. Retrieve it one of two ways:
 
@@ -99,7 +99,7 @@ Add to your editor's MCP config (Claude Code, Cursor, Windsurf):
       "command": "npx",
       "args": ["@logweave/mcp"],
       "env": {
-        "LOGWEAVE_API_URL": "http://localhost:3000",
+        "LOGWEAVE_API_URL": "https://localhost",
         "LOGWEAVE_API_KEY": "<paste-the-api-key-from-LOGWEAVE_API_KEYS-in-.env>"
       }
     }
@@ -310,7 +310,7 @@ Each developer configures MCP on their own machine. The MCP server runs locally 
       "command": "npx",
       "args": ["@logweave/mcp"],
       "env": {
-        "LOGWEAVE_API_URL": "http://localhost:3000",
+        "LOGWEAVE_API_URL": "https://localhost",
         "LOGWEAVE_API_KEY": "your-api-key"
       }
     }
@@ -344,7 +344,7 @@ To verify the connection, ask your AI:
 
 ## Sending Logs
 
-Replace `https://logweave.acme.com` with `http://localhost:3000` for the local profile.
+Replace `https://logweave.acme.com` with `https://localhost` for the local profile (add `-k` to `curl` to accept the self-signed certificate).
 
 ### HTTP API (any language)
 
