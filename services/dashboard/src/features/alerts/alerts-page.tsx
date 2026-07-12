@@ -22,6 +22,7 @@ import {
   alertSeverity,
   countEnabledRules,
   filterRules,
+  formatMetric,
   isThresholdRule as isThresholdConfig,
   recentAlerts,
   ruleServices,
@@ -191,7 +192,8 @@ function AlertHistoryRow({ alert }: { alert: AlertHistoryEntry }) {
         <div className="flex items-center gap-3 text-[10px] text-text-muted">
           <span>{service}</span>
           <span className={severity}>
-            {alert.metricValue} / {alert.thresholdValue} ({ratio.toFixed(1)}x)
+            {formatMetric(alert.metricValue)} / {formatMetric(alert.thresholdValue)} (
+            {ratio.toFixed(1)}x)
           </span>
           {alert.channelsNotified.length > 0 && (
             <span>

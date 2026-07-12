@@ -18,6 +18,7 @@ import { ApiKeysSettings } from './api-keys-settings'
 import { ClusteringSettings } from './clustering-settings'
 import { ConnectorSettings } from './connector-settings'
 import { CostSettings, SpikeBaselineSettings } from './cost-settings'
+import { SecuritySettings } from './security-settings'
 import { TeamSettings } from './team-settings'
 
 const TAG_KEY_PATTERN = /^[a-zA-Z0-9_.-]+$/
@@ -262,6 +263,8 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <SecuritySettings />
 
       <TeamSettings />
     </div>

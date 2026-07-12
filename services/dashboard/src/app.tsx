@@ -23,6 +23,10 @@ const MockupsPage = lazy(() =>
   import('./features/mockups/ux-mockups').then((m) => ({ default: m.MockupsPage })),
 )
 
+const TotpSetupPage = lazy(() =>
+  import('./auth/totp-setup-page').then((m) => ({ default: m.TotpSetupPage })),
+)
+
 function AuthGate() {
   const { user, isAuthenticated, isLoading } = useAuth()
 
@@ -62,6 +66,14 @@ function AuthGate() {
           element={
             <Suspense fallback={<Skeleton className="h-64 w-full" />}>
               <SettingsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/settings/two-factor"
+          element={
+            <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+              <TotpSetupPage />
             </Suspense>
           }
         />

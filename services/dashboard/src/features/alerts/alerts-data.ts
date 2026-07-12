@@ -68,3 +68,13 @@ export function alertSeverity(metricValue: number, thresholdValue: number): Aler
   const level: AlertSeverity = ratio > 3 ? 'danger' : ratio > 1.5 ? 'warning' : 'normal'
   return { ratio, level }
 }
+
+/**
+ * Format a metric or threshold value for display. Threshold baselines are
+ * computed floats that can carry a long fractional tail (e.g.
+ * 16.97222222222222); round to at most 2 decimals and add grouping so the
+ * alert history reads cleanly.
+ */
+export function formatMetric(value: number): string {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+}

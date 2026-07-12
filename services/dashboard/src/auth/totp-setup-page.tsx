@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -6,7 +7,8 @@ import { csrfHeader } from '../lib/api-client'
 import { useAuth } from './auth-provider'
 
 export function TotpSetupPage() {
-  const { refreshUser } = useAuth()
+  const { user, refreshUser } = useAuth()
+  const navigate = useNavigate()
   const [step, setStep] = useState<'intro' | 'scan' | 'verify' | 'recovery'>('intro')
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('')
   const [secretKey, setSecretKey] = useState('')
@@ -16,6 +18,7 @@ export function TotpSetupPage() {
   const [loading, setLoading] = useState(false)
 
   const startSetup = async () => {
+    setError('')
     setLoading(true)
     try {
       const res = await fetch('/v1/auth/totp/setup', {
@@ -64,6 +67,7 @@ export function TotpSetupPage() {
   const finish = async () => {
     toast.success('Two-factor authentication enabled')
     await refreshUser()
+    navigate('/settings')
   }
 
   return (
@@ -81,16 +85,37 @@ export function TotpSetupPage() {
           </p>
         </div>
 
-        {step === 'intro' && (
-          <div className="space-y-4 text-center">
-            <p className="text-sm text-text-secondary">
-              You'll need an authenticator app like Google Authenticator, Authy, or 1Password.
-            </p>
-            <Button variant="primary" size="lg" onClick={startSetup} disabled={loading}>
-              {loading ? 'Setting up...' : 'Get Started'}
-            </Button>
-          </div>
-        )}
+        {step === 'intro' &&
+          (user?.totpEnabled ? (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-text-secondary">
+                Two-factor authentication is already enabled on your account. Manage it from
+                Settings.
+              </p>
+              <Button variant="secondary" size="lg" onClick={() => navigate('/settings')}>
+                Back to Settings
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-text-secondary">
+                You'll need an authenticator app like Google Authenticator, Authy, or 1Password.
+              </p>
+              {error && (
+                <div className="rounded-[var(--radius-md)] bg-danger-500/10 border border-danger-500/30 px-3 py-2">
+                  <p className="text-xs text-danger-500">{error}</p>
+                </div>
+              )}
+              <div className="flex items-center justify-center gap-2">
+                <Button variant="ghost" size="lg" onClick={() => navigate('/settings')}>
+                  Cancel
+                </Button>
+                <Button variant="primary" size="lg" onClick={startSetup} disabled={loading}>
+                  {loading ? 'Setting up...' : 'Get Started'}
+                </Button>
+              </div>
+            </div>
+          ))}
 
         {step === 'scan' && (
           <div className="space-y-4">
