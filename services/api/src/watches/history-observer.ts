@@ -98,7 +98,15 @@ export class HistoryObserver implements AlertObserver {
         operator: alert.operator,
         windowMinutes: alert.windowMinutes,
       }),
-      channels_notified: JSON.stringify(alert.channels),
+      // `channels_notified` records channels confirmed *delivered*, not merely
+      // configured. This observer runs as an independent, fire-and-forget peer
+      // of the Slack/Webhook delivery observers and has no visibility into their
+      // (async, queued, best-effort) per-channel outcomes, so it must not claim
+      // `alert.channels` were notified — every delivery may have failed. We
+      // record none, consistent with the template/service_silent rows above.
+      // Reporting real successes would require awaiting and aggregating both
+      // delivery paths and is out of scope for this fix.
+      channels_notified: '[]',
     }
   }
 }

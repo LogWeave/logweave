@@ -9,17 +9,13 @@ import {
   isServiceSilent,
   isTemplateAlert,
 } from './alert-observer.js'
+import { isSlackUrl } from './slack-observer.js'
 import type { TenantSettingsStore } from './tenant-settings.js'
 
 const PAGERDUTY_EVENTS_URL = 'https://events.pagerduty.com/v2/enqueue'
 const PAGERDUTY_PREFIX = 'pagerduty://'
-const SLACK_HOST = 'hooks.slack.com'
 const MAX_RETRIES = 3
 const BACKOFF_BASE_MS = 2000
-
-function isSlackUrl(url: string): boolean {
-  return url.includes(SLACK_HOST)
-}
 
 function isPagerDutyChannel(channel: string): boolean {
   return channel.startsWith(PAGERDUTY_PREFIX)

@@ -114,7 +114,11 @@ describe('HistoryObserver', () => {
     assert.equal(row.rule_name, 'High error rate')
     assert.equal(row.metric_value, 25)
     assert.equal(row.threshold_value, 10)
-    assert.equal(row.channels_notified, '["https://hooks.slack.com/abc"]')
+    // channels_notified records channels confirmed *delivered*, not merely
+    // configured. The HistoryObserver can't observe the async delivery
+    // observers' outcomes, so it records none rather than over-claiming that
+    // the rule's configured channels were notified.
+    assert.equal(row.channels_notified, '[]')
 
     const details = JSON.parse(row.details as string)
     assert.equal(details.service, 'payments')

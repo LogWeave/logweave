@@ -128,7 +128,7 @@ async function listServices(client: LogWeaveClient, args: { hours?: number }): P
 }
 
 async function clusteringHealth(client: LogWeaveClient): Promise<string> {
-  const data = await client.get('/readyz')
+  const data = await client.getReadiness()
   const r = data as {
     status: string
     clickhouse: string

@@ -77,6 +77,48 @@ export function redactRequestHeaders(
   }
 }
 
+/**
+ * Query params that can carry a live credential and must never reach the logs in
+ * the clear. `token` is the short-lived tail-SSE token (`/v1/tail?token=<uuid>`)
+ * and `api_key` its legacy equivalent. Matched case-insensitively.
+ */
+const SENSITIVE_QUERY_PARAMS = new Set([
+  'token',
+  'api_key',
+  'apikey',
+  'access_token',
+  'key',
+  'password',
+  'secret',
+])
+
+/**
+ * Redact credential-bearing query-string values in a request URL before it is
+ * logged, mirroring {@link redactRequestHeaders}. Only the logged representation
+ * changes — routing still sees the untouched `req.url`. The path and every
+ * non-sensitive param keep their original encoding; a sensitive value becomes
+ * the literal `[REDACTED]`.
+ */
+export function redactUrl(url: string | undefined): string | undefined {
+  if (!url) return url
+  const qIndex = url.indexOf('?')
+  if (qIndex === -1) return url
+  const path = url.slice(0, qIndex)
+  const redactedQuery = url
+    .slice(qIndex + 1)
+    .split('&')
+    .map((pair) => {
+      const eq = pair.indexOf('=')
+      const rawKey = eq === -1 ? pair : pair.slice(0, eq)
+      if (SENSITIVE_QUERY_PARAMS.has(rawKey.toLowerCase())) {
+        return `${rawKey}=[REDACTED]`
+      }
+      return pair
+    })
+    .join('&')
+  return `${path}?${redactedQuery}`
+}
+
 export interface AppDependencies {
   config: Config
   logger: pino.Logger
@@ -161,7 +203,7 @@ export function createApp(deps: AppDependencies): CreatedApp {
         return {
           id: req.id,
           method: req.method,
-          url: req.url,
+          url: redactUrl(req.url),
           headers: redactRequestHeaders(req.raw?.headers),
         }
       },

@@ -16,9 +16,24 @@ import {
 } from './alert-observer.js'
 import type { TenantSettingsStore } from './tenant-settings.js'
 
+const SLACK_HOST = 'hooks.slack.com'
 const MAX_RETRIES = 3
 const BACKOFF_BASE_MS = 2000
 const MIN_SEND_INTERVAL_MS = 1000
+
+/**
+ * True only for genuine Slack incoming-webhook URLs (host `hooks.slack.com`,
+ * matching the settings-route validation). The WebhookObserver imports this to
+ * *exclude* Slack channels, so the two observers partition each rule's channels
+ * with no overlap (double-delivery) and no gaps.
+ */
+export function isSlackUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === SLACK_HOST
+  } catch {
+    return false
+  }
+}
 
 function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max)}\u2026` : s
@@ -78,16 +93,25 @@ export class SlackObserver implements AlertObserver {
     // Resolve events are handled by WebhookObserver (PagerDuty only)
     if (isResolvedAlert(alert) || isServiceSilenceResolved(alert)) return
     // Threshold alerts may specify per-rule channels; fall back to tenant default
-    const webhookUrls: string[] = []
+    const candidateUrls: string[] = []
     if (hasChannels(alert) && alert.channels.length > 0) {
-      webhookUrls.push(...alert.channels)
+      candidateUrls.push(...alert.channels)
     } else {
       const tenantUrl = this.settingsStore.getSlackUrl(alert.tenantId)
-      if (tenantUrl) webhookUrls.push(tenantUrl)
+      if (tenantUrl) candidateUrls.push(tenantUrl)
     }
 
+    // Deliver ONLY to genuine Slack webhooks. Per-rule channels (and even the
+    // tenant "Slack" default) may be arbitrary https:// URLs; a non-Slack
+    // webhook is delivered to by the WebhookObserver (generic JSON). Posting
+    // Slack-shaped JSON here too would double-notify with a body it can't parse.
+    const webhookUrls = candidateUrls.filter(isSlackUrl)
+
     if (webhookUrls.length === 0) {
-      this.logger.debug({ tenantId: alert.tenantId }, 'Slack: no webhook configured, skipping')
+      this.logger.debug(
+        { tenantId: alert.tenantId },
+        'Slack: no Slack webhook configured, skipping',
+      )
       return
     }
 

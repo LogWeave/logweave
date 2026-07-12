@@ -93,3 +93,47 @@ describe('SlackObserver — SSRF guard on per-rule channels', () => {
     assert.ok(blocked instanceof SsrfBlockedError, 'safeFetch must block the internal target')
   })
 })
+
+describe('SlackObserver — only genuine Slack webhooks (no double-delivery)', () => {
+  it('does not deliver to a generic (non-Slack) webhook channel', async () => {
+    const calls: string[] = []
+    const fetchFn: SafeFetchFn = async (target) => {
+      calls.push(String(target))
+      return okResponse()
+    }
+    const url = 'https://my-webhook.example.com/alerts'
+    const observer = new SlackObserver({
+      settingsStore: new TenantSettingsStore(),
+      logger,
+      fetchFn,
+    })
+
+    await observer.notify({ ...THRESHOLD_ALERT, channels: [url] })
+    await flush(observer, url)
+
+    // A plain https webhook is the WebhookObserver's job; posting Slack-shaped
+    // JSON here too would double-notify the channel.
+    assert.deepEqual(calls, [], 'generic webhook must be left to the WebhookObserver')
+  })
+
+  it('delivers only to the Slack channel when mixed with a generic webhook', async () => {
+    const calls: string[] = []
+    const fetchFn: SafeFetchFn = async (target) => {
+      calls.push(String(target))
+      return okResponse()
+    }
+    const slackUrl = 'https://hooks.slack.com/services/T00/B00/xxx'
+    const genericUrl = 'https://my-webhook.example.com/alerts'
+    const observer = new SlackObserver({
+      settingsStore: new TenantSettingsStore(),
+      logger,
+      fetchFn,
+    })
+
+    await observer.notify({ ...THRESHOLD_ALERT, channels: [slackUrl, genericUrl] })
+    await flush(observer, slackUrl)
+    await flush(observer, genericUrl)
+
+    assert.deepEqual(calls, [slackUrl])
+  })
+})

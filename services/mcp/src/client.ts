@@ -34,6 +34,21 @@ export class LogWeaveClient {
     }
   }
 
+  /**
+   * Fetch the top-level `/readyz` probe and return its parsed body. Unlike
+   * {@link get}, this does NOT prefix `/v1` — the readiness probe lives at the
+   * server root. The body is returned on both 200 (ready) and 503 (not ready):
+   * the not-ready payload carries the same shape and is exactly what a health
+   * tool needs to surface. Any other status is a genuine failure and throws.
+   */
+  async getReadiness(): Promise<unknown> {
+    const res = await this.fetch('/readyz')
+    if (res.ok || res.status === 503) {
+      return res.json()
+    }
+    throw new Error(`LogWeave API readiness check failed (status ${res.status})`)
+  }
+
   async get(path: string, params?: Record<string, string | number | undefined>): Promise<unknown> {
     const url = this.buildUrl(path, params)
     return this.request(url, { method: 'GET' })
