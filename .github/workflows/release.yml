@@ -37,20 +37,18 @@ jobs:
         run: |
           pnpm -C packages/transport build
           pnpm -C services/mcp build
-      # Provenance is enabled via NPM_CONFIG_PROVENANCE (not the --provenance flag):
-      # pnpm forwards the flag path to npm along with its own --no-git-checks, which
-      # npm rejects (EUSAGE). The env var lets pnpm publish natively. Provenance
-      # requires a PUBLIC repo — if publishing from a private repo, unset it.
+      # NOTE: provenance is intentionally OFF. Enabling it makes pnpm delegate to
+      # `npm publish` and forward its own --no-git-checks flag, which npm rejects
+      # (EUSAGE). pnpm publishes natively without it. Re-add provenance later via a
+      # pack-then-`npm publish <tarball> --provenance` step if the attestation is wanted.
       - name: Publish @logweave/transport
         run: pnpm -C packages/transport publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
       - name: Publish @logweave/mcp
         run: pnpm -C services/mcp publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
 
   docker:
     name: Publish Docker images
