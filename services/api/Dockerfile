@@ -50,6 +50,15 @@ COPY services/api/package.json ./
 ENV LOGWEAVE_DASHBOARD_DIR=/app/dashboard/dist
 
 RUN addgroup -S app && adduser -S app -G app
+
+# LOGWEAVE_DATA_DIR (/data) is mounted as the api_data volume at runtime and
+# must be writable by the non-root runtime user — the bootstrap-credentials
+# file (and other API state) is written there. Create and chown it before the
+# volume's first mount so a fresh named volume inherits `app` ownership;
+# otherwise Docker initialises the mountpoint as root:root and the write fails
+# with EACCES (silently falling back to stderr-only for the admin password).
+RUN mkdir -p /data && chown -R app:app /data
+
 USER app
 
 # Git sha for /healthz + the startup log line. Pass at build time:
