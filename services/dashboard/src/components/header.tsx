@@ -16,6 +16,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/alerts': 'Alerts',
   '/tail': 'Live Tail',
   '/settings': 'Settings',
+  '/settings/two-factor': 'Two-Factor Authentication',
 }
 
 const timeRangeOptions = [

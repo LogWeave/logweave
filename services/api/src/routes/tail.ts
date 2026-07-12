@@ -407,7 +407,11 @@ function matchesFilter(
   },
 ): boolean {
   if (filters.service && event.service !== filters.service) return false
-  if (filters.level && event.level !== filters.level) return false
+  // Level is normalized to uppercase at ingest (see toMetadataRow), but the
+  // /v1/tail query param is client-supplied and may arrive in any case
+  // (dashboard sends UPPERCASE, but SDK/MCP/curl callers may send 'error').
+  // Compare case-insensitively so the filter restricts events regardless.
+  if (filters.level && event.level.toUpperCase() !== filters.level.toUpperCase()) return false
   if (filters.minLevel && !levelMeetsSeverity(event.level, filters.minLevel)) return false
   if (filters.templateId && event.templateId !== filters.templateId) return false
   if (filters.minAnomaly !== undefined && event.anomalyScore < filters.minAnomaly) return false

@@ -244,13 +244,38 @@ export function ConnectorSettings() {
       config.logFormat = formValues.logFormat || 'text'
     }
 
+    const name = connectorName.trim()
     createMutation.mutate(
-      { name: connectorName.trim(), config },
+      { name, config },
       {
-        onSuccess: () => {
-          toast.success(`Connector "${connectorName}" created`)
+        onSuccess: (result) => {
           clearDraft(connectorType)
           resetForm()
+          const connectorId = result?.data?.connectorId
+          if (!connectorId) {
+            toast.success(`Connector "${name}" created`)
+            return
+          }
+          // "Test & Save" promises a connection check — run it now that the
+          // connector exists and surface the result. It's already saved, so a
+          // failed test is a warning (not a hard error): the user is told to
+          // fix its settings and re-test from the list rather than losing work.
+          testMutation.mutate(connectorId, {
+            onSuccess: (testResult) => {
+              const test = testResult?.data
+              if (test?.success) {
+                toast.success(`Connector "${name}" saved — connection verified`)
+              } else {
+                toast.warning(
+                  `Connector "${name}" saved, but the connection test failed: ${test?.message ?? 'unknown error'}. Check its settings and re-test.`,
+                )
+              }
+            },
+            onError: () =>
+              toast.warning(
+                `Connector "${name}" saved, but the connection test could not be run. Test it from the list above.`,
+              ),
+          })
         },
         onError: (err) =>
           toast.error(err instanceof Error ? err.message : 'Failed to create connector'),
