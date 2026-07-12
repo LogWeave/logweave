@@ -37,16 +37,19 @@ jobs:
         run: |
           pnpm -C packages/transport build
           pnpm -C services/mcp build
-      # NOTE: provenance is intentionally OFF. Enabling it makes pnpm delegate to
-      # `npm publish` and forward its own --no-git-checks flag, which npm rejects
-      # (EUSAGE). pnpm publishes natively without it. Re-add provenance later via a
-      # pack-then-`npm publish <tarball> --provenance` step if the attestation is wanted.
+      # pnpm pack builds the tarball (resolving workspace catalog: refs), then
+      # native `npm publish <tarball>` uploads it. This avoids pnpm forwarding its
+      # own --no-git-checks flag to npm (EUSAGE) and lets --provenance work.
       - name: Publish @logweave/transport
-        run: pnpm -C packages/transport publish --no-git-checks --access public
+        run: |
+          pnpm -C packages/transport pack --pack-destination "$RUNNER_TEMP"
+          npm publish "$RUNNER_TEMP"/logweave-transport-*.tgz --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish @logweave/mcp
-        run: pnpm -C services/mcp publish --no-git-checks --access public
+        run: |
+          pnpm -C services/mcp pack --pack-destination "$RUNNER_TEMP"
+          npm publish "$RUNNER_TEMP"/logweave-mcp-*.tgz --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
